@@ -10,7 +10,8 @@ import {
   Alert,
   BackHandler,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useAuth } from '../../hooks/useAuth';
 
 export default function PrescriptionModal() {
   const router = useRouter();
@@ -20,7 +21,43 @@ export default function PrescriptionModal() {
   const [frequency, setFrequency] = useState("");
   const [duration, setDuration] = useState("");
   const [instructions, setInstructions] = useState("");
-  const doctorSignature = "Dr. Nana Cooper";
+  const { session } = useAuth();
+  const params = useLocalSearchParams() as any;
+  const [doctorSignature, setDoctorSignature] = useState('');
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        // If current user is a doctor, use their name
+        if (session?.uid) {
+          const { doc, getDoc, db } = await import('../../utils/firebaseConfig');
+          const userRef = doc(db, 'users', session.uid);
+          const snap = await getDoc(userRef);
+          if (mounted && snap.exists()) {
+            const data = snap.data() as any;
+            if (data.role === 'doctor' && (data.fullName || data.name)) {
+              setDoctorSignature(data.fullName || data.name);
+              return;
+            }
+          }
+        }
+        // Otherwise, if doctorId param present, fetch that doctor's name
+        if (params?.doctorId) {
+          const { getDoctor } = await import('../../services/doctors');
+          const d = await getDoctor(params.doctorId as string);
+          if (mounted) setDoctorSignature(d?.fullName || d?.name || 'Doctor');
+          return;
+        }
+        // fallback
+        if (mounted) setDoctorSignature('Doctor');
+      } catch (e) {
+        console.error('Failed to resolve doctor signature', e);
+        if (mounted) setDoctorSignature('Doctor');
+      }
+    })();
+    return () => { mounted = false; };
+  }, [session?.uid, params]);
 
   useEffect(() => {
     const onBackPress = () => {

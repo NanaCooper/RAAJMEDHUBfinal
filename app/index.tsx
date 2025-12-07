@@ -16,7 +16,7 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MediCare</Text>
+      <Text style={styles.title}>RAAJ MedHub</Text>
     </View>
   );
 }
@@ -31,6 +31,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 34,
     fontWeight: "700",
-    color: "#0b6efd",
+    color: "#4f0052ce",
   },
 });

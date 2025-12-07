@@ -6,20 +6,26 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
+
+    // Safely get the user's role, returning an empty string if not found.
+    function getUserRole() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      if (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'role' in userDoc.data) {
+        return userDoc.data.role;
+      }
+      return '';
+    }
     
     function isAdmin() {
-      return isSignedIn() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isSignedIn() && getUserRole() == 'admin';
     }
     
     function isDoctor() {
-      return isSignedIn() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor';
+      return isSignedIn() && getUserRole() == 'doctor';
     }
     
     function isPatient() {
-      return isSignedIn() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'patient';
+      return isSignedIn() && getUserRole() == 'patient';
     }
     
     function isOwner(userId) {
@@ -40,24 +46,49 @@ service cloud.firestore {
       );
     }
 
-    // User profiles - users can read their own profile, doctors can read their patients'
+    // User profiles - users can read their own profile. Admins have full control.
+    // Clients may create their own user doc but MUST NOT include `role`. Admins may create with role.
     match /users/{userId} {
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Read: owner, admin, or any signed-in user when the target user is a doctor (allow doctor profiles to be browsed)
+      // Also allow doctors to read any user's profile.
       allow read: if isSignedIn() && (
         isOwner(userId) || 
         isAdmin() ||
-        (isDoctor() && exists(/databases/$(database)/documents/appointments/{appointmentId} 
-          where appointmentId.patientId == userId && 
-                appointmentId.doctorId == request.auth.uid))
+        isDoctor() ||
+        // Allow signed-in users to read public doctor profiles
+        ('role' in resource.data && resource.data.role == 'doctor')
       );
-      allow update: if isOwner(userId) && 
-        request.resource.data.role == resource.data.role; // Can't change own role
+
+      // Create: owner may create their doc but must not include `role`. Admins may create with role.
+      allow create: if isSignedIn() && (
+        (request.auth.uid == userId && !('role' in request.resource.data))
+        || isAdmin()
+      );
+
+      // Update: admins can fully update.
+      // Owners can update their own profile, but cannot escalate role.
+      // They may update other fields freely. Additionally, allow the owner to set
+      // the `role` field once if the stored document does not already have a role
+      // (this enables the user-type-selection flow where the user picks their role
+      // immediately after signup). After a role exists, owners cannot change it.
+      allow update: if isAdmin()
+        || (isSignedIn() && request.auth.uid == userId && (
+             // 1) Owner isn't attempting to modify the `role` field at all
+             !('role' in request.resource.data)
+             // OR 2) The stored resource already has a role and the update's role must match (no change)
+             || ('role' in resource.data && request.resource.data.role == resource.data.role)
+             // OR 3) The stored resource has no role yet and owner is setting it now (one-time set)
+             || (!('role' in resource.data) && 'role' in request.resource.data)
+           ));
+
+      // Delete: admin only
+      allow delete: if isAdmin();
     }
 
     // Appointments - only participants can read/write
     match /appointments/{appointmentId} {
       allow create: if isSignedIn() && (
-        (isPatient() && request.resource.data.patientId == request.auth.uid) ||
+        (isPatient() && request.resource.data.patientId == request.auth.uid && (!('doctorId' in request.resource.data) || request.resource.data.doctorId == null)) ||
         (isDoctor() && request.resource.data.doctorId == request.auth.uid)
       );
       allow read: if isSignedIn() && isAppointmentParticipant(resource.data);
@@ -68,6 +99,14 @@ service cloud.firestore {
         request.resource.data.patientId == resource.data.patientId &&
         request.resource.data.doctorId == resource.data.doctorId;
       allow delete: if isSignedIn() && isAppointmentParticipant(resource.data);
+    }
+
+    // Doctors collection - doctors can read their own, patients can read all for browsing
+    match /doctors/{doctorId} {
+      allow read: if isSignedIn(); // All signed-in users can read doctor profiles
+      allow create: if isSignedIn() && request.auth.uid == doctorId;
+      allow update: if isSignedIn() && request.auth.uid == doctorId;
+      allow delete: if isAdmin();
     }
 
     // Doctor availability - only the doctor can write, patients can read
@@ -83,9 +122,8 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         request.auth.uid == resource.data.patientId || 
         request.auth.uid == resource.data.doctorId ||
-        (isDoctor() && exists(/databases/$(database)/documents/appointments/{appointmentId} 
-          where appointmentId.patientId == resource.data.patientId && 
-                appointmentId.doctorId == request.auth.uid))
+          (isDoctor() && exists(/databases/$(database)/documents/patients/$(resource.data.patientId))
+            && get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.assignedDoctorId == request.auth.uid)
       );
       allow update: if isDoctor() && request.auth.uid == resource.data.doctorId;
       allow delete: if false; // Medical records should never be deleted

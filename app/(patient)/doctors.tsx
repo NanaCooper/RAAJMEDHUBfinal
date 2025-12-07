@@ -1,138 +1,169 @@
-import React, { useMemo, useState } from "react";
-import { useRouter } from "expo-router";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TextInput,
-  TouchableOpacity,
-} from "react-native";
+import React, { useEffect, useState } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
+import { listDoctors } from '../../services/doctors';
+import { useAuth } from '../../hooks/useAuth';
 
-type Doctor = {
-  id: string;
-  name: string;
-  specialization: string;
-  rating: number;
-  fee: string;
+const COLORS = {
+  bg: '#F8FAFC',
+  surface: '#FFFFFF',
+  primary: '#0A2463',
+  textMain: '#1E293B',
+  textSec: '#64748B',
+  border: '#E2E8F0',
 };
 
-export default function Doctors() {
+const SHADOW = {
+  shadowColor: '#0A2463',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.06,
+  shadowRadius: 12,
+  elevation: 3,
+};
+
+const MyDoctorsScreen = () => {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [specializationFilter, setSpecializationFilter] = useState<string | null>(null);
+  const [doctors, setDoctors] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  const doctors: Doctor[] = [
-    { id: "d1", name: "Dr. Nana Cooper", specialization: "General Practitioner", rating: 4.8, fee: "$50" },
-    { id: "d2", name: "Dr. Alex Riley", specialization: "Cardiologist", rating: 4.6, fee: "$80" },
-    { id: "d3", name: "Dr. Sam Lee", specialization: "Dermatologist", rating: 4.4, fee: "$60" },
-  ];
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      try {
+        const doctorList = await listDoctors();
+        setDoctors(doctorList);
+      } catch (error) {
+        console.error("Failed to fetch doctors:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return doctors.filter((d) => {
-      if (specializationFilter && d.specialization !== specializationFilter) return false;
-      if (!q) return true;
-      return d.name.toLowerCase().includes(q) || d.specialization.toLowerCase().includes(q);
-    });
-  }, [query, specializationFilter]);
+    fetchDoctors();
+  }, []);
 
-  const specializations = Array.from(new Set(doctors.map((d) => d.specialization)));
+  const handleCall = (phoneNumber: string) => {
+    if (phoneNumber) {
+      Linking.openURL(`tel:${phoneNumber}`);
+    }
+  };
+
+  const renderDoctorCard = ({ item }: { item: any }) => (
+    <TouchableOpacity 
+      style={styles.card} 
+      onPress={() => router.push({ pathname: "/(patient)/doctor-details", params: { id: item.id } })}
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.avatarContainer}>
+          <Text style={styles.avatarText}>{item.fullName?.charAt(0) || 'D'}</Text>
+        </View>
+        <View style={styles.infoContainer}>
+          <Text style={styles.doctorName}>{item.fullName}</Text>
+          <Text style={styles.doctorSpecialty}>{item.specialization || 'General Practice'}</Text>
+        </View>
+        <TouchableOpacity style={styles.callButton} onPress={() => handleCall(item.contact)}>
+          <Feather name="phone" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <TextInput
-          placeholder="Search doctors or specializations"
-          style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
-        />
-
-        <View style={styles.filterRow}>
-          <TouchableOpacity
-            style={[styles.filterChip, !specializationFilter && styles.filterChipActive]}
-            onPress={() => setSpecializationFilter(null)}
-          >
-            <Text style={styles.filterText}>All</Text>
-          </TouchableOpacity>
-          {specializations.map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={[styles.filterChip, specializationFilter === s && styles.filterChipActive]}
-              onPress={() => setSpecializationFilter((prev) => (prev === s ? null : s))}
-            >
-              <Text style={styles.filterText}>{s}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <FlatList
-          data={filtered}
-          keyExtractor={(i) => i.id}
-          style={{ width: "100%", marginTop: 12 }}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.meta}>{item.specialization} • {item.rating}★</Text>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text style={styles.fee}>{item.fee}</Text>
-                <TouchableOpacity style={styles.bookBtn} onPress={() => router.push(`/booking/${item.id}`)}>
-                  <Text style={styles.bookBtnText}>Book</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Doctors</Text>
       </View>
+      <FlatList
+        data={doctors}
+        renderItem={renderDoctorCard}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={<Text style={styles.emptyText}>No doctors found.</Text>}
+      />
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  content: { flex: 1, padding: 16, alignItems: "center" },
-  searchInput: {
-    width: "100%",
-    height: 44,
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    backgroundColor: "#fafafa",
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
   },
-
-  filterRow: { flexDirection: "row", marginTop: 12, flexWrap: "wrap" },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#eee",
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: "#fff",
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  filterChipActive: { backgroundColor: "#f0f6ff", borderColor: "#0b6efd" },
-  filterText: { color: "#333" },
-
+  header: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.textMain,
+  },
+  listContent: {
+    padding: 20,
+  },
   card: {
-    width: "100%",
-    flexDirection: "row",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#f2f2f2",
-    marginBottom: 10,
-    alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    ...SHADOW,
   },
-  name: { fontWeight: "700" },
-  meta: { marginTop: 6, color: "#666" },
-  fee: { fontWeight: "700", marginBottom: 8 },
-  bookBtn: { backgroundColor: "#0b6efd", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  bookBtnText: { color: "#fff" },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E0E7FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  infoContainer: {
+    flex: 1,
+  },
+  doctorName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.textMain,
+  },
+  doctorSpecialty: {
+    fontSize: 14,
+    color: COLORS.textSec,
+  },
+  callButton: {
+    padding: 10,
+    borderRadius: 20,
+    backgroundColor: '#E0E7FF',
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 50,
+    fontSize: 16,
+    color: COLORS.textSec,
+  },
 });
+
+export default MyDoctorsScreen;

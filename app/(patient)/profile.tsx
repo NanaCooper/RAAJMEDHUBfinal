@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../../hooks/useAuth";
+import { doc, getDoc, setDoc, db } from "../../utils/firebaseConfig";
+import * as ImagePicker from 'expo-image-picker';
 import {
   View,
   Text,
@@ -16,55 +19,63 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
+import moment from "moment";
 
-/**
- * Patient Profile — premium feel
- * - Soft branded background, elevated card, rounded corners
- * - Avatar with "change photo" action (mock)
- * - Inline validation for email/phone
- * - Dirty detection: Save enabled only when changes exist & inputs valid
- * - Loading state for save + animated snackbar feedback
- * - Accessibility labels and improved spacing/typography
- */
+// --- 🎨 Unified Premium Theme ---
+const COLORS = {
+  bg: "#F8FAFC",        // Slate 50
+  card: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primaryDark: "#4338ca",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  input: "#F1F5F9",     // Slate 100
+  border: "#E2E8F0",
+  success: "#10B981",
+  danger: "#EF4444",
+  overlay: "rgba(0,0,0,0.05)",
+};
 
-const BG = "#f6f8ff";
-const CARD = "#ffffff";
-const PRIMARY = "#0b6efd";
-const MUTED = "#6b7280";
-const DANGER = "#d83b3b";
-const SNACK_BG = "#0b6efd";
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.06,
+  shadowRadius: 16,
+  elevation: 4,
+};
 
 export default function PatientProfile(): React.ReactElement {
-  // initial/mock loaded profile
-  const initial = useMemo(
-    () => ({
-      fullName: "Nana Cooper",
-      email: "nana@example.com",
-      phone: "+1 555-0100",
-      preferences: "SMS reminders: On",
-      avatarUri: "",
-    }),
-    []
-  );
-
-  const [fullName, setFullName] = useState(initial.fullName);
-  const [email, setEmail] = useState(initial.email);
-  const [phone, setPhone] = useState(initial.phone);
-  const [preferences, setPreferences] = useState(initial.preferences);
-  const [avatarUri, setAvatarUri] = useState<string | undefined>(initial.avatarUri || undefined);
+  const { session } = useAuth();
+  
+  // --- State Management (Logic Intact) ---
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [dob, setDob] = useState("");
+  const [contact, setContact] = useState("");
+  const [role, setRole] = useState("");
+  const [createdAt, setCreatedAt] = useState("");
+  
+  // Editable fields
+  const [phone, setPhone] = useState("");
+  const [preferences, setPreferences] = useState("");
+  const [photoURL, setPhotoURL] = useState<string | undefined>(undefined);
+  
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [originalProfile, setOriginalProfile] = useState<any>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
-  // snackbar animation
+  // Snackbar animation
   const snackAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!savedMsg) return;
     Animated.timing(snackAnim, {
       toValue: 1,
-      duration: 240,
+      duration: 300,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
@@ -72,37 +83,70 @@ export default function PatientProfile(): React.ReactElement {
     const t = setTimeout(() => {
       Animated.timing(snackAnim, {
         toValue: 0,
-        duration: 320,
+        duration: 300,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }).start(() => setSavedMsg(null));
-    }, 2000);
+    }, 2500);
 
     return () => clearTimeout(t);
   }, [savedMsg, snackAnim]);
 
-  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
-  const isValidPhone = (v: string) =>
-    // basic check: digits and minimal length (allow +, spaces, hyphens)
-    /^[+\d][\d\s\-().]{6,}$/.test(v.trim());
+  // Fetch profile
+  useEffect(() => {
+    async function fetchProfile() {
+      if (!session?.uid) {
+        setLoadingProfile(false);
+        return;
+      }
+      setLoadingProfile(true);
+      setProfileError(null);
+      try {
+        const userRef = doc(db, "users", session.uid);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          setFullName(data.fullName || "");
+          setEmail(data.email || "");
+          setDob(data.dob || "");
+          setContact(data.contact || "");
+          setRole(data.role || "");
+          setCreatedAt(data.createdAt ? new Date(data.createdAt.toDate?.() ?? data.createdAt).toLocaleDateString() : "");
+          setPhone(data.phone || data.contact || "");
+          setPreferences(data.preferences || "");
+          // Use photoURL if available, fallback to avatarUri for migration
+          setPhotoURL(data.photoURL || data.avatarUri || undefined);
+          setOriginalProfile({
+            phone: data.phone || data.contact || "",
+            preferences: data.preferences || "",
+            photoURL: data.photoURL || data.avatarUri || "",
+          });
+        }
+      } catch (e) {
+        console.error(e);
+        setProfileError("Failed to load profile");
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
+    fetchProfile();
+  }, [session?.uid]);
+
+  const isValidPhone = (v: string) => /^[+\d][\d\s\-().]{6,}$/.test(v.trim());
 
   const validationError = useMemo(() => {
-    if (!fullName.trim()) return "Please enter your full name.";
-    if (!email.trim() || !isValidEmail(email)) return "Please enter a valid email address.";
     if (!phone.trim() || !isValidPhone(phone)) return "Please enter a valid phone number.";
-    if (preferences.trim().length === 0) return "Please set your contact preferences.";
     return null;
-  }, [fullName, email, phone, preferences]);
+  }, [phone]);
 
   const dirty = useMemo(() => {
+    if (!originalProfile) return false;
     return (
-      fullName !== initial.fullName ||
-      email !== initial.email ||
-      phone !== initial.phone ||
-      preferences !== initial.preferences ||
-      (avatarUri || "") !== (initial.avatarUri || "")
+      phone !== (originalProfile.phone || "") ||
+      preferences !== (originalProfile.preferences || "") ||
+      (photoURL || "") !== (originalProfile.photoURL || "")
     );
-  }, [fullName, email, phone, preferences, avatarUri, initial]);
+  }, [phone, preferences, photoURL, originalProfile]);
 
   const handleSave = async () => {
     setError(null);
@@ -114,13 +158,15 @@ export default function PatientProfile(): React.ReactElement {
 
     setLoading(true);
     try {
-      // replace with API call
-      await new Promise((res) => setTimeout(res, 900));
-
-      // Mock: set saved message
-      setSavedMsg("Profile updated");
+      if (!session?.uid) throw new Error("No session");
+      await setDoc(doc(db, "users", session.uid), {
+        phone,
+        preferences,
+        photoURL, // Save as photoURL
+      }, { merge: true });
+      setSavedMsg("Profile updated successfully");
+      setOriginalProfile((prev: any) => ({ ...prev, phone, preferences, photoURL }));
     } catch (err) {
-      console.error("Save profile error", err);
       setError("Unable to save changes. Please try again.");
     } finally {
       setLoading(false);
@@ -128,145 +174,162 @@ export default function PatientProfile(): React.ReactElement {
   };
 
   const handleChangePhoto = async () => {
-    // Hook point: integrate expo-image-picker or similar.
-    // For demo, toggle a placeholder image URI to simulate change.
-    setAvatarUri((prev) =>
-      prev
-        ? undefined
-        : "https://placehold.co/300x300/png?text=Nana+Cooper"
-    );
-    setSavedMsg("Profile photo updated (mock)");
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setPhotoURL(result.assets[0].uri);
+    }
   };
 
-  const snackTranslateY = snackAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [20, 0],
-  });
-  const snackOpacity = snackAnim;
+  const age = dob ? moment().diff(moment(dob, 'YYYY-MM-DD'), 'years') : undefined;
+
+  if (loadingProfile) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      
+      {/* --- Header --- */}
+      
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* --- Avatar Section --- */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarContainer}>
+            {photoURL ? (
+              <Image style={styles.avatarImage} source={{ uri: photoURL }} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarInitial}>{(fullName.charAt(0) || "U").toUpperCase()}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.cameraBadge} onPress={handleChangePhoto}>
+              <Feather name="camera" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.profileName}>{fullName || "User"}</Text>
+          <Text style={styles.profileRole}>{role ? role.toUpperCase() : "MEMBER"}</Text>
+        </View>
+
+        {/* --- Read Only Info --- */}
         <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <View style={styles.avatarWrap}>
-              <View style={styles.avatar}>
-                {avatarUri ? (
-                  <Image style={styles.avatarImage} source={{ uri: avatarUri }} />
-                ) : (
-                  <Text style={styles.avatarInitial}>N</Text>
-                )}
-              </View>
-
-              <TouchableOpacity
-                style={styles.changePhotoBtn}
-                onPress={handleChangePhoto}
-                accessibilityRole="button"
-                accessibilityLabel="Change profile photo"
-              >
-                <Feather name="camera" size={14} color={PRIMARY} />
-                <Text style={styles.changePhotoText}>Change photo</Text>
-              </TouchableOpacity>
+          <Text style={styles.cardTitle}>Personal Information</Text>
+          
+          <View style={styles.row}>
+            <View style={styles.fieldContainer}>
+              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.value}>{email || "—"}</Text>
             </View>
-
-            <View style={styles.headerInfo}>
-              <Text style={styles.name}>{fullName}</Text>
-              <Text style={styles.muted}>Member since 2023 • MediCare</Text>
-              <View style={styles.quickRow}>
-                <TouchableOpacity
-                  style={styles.iconAction}
-                  accessibilityRole="button"
-                  accessibilityLabel="Message support"
-                >
-                  <Feather name="message-circle" size={16} color={PRIMARY} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.iconAction, { marginLeft: 8 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel="View settings"
-                >
-                  <Feather name="settings" size={16} color={MUTED} />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <Feather name="lock" size={16} color={COLORS.textSec} />
           </View>
 
-          <View style={styles.form}>
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.divider} />
 
-            <Text style={styles.label}>Full name</Text>
-            <TextInput
-              value={fullName}
-              onChangeText={setFullName}
-              style={styles.input}
-              placeholder="Full name"
-              returnKeyType="next"
-              accessibilityLabel="Full name"
-            />
+          <View style={styles.row}>
+             <View style={styles.fieldContainer}>
+               <Text style={styles.label}>Date of Birth</Text>
+               <Text style={styles.value}>{dob ? moment(dob).format('MMMM DD, YYYY') : "—"}</Text>
+             </View>
+             {age !== undefined && <View style={styles.pill}><Text style={styles.pillText}>{age} yrs</Text></View>}
+          </View>
 
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              style={styles.input}
-              placeholder="you@company.com"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              returnKeyType="next"
-              accessibilityLabel="Email"
-            />
+          <View style={styles.divider} />
 
-            <Text style={styles.label}>Phone</Text>
+          <View style={styles.row}>
+             <View style={styles.fieldContainer}>
+               <Text style={styles.label}>Member Since</Text>
+               <Text style={styles.value}>{createdAt || "—"}</Text>
+             </View>
+          </View>
+        </View>
+
+        {/* --- Editable Form --- */}
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.cardTitle}>Contact & Preferences</Text>
+            <Feather name="edit-2" size={16} color={COLORS.primary} />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Mobile Number</Text>
             <TextInput
               value={phone}
               onChangeText={setPhone}
               style={styles.input}
-              placeholder="+1 555-0100"
-              keyboardType={Platform.OS === "ios" ? "phone-pad" : "numeric"}
-              returnKeyType="next"
-              accessibilityLabel="Phone"
+              placeholder="+1 234 567 890"
+              keyboardType="phone-pad"
+              placeholderTextColor={COLORS.textSec}
             />
+          </View>
 
-            <Text style={styles.label}>Preferences</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Communication Preferences</Text>
             <TextInput
               value={preferences}
               onChangeText={setPreferences}
               style={[styles.input, styles.textArea]}
-              placeholder="Contact & notification preferences"
+              placeholder="E.g. Prefer email over calls..."
               multiline
-              accessibilityLabel="Preferences"
+              placeholderTextColor={COLORS.textSec}
             />
-
-            <View style={styles.feeRow}>
-              <Text style={styles.helperText}>Your contact info is private and secure.</Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.saveBtn, (!dirty || !!validationError || loading) && styles.saveBtnDisabled]}
-              onPress={handleSave}
-              disabled={!dirty || !!validationError || loading}
-              accessibilityRole="button"
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{dirty ? "Save changes" : "No changes"}</Text>}
-            </TouchableOpacity>
           </View>
         </View>
+
+        {/* --- Action Area --- */}
+        <View style={styles.footer}>
+           {error && (
+             <View style={styles.errorBanner}>
+               <Feather name="alert-circle" size={16} color={COLORS.danger} />
+               <Text style={styles.errorText}>{error}</Text>
+             </View>
+           )}
+           
+           <TouchableOpacity
+             style={[styles.saveBtn, (!dirty || !!validationError || loading) && styles.saveBtnDisabled]}
+             onPress={handleSave}
+             disabled={!dirty || !!validationError || loading}
+           >
+             {loading ? (
+               <ActivityIndicator color="#fff" />
+             ) : (
+               <Text style={styles.saveBtnText}>{dirty ? "Save Changes" : "Up to Date"}</Text>
+             )}
+           </TouchableOpacity>
+        </View>
+
       </ScrollView>
 
+      {/* --- Animated Snackbar --- */}
       <Animated.View
         pointerEvents="none"
         style={[
-          styles.snack,
+          styles.snackbar,
           {
-            transform: [{ translateY: snackTranslateY }],
-            opacity: snackOpacity,
-          },
+            transform: [{ 
+              translateY: snackAnim.interpolate({ inputRange: [0, 1], outputRange: [100, 0] }) 
+            }],
+            opacity: snackAnim
+          }
         ]}
       >
-        <View style={styles.snackInner}>
-          <Feather name="check-circle" size={18} color="#fff" />
-          <Text style={styles.snackText}>{savedMsg ?? "Saved"}</Text>
+        <View style={styles.snackContent}>
+          <Feather name="check" size={20} color="#fff" />
+          <Text style={styles.snackText}>{savedMsg}</Text>
         </View>
       </Animated.View>
     </SafeAreaView>
@@ -274,106 +337,144 @@ export default function PatientProfile(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-
-  container: {
-    padding: 20,
-    paddingBottom: 40,
+  safe: { flex: 1, backgroundColor: COLORS.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  
+  // Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: COLORS.bg,
+  },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textMain, letterSpacing: -0.5 },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 
+  scrollContent: { padding: 20, paddingBottom: 100 },
+
+  // Avatar
+  avatarSection: { alignItems: 'center', marginBottom: 24 },
+  avatarContainer: { position: 'relative', marginBottom: 12 },
+  avatarImage: { width: 100, height: 100, borderRadius: 50 },
+  avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: { fontSize: 40, fontWeight: '800', color: COLORS.primary },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.bg,
+  },
+  profileName: { fontSize: 22, fontWeight: '800', color: COLORS.textMain },
+  profileRole: { fontSize: 12, fontWeight: '700', color: COLORS.textSec, letterSpacing: 1, marginTop: 4 },
+
+  // Cards
   card: {
-    backgroundColor: CARD,
-    borderRadius: 14,
-    padding: 18,
-    // subtle border + shadow
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.03)",
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    borderColor: COLORS.border,
+    ...SHADOW,
   },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textMain, marginBottom: 16 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  
+  fieldContainer: { flex: 1 },
+  label: { fontSize: 13, fontWeight: '600', color: COLORS.textSec, marginBottom: 6 },
+  value: { fontSize: 16, fontWeight: '600', color: COLORS.textMain },
+  
+  divider: { height: 1, backgroundColor: COLORS.input, marginVertical: 12 },
+  
+  pill: { backgroundColor: COLORS.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  pillText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
 
-  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  avatarWrap: { width: 120, alignItems: "center", marginRight: 12 },
-  avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 14,
-    backgroundColor: "#eef6ff",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  avatarImage: { width: "100%", height: "100%" },
-  avatarInitial: { fontSize: 32, fontWeight: "900", color: PRIMARY },
-
-  changePhotoBtn: { flexDirection: "row", alignItems: "center" },
-  changePhotoText: { marginLeft: 8, color: PRIMARY, fontWeight: "700", fontSize: 13 },
-
-  headerInfo: { flex: 1 },
-  name: { fontSize: 18, fontWeight: "900", color: "#0f1724" },
-  muted: { color: MUTED, marginTop: 6 },
-
-  quickRow: { flexDirection: "row", marginTop: 12 },
-  iconAction: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: CARD,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.03)",
-  },
-
-  form: { marginTop: 6 },
-
-  label: { fontSize: 13, color: MUTED, marginBottom: 8 },
+  // Inputs
+  inputGroup: { marginBottom: 16 },
   input: {
-    height: 48,
+    backgroundColor: COLORS.input,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.04)",
-    backgroundColor: "#fbfdff",
-    paddingHorizontal: 12,
-    color: "#0f1724",
-    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: COLORS.textMain,
   },
-  textArea: { height: 100, paddingTop: 10, textAlignVertical: "top" },
+  textArea: { minHeight: 100, textAlignVertical: 'top' },
 
-  feeRow: { marginTop: 6, marginBottom: 6 },
-  helperText: { color: MUTED, fontSize: 13 },
-
+  // Footer / Actions
+  footer: { marginTop: 10 },
+  errorBanner: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#FEF2F2', 
+    padding: 12, 
+    borderRadius: 12, 
+    marginBottom: 16 
+  },
+  errorText: { color: COLORS.danger, fontSize: 13, marginLeft: 8, flex: 1 },
+  
   saveBtn: {
-    marginTop: 12,
-    backgroundColor: PRIMARY,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+    backgroundColor: COLORS.primary,
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    ...SHADOW,
+    shadowColor: COLORS.primary,
   },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  saveBtnDisabled: { backgroundColor: COLORS.input, shadowOpacity: 0 },
+  saveBtnText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: '700', 
+    // when disabled, switch text color
+  },
 
-  error: { color: DANGER, marginBottom: 8 },
-
-  snack: {
-    position: "absolute",
+  // Snackbar
+  snackbar: {
+    position: 'absolute',
+    bottom: 30,
     left: 20,
     right: 20,
-    bottom: 34,
-    backgroundColor: SNACK_BG,
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    alignItems: 'center',
   },
-  snackInner: { flexDirection: "row", alignItems: "center" },
-  snackText: { color: "#fff", fontWeight: "700", marginLeft: 10 },
+  snackContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.textMain,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  snackText: { color: '#fff', fontWeight: '600', marginLeft: 10, fontSize: 14 },
 });

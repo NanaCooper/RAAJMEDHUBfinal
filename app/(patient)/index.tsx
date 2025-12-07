@@ -1,313 +1,545 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  FlatList,
   Platform,
+  ScrollView,
+  Dimensions,
+  Linking,
 } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { useAuth } from "../../hooks/useAuth";
+import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { subscribeToAppointments } from "../../services/appointments";
+import type { Appointment } from "../../types/appointment";
+import { getDoctor } from "../../services/doctors";
+import moment from "moment";
 
-const BG = "#f6f8ff";
-const CARD = "#ffffff";
-const PRIMARY = "#0b6efd";
-const MUTED = "#6b7280";
+// --- Theme Constants ---
+const COLORS = {
+  bg: "#F8FAFC", // Slate-50
+  card: "#FFFFFF",
+  primary: "#4F46E5", // Indigo-600
+  primaryDark: "#312E81", // Indigo-900
+  textMain: "#1E293B", // Slate-800
+  textSec: "#64748B", // Slate-500
+  accent: "#EEF2FF", // Indigo-50
+  success: "#10B981",
+  warning: "#F59E0B",
+  border: "#E2E8F0",
+};
+
+const SPACING = 20;
+const { width } = Dimensions.get("window");
+
+
 
 export default function PatientDashboard(): React.ReactElement {
   const router = useRouter();
+  const { session, user } = useAuth();
 
-  const upcoming = [
-    { id: "a1", date: "2025-11-10", time: "10:00", doctor: "Dr. Nana Cooper", location: "MediCare Central" },
-    { id: "a2", date: "2025-11-18", time: "14:30", doctor: "Dr. Alex Riley", location: "North Clinic" },
-  ];
-  const stats = {
-    appointmentsThisMonth: 3,
-    prescriptions: 5,
-    labResults: 2,
+  // State
+  const [upcoming, setUpcoming] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    appointmentsThisMonth: 0,
+    prescriptions: 0,
+    labResults: 0,
+  });
+
+  const [doctors, setDoctors] = useState<any>({});
+
+  // --- Data Loading Logic (Kept Original) ---
+  useEffect(() => {
+    if (!session?.uid) return;
+
+    const unsubAppointments = subscribeToAppointments(session.uid, 'patient', async (appts: Appointment[]) => {
+      const now = new Date();
+      const startOfMonth = moment().startOf('month').toDate();
+
+      const upcomingAppts = appts
+        .filter(a => a.startAt && (typeof a.startAt === 'string' ? new Date(a.startAt) : a.startAt.toDate()) > now)
+        .sort((a, b) => (a.startAt > b.startAt ? 1 : -1));
+
+      const doctorIds = [...new Set(upcomingAppts.map(a => a.doctorId).filter(id => id && !doctors[id]))];
+      if (doctorIds.length > 0) {
+        const fetchedDoctors = await Promise.all(doctorIds.map(id => getDoctor(id!)));
+        const newDoctors: any = {};
+        fetchedDoctors.forEach(doc => {
+          if (doc) newDoctors[doc.id] = doc;
+        });
+        setDoctors((prev: any) => ({ ...prev, ...newDoctors }));
+      }
+
+      const upcomingMapped = upcomingAppts.slice(0, 5).map((a: any) => ({
+        id: a.id,
+        date: a.startAt ? (typeof a.startAt === 'string' ? a.startAt : a.startAt.toDate().toISOString()) : "",
+        time: a.startAt
+          ? (typeof a.startAt === 'string' ? new Date(a.startAt) : a.startAt.toDate()).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "",
+        doctorId: a.doctorId,
+        doctor: doctors[a.doctorId]?.fullName || a.doctorName || "Dr. to be assigned",
+        location: doctors[a.doctorId]?.specialization || a.location || "RAAJ MEDHUB Clinic",
+        phone: doctors[a.doctorId]?.contact,
+      }));
+      setUpcoming(upcomingMapped);
+
+      const appointmentsThisMonth = appts.filter(a => {
+        const apptDate = a.startAt && (typeof a.startAt === 'string' ? new Date(a.startAt) : a.startAt.toDate());
+        return apptDate && apptDate >= startOfMonth;
+      }).length;
+
+      setStats(prev => ({ ...prev, appointmentsThisMonth, prescriptions: 0, labResults: 0 }));
+
+
+    });
+
+    return () => {
+      unsubAppointments();
+    };
+  }, [session?.uid, doctors]);
+
+  // --- Helper for Date Formatting ---
+  const getDayDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return {
+        day: d.getDate(),
+        month: d.toLocaleString("default", { month: "short" }),
+        full: d.toLocaleDateString(),
+      };
+    } catch {
+      return { day: "--", month: "---", full: "" };
+    }
   };
-  const recentActivity = [
-    { id: "r1", title: "Lab result: CBC available", time: "2h ago" },
-    { id: "r2", title: "Prescription renewed: Metformin", time: "2 days ago" },
-    { id: "r3", title: "Message from Dr. Nana Cooper", time: "3 days ago" },
-  ];
 
-  const renderAppointment = ({ item }: { item: typeof upcoming[0] }) => (
-    <TouchableOpacity
-      style={styles.apptCard}
-      activeOpacity={0.85}
-      onPress={() => router.push(`/appointments/${item.id}`)}
-      accessibilityLabel={`Open appointment on ${item.date} with ${item.doctor}`}
-    >
-      <View style={styles.apptLeft}>
-        <View style={styles.dateBox}>
-          <Text style={styles.dateDay}>{item.date.split("-")[2]}</Text>
-          <Text style={styles.dateMonth}>{new Date(item.date).toLocaleString(undefined, { month: "short" })}</Text>
-        </View>
-      </View>
+  // --- Render Components ---
 
-      <View style={styles.apptMiddle}>
-        <Text style={styles.apptDoctor}>{item.doctor}</Text>
-        <Text style={styles.apptMeta}>
-          {item.time} • {item.location}
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <View>
+        <Text style={styles.greeting}>Welcome back,</Text>
+        <Text style={styles.username}>
+          {user?.fullName ? user.fullName.split(" ")[0] : "Patient"}
         </Text>
       </View>
 
-      <View style={styles.apptRight}>
+      <View style={styles.headerRight}>
+        
         <TouchableOpacity
-          style={styles.cta}
-          onPress={() => router.push(`/appointments/${item.id}`)}
-          accessibilityLabel="Open appointment details"
+          style={styles.profileBtn}
+          onPress={() => router.push("/(patient)/profile")}
         >
-          <Feather name="info" size={14} color="#fff" />
-          <Text style={styles.ctaText}>View</Text>
+          <Text style={styles.profileInitial}>
+            {user?.fullName ? user.fullName.charAt(0) : "P"}
+          </Text>
         </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
-  const renderActivity = ({ item }: { item: typeof recentActivity[0] }) => (
-    <TouchableOpacity
-      style={styles.activityRow}
-      activeOpacity={0.8}
-      onPress={() => {
-        // route based on activity type in title
-        const t = (item.title || '').toLowerCase();
-        if (t.includes('lab') || t.includes('result')) {
-          router.push('/(patient)/medical-records');
-        } else if (t.includes('prescription')) {
-          router.push('/(patient)/medical-records');
-        } else if (t.includes('message')) {
-          router.push('/(patient)/messages');
-        }
-      }}
-    >
-      <MaterialIcons name="history" size={18} color="#9aa7c7" />
-      <View style={{ marginLeft: 12 }}>
-        <Text style={styles.activityText}>{item.title}</Text>
-        <Text style={styles.activityTime}>{item.time}</Text>
+  // Featured "Hero" Appointment Card
+  const renderHeroAppointment = () => {
+    if (upcoming.length === 0) return null;
+    const item = upcoming[0];
+    const { day, month } = getDayDate(item.date);
+
+    const handleCall = () => {
+      if (item.phone) {
+        Linking.openURL(`tel:${item.phone}`);
+      }
+    };
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Next Appointment</Text>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={styles.heroCard}
+          onPress={() => router.push("/(patient)/appointments?tab=upcoming")}
+        >
+          <View style={styles.heroTop}>
+            <View style={styles.heroDateBox}>
+              <Text style={styles.heroDay}>{day}</Text>
+              <Text style={styles.heroMonth}>{month}</Text>
+            </View>
+            <TouchableOpacity 
+              style={{ flex: 1, marginLeft: 12 }} 
+              onPress={() => {
+                if (item.doctorId) {
+                  router.push({ pathname: "/(patient)/doctor-details", params: { id: item.doctorId } });
+                }
+              }}
+            >
+              <Text style={styles.heroDoctor}>{item.doctor}</Text>
+              <Text style={styles.heroSpecialty}>{item.location}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.heroIconBox} onPress={handleCall}>
+              <Feather name="phone" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.heroBottom}>
+            <View style={styles.rowCenter}>
+              <Feather name="clock" size={14} color="#CBD5E1" />
+              <Text style={styles.heroMetaText}>{item.time}</Text>
+            </View>
+            <View style={[styles.rowCenter, { marginLeft: 16 }]}>
+              <Feather name="map-pin" size={14} color="#CBD5E1" />
+              <Text style={styles.heroMetaText}>{item.location}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    );
+  };
+
+  const renderQuickActions = () => (
+    <View style={styles.gridContainer}>
+      {[
+        {
+          label: "Book New",
+          icon: "calendar",
+          color: COLORS.primary,
+          route: "/(patient)/appointments",
+        },
+        {
+          label: "My Doctors",
+          icon: "users",
+          color: COLORS.success,
+          route: "/(patient)/doctors",
+        },
+        {
+          label: "Profile",
+          icon: "user",
+          color: COLORS.primaryDark,
+          route: "/(patient)/profile",
+        },
+      ].map((action, index) => (
+        <TouchableOpacity
+          key={index}
+          style={styles.actionBtn}
+          onPress={() => router.push(action.route as any)}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: action.color + "15" }]}>
+            <Feather name={action.icon as any} size={22} color={action.color} />
+          </View>
+          <Text style={styles.actionLabel}>{action.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
   );
+
+
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Good afternoon</Text>
-          <Text style={styles.username}>Nana Cooper</Text>
-        </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      
+      {renderHeader()}
 
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => router.push("/(patient)/messages")}
-            accessibilityLabel="Open messages"
-          >
-            <Feather name="message-circle" size={20} color={PRIMARY} />
-          </TouchableOpacity>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Section */}
+        {renderHeroAppointment()}
 
-          <TouchableOpacity
-            style={styles.profileBtn}
-            onPress={() => router.push("/(patient)/profile")}
-            accessibilityLabel="Open profile"
-          >
-            <Text style={styles.profileInitial}>N</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.container}>
-        <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(patient)/appointments")} accessibilityLabel="Book appointment">
-            <Feather name="calendar" size={20} color={PRIMARY} />
-            <Text style={styles.actionTitle}>Book</Text>
-            <Text style={styles.actionSubtitle}>Appointment</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(patient)/medical-records")} accessibilityLabel="View prescriptions">
-            <Feather name="file-text" size={20} color="#16a34a" />
-            <Text style={styles.actionTitle}>Prescriptions</Text>
-            <Text style={styles.actionSubtitle}>{stats.prescriptions} active</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(patient)/medical-records")} accessibilityLabel="View lab results">
-            <MaterialIcons name="science" size={20} color="#f59e0b" />
-            <Text style={styles.actionTitle}>Labs</Text>
-            <Text style={styles.actionSubtitle}>{stats.labResults} results</Text>
-          </TouchableOpacity>
-        </View>
-
+        {/* Quick Stats / Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Upcoming Appointments</Text>
-          <FlatList
-            data={upcoming}
-            keyExtractor={(i) => i.id}
-            renderItem={renderAppointment}
-            horizontal={false}
-            showsVerticalScrollIndicator={false}
-            style={{ marginTop: 8 }}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          />
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          {renderQuickActions()}
         </View>
 
-        <View style={styles.rowStats}>
-          <TouchableOpacity style={styles.statCard} activeOpacity={0.85} onPress={() => router.push("/(patient)/appointments")} accessibilityLabel="Open appointments list">
-            <Text style={styles.statNumber}>{stats.appointmentsThisMonth}</Text>
-            <Text style={styles.statLabel}>Appointments (this month)</Text>
-          </TouchableOpacity>
+        
 
-          <TouchableOpacity style={styles.statCard} activeOpacity={0.85} onPress={() => router.push("/(patient)/medical-records")} accessibilityLabel="Open prescriptions">
-            <Text style={styles.statNumber}>{stats.prescriptions}</Text>
-            <Text style={styles.statLabel}>Active prescriptions</Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity style={styles.statCard} activeOpacity={0.85} onPress={() => router.push("/(patient)/medical-records")} accessibilityLabel="Open lab results">
-            <Text style={styles.statNumber}>{stats.labResults}</Text>
-            <Text style={styles.statLabel}>Lab results</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.section, { marginTop: 14 }]}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
-          <FlatList
-            data={recentActivity}
-            keyExtractor={(i) => i.id}
-            renderItem={renderActivity}
-            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-            style={{ marginTop: 8 }}
-          />
-        </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-const shadow = {
-  shadowColor: "#000",
-  shadowOpacity: 0.06,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 8 },
-  elevation: 6,
-};
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+  scrollContent: {
+    paddingHorizontal: SPACING,
+    paddingBottom: 40,
+  },
+  
+  // --- Header ---
   header: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === "ios" ? 18 : 12,
-    paddingBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: SPACING,
+    paddingVertical: 15,
+    backgroundColor: COLORS.bg,
   },
-
-  greeting: { color: MUTED, fontSize: 13 },
-  username: { fontSize: 22, fontWeight: "800", color: "#0f1724", marginTop: 4 },
-
-  headerRight: { flexDirection: "row", alignItems: "center" },
+  greeting: {
+    fontSize: 14,
+    color: COLORS.textSec,
+    fontWeight: "500",
+  },
+  username: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    letterSpacing: -0.5,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   iconBtn: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: CARD,
+    borderRadius: 22,
+    backgroundColor: COLORS.card,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
-    ...shadow,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  badge: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "red",
+    zIndex: 10,
   },
   profileBtn: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: PRIMARY,
+    borderRadius: 22,
+    backgroundColor: COLORS.primaryDark,
     alignItems: "center",
     justifyContent: "center",
-    ...shadow,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  profileInitial: { color: "#fff", fontWeight: "800" },
-
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+  profileInitial: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
   },
 
-  quickActions: {
+  // --- Sections ---
+  section: {
+    marginTop: 24,
+  },
+  sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 6,
-  },
-  actionCard: {
-    flex: 1,
-    marginHorizontal: 4,
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 12,
     alignItems: "center",
-    ...shadow,
+    marginBottom: 12,
   },
-  actionTitle: { fontSize: 14, fontWeight: "800", marginTop: 8 },
-  actionSubtitle: { color: MUTED, fontSize: 12, marginTop: 2 },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.textMain,
+    marginBottom: 12,
+  },
+  seeAll: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
 
-  section: { marginTop: 18 },
-
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#0f1724" },
-
-  apptCard: {
+  // --- Hero Card ---
+  heroCard: {
+    backgroundColor: COLORS.primaryDark,
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: COLORS.primaryDark,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  heroTop: {
     flexDirection: "row",
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 12,
     alignItems: "center",
-    ...shadow,
   },
-  apptLeft: {},
-  dateBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: "#eef6ff",
+  heroDateBox: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  heroDay: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  heroMonth: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  heroDoctor: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  heroSpecialty: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 13,
+    marginTop: 2,
+  },
+  heroIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
-  dateDay: { fontSize: 18, fontWeight: "900", color: PRIMARY },
-  dateMonth: { fontSize: 12, color: MUTED },
-
-  apptMiddle: { flex: 1, marginLeft: 12 },
-  apptDoctor: { fontSize: 16, fontWeight: "800", color: "#0f1724" },
-  apptMeta: { color: MUTED, marginTop: 4 },
-
-  apptRight: { marginLeft: 8 },
-  cta: {
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginVertical: 16,
+  },
+  heroBottom: {
+    flexDirection: "row",
+  },
+  rowCenter: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: PRIMARY,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    gap: 6,
   },
-  ctaText: { color: "#fff", fontWeight: "800", marginLeft: 8 },
+  heroMetaText: {
+    color: "#E2E8F0",
+    fontSize: 13,
+    fontWeight: "500",
+  },
 
-  rowStats: { flexDirection: "row", justifyContent: "space-between", marginTop: 16 },
+  // --- Quick Actions Grid ---
+  gridContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  actionBtn: {
+    width: (width - SPACING * 2 - 27) / 3, // fit 3 in a row
+    alignItems: "center",
+  },
+  actionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  actionLabel: {
+    fontSize: 12,
+    color: COLORS.textMain,
+    fontWeight: "600",
+  },
+
+  // --- Stats Row ---
+  statsRow: {
+    flexDirection: "row",
+    marginTop: 24,
+    gap: 12,
+  },
   statCard: {
     flex: 1,
-    marginHorizontal: 4,
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: COLORS.card,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     alignItems: "center",
-    ...shadow,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  statNumber: { fontSize: 20, fontWeight: "900", color: PRIMARY },
-  statLabel: { color: MUTED, fontSize: 12, marginTop: 6 },
+  statNum: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: COLORS.textMain,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: COLORS.textSec,
+    fontWeight: "500",
+  },
 
-  activityRow: { flexDirection: "row", alignItems: "center" },
-  activityText: { fontSize: 14, color: "#0f1724", fontWeight: "600" },
-  activityTime: { color: MUTED, marginTop: 4, fontSize: 12 },
+  // --- Activity List ---
+  cardContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 60,
+  },
+  timelineContainer: {
+    width: 30,
+    alignItems: "center",
+    height: "100%",
+    justifyContent: "center",
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.primary,
+    zIndex: 2,
+  },
+  timelineLine: {
+    position: "absolute",
+    top: "50%",
+    bottom: -30, // Extend to next item
+    width: 2,
+    backgroundColor: "#F1F5F9",
+    zIndex: 1,
+  },
+  activityContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  activityTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.textMain,
+  },
+  activityTime: {
+    fontSize: 12,
+    color: COLORS.textSec,
+    marginTop: 2,
+  },
+  emptyText: {
+    textAlign: "center",
+    color: COLORS.textSec,
+    padding: 20,
+    fontStyle: "italic",
+  },
 });

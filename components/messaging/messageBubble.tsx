@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, Modal, TouchableOpacity, ActivityIndicat
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Message } from '../../types/message';
 
-export default function MessageBubble({
+function MessageBubble({
   message,
   currentUserId,
   onRetry,
@@ -13,6 +13,7 @@ export default function MessageBubble({
   onRetry?: (m: Message) => void;
 }) {
   const isOwn = message.senderId === currentUserId;
+  const isSystem = message.type === 'system';
   const ts: any = (message as any).createdAt;
   let time = '';
   if (ts && typeof ts === 'object' && typeof ts.toDate === 'function') {
@@ -25,8 +26,18 @@ export default function MessageBubble({
   const [viewer, setViewer] = useState<{ uri: string } | null>(null);
 
   const status = message.status;
+  const readBy: string[] = (message as any).readBy || [];
+  const othersHaveRead = isOwn && readBy.some(u => u !== currentUserId);
 
   const firstImage = message.attachments && message.attachments.length ? message.attachments.find(a => (a.type || '').startsWith('image') || a.url?.match(/\.(jpg|jpeg|png|webp)$/i)) : null;
+
+  if (isSystem) {
+    return (
+      <View style={styles.systemWrap}>
+        {message.text ? <Text style={styles.systemText}>{message.text}</Text> : null}
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.bubble, isOwn ? styles.right : styles.left]}>
@@ -46,6 +57,14 @@ export default function MessageBubble({
             <MaterialCommunityIcons name="refresh" size={16} color="#ffdddd" />
           </TouchableOpacity>
         ) : null}
+        {isOwn && status !== 'failed' && status !== 'sending' ? (
+          <MaterialCommunityIcons
+            name={othersHaveRead ? 'check-all' : 'check'}
+            size={14}
+            color={othersHaveRead ? '#c7f9cc' : '#fff'}
+            style={{ marginLeft: 6 }}
+          />
+        ) : null}
       </View>
 
       <Modal visible={!!viewer} transparent onRequestClose={() => setViewer(null)}>
@@ -57,6 +76,15 @@ export default function MessageBubble({
     </View>
   );
 }
+
+const bubbleEqual = (prev: any, next: any) => {
+  return prev.message.id === next.message.id &&
+    prev.message.status === next.message.status &&
+    prev.message.text === next.message.text &&
+    (prev.message.readBy || []).length === (next.message.readBy || []).length;
+};
+
+export default React.memo(MessageBubble, bubbleEqual);
 
 const styles = StyleSheet.create({
   bubble: { padding: 10, borderRadius: 12, marginVertical: 6, maxWidth: '80%' },
@@ -72,4 +100,6 @@ const styles = StyleSheet.create({
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
   fullImage: { width: '100%', height: '80%' },
   modalClose: { position: 'absolute', top: 24, right: 24, width: 44, height: 44 },
+  systemWrap: { alignSelf: 'center', backgroundColor: '#e2e8f0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginVertical: 8 },
+  systemText: { fontSize: 12, color: '#334155', fontStyle: 'italic' },
 });

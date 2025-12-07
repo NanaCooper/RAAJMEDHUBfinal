@@ -9,25 +9,84 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
-  Alert,
   ScrollView,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
-const PRIMARY = "#0b6efd";
-const BG = "#f6f8ff";
+// --- 🏥 Premium Healthcare Theme ---
+const COLORS = {
+  bg: "#F8FAFC",        // Slate 50
+  surface: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primarySoft: "#EEF2FF",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  border: "#E2E8F0",
+  success: "#10B981",   // Emerald
+  danger: "#EF4444",    // Red
+  warning: "#F59E0B",   // Amber
+  inputBg: "#F1F5F9",   // Slate 100
+};
+
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 4,
+};
+
+// Helper Component for Input Fields - moved outside and memoized
+const InputField = React.memo(({
+  label,
+  icon,
+  value,
+  onChangeText,
+  placeholder,
+  isPassword = false,
+  keyboardType = "default" as any,
+  secureTextEntry,
+  onToggleSecureEntry,
+  editable,
+}: any) => (
+  <View style={styles.inputGroup}>
+    <Text style={styles.label}>{label}</Text>
+    <View style={styles.inputContainer}>
+      <Feather name={icon} size={20} color={COLORS.textSec} style={styles.inputIcon} />
+      <TextInput
+        style={styles.input}
+        placeholder={placeholder}
+        placeholderTextColor="#ADB5BD"
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={isPassword && secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize="none"
+        editable={editable}
+      />
+      {isPassword && (
+        <Pressable onPress={onToggleSecureEntry} style={styles.eyeIcon}>
+          <Feather name={secureTextEntry ? "eye-off" : "eye"} size={20} color={COLORS.textSec} />
+        </Pressable>
+      )}
+    </View>
+  </View>
+));
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { signUp, isLoading: authLoading } = useAuth(); // Destructure signUp and authLoading
+  const { signUp, isLoading: authLoading } = useAuth();
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [secure, setSecure] = useState(true);
-  const [loading, setLoading] = useState(false); // Local loading state, combined with authLoading
+  const [secure, setSecure] = useState(true); // State for password visibility
+  const [loading, setLoading] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,11 +97,9 @@ export default function RegisterScreen() {
     if (!fullName.trim()) return "Please enter your full name.";
     if (!email.trim()) return "Please enter your email address.";
     if (!isValidEmail(email)) return "Please enter a valid email address.";
-    if (password.length < 8)
-      return "Password must be at least 8 characters long.";
+    if (password.length < 8) return "Password must be at least 8 characters long.";
     if (password !== confirm) return "Passwords do not match.";
-    if (!agreeTerms)
-      return "You must agree to the Terms and Privacy Policy to continue.";
+    if (!agreeTerms) return "You must agree to the Terms & Privacy Policy.";
     return null;
   };
 
@@ -54,143 +111,135 @@ export default function RegisterScreen() {
       return;
     }
 
-    setLoading(true); // Start local loading indicator
+    setLoading(true);
     try {
-      // Call Firebase signUp with a default role (e.g., 'patient')
-      // The user-type-selection screen will allow them to change this if needed.
-      await signUp(email.trim(), password, 'patient');
-
-      // Firebase Auth state listener in useAuth will handle navigation after successful sign-up
-      // We no longer manually navigate here, as useProtectedRoute in useAuth handles it.
+      await signUp(email.trim(), password);
+      // Navigation handled by auth listener
     } catch (err: any) {
       console.error("Registration error:", err);
-      // Firebase Auth errors often have 'auth/' prefix, can be parsed for better messages
       const errorMessage = err.message.includes('auth/') 
-        ? err.message.split('auth/')[1].replace(/\([^)]+\)/g, '').replace(/-/g, ' ').trim() // Basic parsing
+        ? err.message.split('auth/')[1].replace(/\([^)]+\)/g, '').replace(/-/g, ' ').trim()
         : "Registration failed. Please try again.";
       setError(errorMessage);
     } finally {
-      setLoading(false); // Stop local loading indicator
+      setLoading(false);
     }
   };
 
   const overallLoading = loading || authLoading;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.flex}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <ScrollView
-          contentContainerStyle={styles.container}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.brand}>
-            <Text style={styles.logo}>MediCare</Text>
-            <Text style={styles.tagline}>Join a premium, secure health experience</Text>
+          {/* --- Brand Header --- */}
+          <View style={styles.header}>
+            <View style={styles.logoIcon}>
+              <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
+            </View>
+            <Text style={styles.appName}>MediCare<Text style={styles.dot}>.</Text></Text>
+            <Text style={styles.tagline}>Join our secure healthcare network</Text>
           </View>
 
+          {/* --- Registration Card --- */}
           <View style={styles.card}>
-            <Text style={styles.heading}>Create your account</Text>
-            <Text style={styles.subheading}>Get started in seconds — secure & HIPAA-ready</Text>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Start your health journey today</Text>
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error && (
+              <View style={styles.errorContainer}>
+                <Feather name="alert-circle" size={16} color={COLORS.danger} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
 
-            <Text style={styles.label}>Full name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Jane Doe"
-              value={fullName}
-              onChangeText={setFullName}
+            <InputField 
+              label="Full Name" 
+              icon="user" 
+              value={fullName} 
+              onChangeText={setFullName} 
+              placeholder="Dr. Jane Doe" 
               editable={!overallLoading}
-              returnKeyType="next"
-              accessibilityLabel="Full name"
             />
 
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="you@company.com"
+            <InputField 
+              label="Email Address" 
+              icon="mail" 
+              value={email} 
+              onChangeText={setEmail} 
+              placeholder="you@medicare.com" 
               keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
               editable={!overallLoading}
-              returnKeyType="next"
-              accessibilityLabel="Email"
             />
 
-            <View style={styles.rowLabel}>
-              <Text style={styles.label}>Password</Text>
-              <TouchableOpacity onPress={() => setSecure((s) => !s)} disabled={overallLoading}>
-                <Text style={styles.toggle}>{secure ? "Show" : "Hide"}</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.input}
-              placeholder="Create a strong password"
+            <InputField 
+              label="Password" 
+              icon="lock" 
+              value={password} 
+              onChangeText={setPassword} 
+              placeholder="Min. 8 characters" 
+              isPassword
               secureTextEntry={secure}
-              value={password}
-              onChangeText={setPassword}
+              onToggleSecureEntry={() => setSecure(!secure)}
               editable={!overallLoading}
-              returnKeyType="next"
-              accessibilityLabel="Password"
             />
 
-            <Text style={styles.label}>Confirm password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Repeat your password"
+            <InputField 
+              label="Confirm Password" 
+              icon="lock" 
+              value={confirm} 
+              onChangeText={setConfirm} 
+              placeholder="Repeat password" 
+              isPassword
               secureTextEntry={secure}
-              value={confirm}
-              onChangeText={setConfirm}
+              onToggleSecureEntry={() => setSecure(!secure)}
               editable={!overallLoading}
-              returnKeyType="done"
-              accessibilityLabel="Confirm password"
             />
 
-            <View style={styles.termsRow}>
-              <TouchableOpacity
-                onPress={() => setAgreeTerms((v) => !v)}
-                style={[styles.checkbox, agreeTerms && styles.checkboxChecked]}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: agreeTerms }}
-                disabled={overallLoading}
-              >
-                {agreeTerms ? <Text style={styles.checkMark}>✓</Text> : null}
-              </TouchableOpacity>
-              <Text style={styles.termsText}>
-                I agree to the{" "}
-                <Text style={styles.link} onPress={() => router.push("/terms" as any)}>
-                  Terms
-                </Text>{" "}
-                and{" "}
-                <Text style={styles.link} onPress={() => router.push("/privacy" as any)}>
-                  Privacy Policy
-                </Text>
-                .
-              </Text>
-            </View>
-
+            {/* Terms Checkbox */}
             <TouchableOpacity
-              style={[styles.primaryBtn, (!agreeTerms || overallLoading) && styles.primaryBtnDisabled]}
+              style={styles.termsRow}
+              onPress={() => setAgreeTerms(!agreeTerms)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, agreeTerms && styles.checkboxChecked]}>
+                {agreeTerms && <Feather name="check" size={14} color="#FFF" />}
+              </View>
+              <Text style={styles.termsText}>
+                I agree to the <Text style={styles.link}>Terms</Text> and <Text style={styles.link}>Privacy Policy</Text>.
+              </Text>
+            </TouchableOpacity>
+
+            {/* Actions */}
+            <TouchableOpacity
+              style={[styles.primaryBtn, (!agreeTerms || overallLoading) && styles.btnDisabled]}
               onPress={handleCreateAccount}
               disabled={!agreeTerms || overallLoading}
-              accessibilityRole="button"
             >
               {overallLoading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.primaryBtnText}>Create account</Text>
+                <>
+                  <Text style={styles.primaryBtnText}>Create Account</Text>
+                  <Feather name="arrow-right" size={20} color="#FFF" />
+                </>
               )}
             </TouchableOpacity>
 
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.divider} />
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text style={styles.orText}>OR</Text>
+              <View style={styles.line} />
             </View>
 
             <TouchableOpacity
@@ -198,15 +247,16 @@ export default function RegisterScreen() {
               onPress={() => router.replace("/login")}
               disabled={overallLoading}
             >
-              <Text style={styles.secondaryBtnText}>Already have an account? Sign in</Text>
+              <Text style={styles.secondaryBtnText}>Already have an account? Sign In</Text>
             </TouchableOpacity>
           </View>
 
+          {/* --- Footer --- */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              By creating an account you agree to our terms. We securely handle your health data.
-            </Text>
+            <Feather name="shield" size={14} color={COLORS.textSec} />
+            <Text style={styles.footerText}>HIPAA Compliant & Secure Encryption</Text>
           </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -214,162 +264,132 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   flex: { flex: 1 },
-  container: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: "center",
-  },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingBottom: 40 },
 
-  brand: {
-    alignItems: "center",
-    marginBottom: 14,
+  // --- Header ---
+  header: { alignItems: 'center', marginBottom: 24 },
+  logoIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    ...SHADOW,
+    shadowColor: COLORS.primary,
   },
-  logo: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: PRIMARY,
-    letterSpacing: 0.6,
-  },
-  tagline: {
-    marginTop: 6,
-    color: "#5b6b8a",
-    fontSize: 13,
-  },
+  appName: { fontSize: 28, fontWeight: '800', color: COLORS.primary, letterSpacing: -0.5 },
+  dot: { color: COLORS.primary },
+  tagline: { fontSize: 14, color: COLORS.textSec, marginTop: 4, fontWeight: '500' },
 
+  // --- Card ---
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 24,
+    ...SHADOW,
   },
+  title: { fontSize: 22, fontWeight: '700', color: COLORS.textMain, marginBottom: 4 },
+  subtitle: { fontSize: 14, color: COLORS.textSec, marginBottom: 24 },
 
-  heading: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 4,
-    color: "#0f1724",
-  },
-  subheading: {
-    color: "#6b7280",
-    marginBottom: 12,
-    fontSize: 14,
-  },
-
-  error: {
-    color: "#d83b3b",
-    marginBottom: 8,
-    fontSize: 13,
-    textAlign: "center",
-  },
-
-  label: {
-    fontSize: 13,
-    color: "#8892a8",
-    marginBottom: 6,
-  },
-  rowLabel: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  toggle: {
-    color: PRIMARY,
-    fontWeight: "600",
-  },
-
-  input: {
-    height: 48,
+  // --- Inputs ---
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
     borderRadius: 12,
+    height: 56,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: "#eef2ff",
-    paddingHorizontal: 12,
-    backgroundColor: "#fbfdff",
-    color: "#0f1724",
-    marginBottom: 12,
+    borderColor: "transparent",
   },
+  inputIcon: { marginRight: 12 },
+  input: { flex: 1, fontSize: 16, color: COLORS.textMain, height: '100%' },
+  eyeIcon: { padding: 8 },
 
+  // --- Error ---
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.danger,
+  },
+  errorText: { color: COLORS.danger, fontSize: 13, marginLeft: 8, flex: 1 },
+
+  // --- Terms ---
   termsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
+    alignItems: "flex-start",
+    marginBottom: 24,
+    marginTop: 8,
   },
   checkbox: {
-    width: 22,
-    height: 22,
+    width: 20,
+    height: 20,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#dbe7ff",
-    marginRight: 10,
+    borderWidth: 2,
+    borderColor: COLORS.textSec,
+    marginRight: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
+    marginTop: 2,
   },
   checkboxChecked: {
-    backgroundColor: PRIMARY,
-    borderColor: PRIMARY,
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
-  checkMark: { color: "#fff", fontWeight: "700" },
-  termsText: { flex: 1, color: "#6b7280", fontSize: 13 },
-  link: { color: PRIMARY, fontWeight: "700" },
+  termsText: { flex: 1, color: COLORS.textSec, fontSize: 13, lineHeight: 20 },
+  link: { color: COLORS.primary, fontWeight: "700" },
 
+  // --- Buttons ---
   primaryBtn: {
-    backgroundColor: PRIMARY,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    height: 56,
+    borderRadius: 14,
+    gap: 8,
+    ...SHADOW,
+    shadowOpacity: 0.15,
   },
-  primaryBtnDisabled: {
-    backgroundColor: "#93b5ff",
-  },
-  primaryBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 15,
-  },
-
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 14,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#eef2ff",
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: "#9aa7c7",
-    fontSize: 12,
-  },
+  btnDisabled: { opacity: 0.7, backgroundColor: COLORS.textSec },
+  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 
   secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+    height: 56,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(11,110,253,0.12)",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
+    borderColor: COLORS.border,
   },
-  secondaryBtnText: {
-    color: PRIMARY,
-    fontWeight: "700",
-  },
+  secondaryBtnText: { color: COLORS.primary, fontWeight: '600', fontSize: 15 },
 
-  footer: {
-    marginTop: 18,
-    alignItems: "center",
-    paddingHorizontal: 10,
+  // --- Divider ---
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20 },
+  line: { flex: 1, height: 1, backgroundColor: COLORS.border },
+  orText: { marginHorizontal: 16, fontSize: 12, color: COLORS.textSec, fontWeight: '600' },
+
+  // --- Footer ---
+  footer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginTop: 32, 
+    gap: 8,
+    opacity: 0.7
   },
-  footerText: {
-    color: "#9aa7c7",
-    fontSize: 12,
-    textAlign: "center",
-  },
+  footerText: { color: COLORS.textSec, fontSize: 12, fontWeight: '500' },
 });

@@ -14,7 +14,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Configure notification behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
@@ -46,6 +45,20 @@ export const defaultNotificationPreferences: NotificationPreferences = {
  */
 export async function initializeNotifications() {
   try {
+    // Request permissions first
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    
+    if (finalStatus !== 'granted') {
+      console.log('Notification permissions not granted!');
+      return false;
+    }
+
     // Load notification preferences
     await getNotificationPreferences();
     
@@ -349,5 +362,107 @@ export async function markConversationAsRead(conversationId: string): Promise<vo
     // You might also want to update Firestore here
   } catch (error) {
     console.error('Failed to mark conversation as read:', error);
+  }
+}
+
+/**
+ * Send a local notification for an appointment
+ */
+export async function sendAppointmentNotification(
+  title: string,
+  body: string,
+  appointmentId: string,
+  data?: Record<string, string>
+) {
+  try {
+    console.log('[NotificationService] Sending appointment notification:', title);
+    const prefs = await getNotificationPreferences();
+
+    // Check if notifications are enabled
+    if (!prefs.enabled) {
+      console.log('[NotificationService] Notifications disabled in preferences');
+      return;
+    }
+
+    // Send notification
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
+        data: {
+          type: 'appointment',
+          appointmentId,
+          ...data,
+        },
+      },
+      trigger: null, // Send immediately
+    });
+
+    // Increment badge count
+    if (prefs.badgeEnabled) {
+      await incrementBadgeCount();
+    }
+  } catch (error) {
+    console.error('Failed to send appointment notification:', error);
+  }
+}
+
+/**
+ * Schedule reminders for an appointment
+ * - 1 day before
+ * - 2 hours before
+ */
+export async function scheduleAppointmentReminders(
+  appointmentId: string,
+  startAt: Date,
+  doctorName?: string
+) {
+  try {
+    console.log('[NotificationService] Scheduling reminders for appointment:', appointmentId);
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    const now = new Date();
+    const oneDayBefore = new Date(startAt.getTime() - 24 * 60 * 60 * 1000);
+    const twoHoursBefore = new Date(startAt.getTime() - 2 * 60 * 60 * 1000);
+
+    // Schedule 1 day before reminder
+    if (oneDayBefore > now) {
+      const seconds = Math.floor((oneDayBefore.getTime() - now.getTime()) / 1000);
+      if (seconds > 0) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Upcoming Appointment Reminder',
+            body: `You have an appointment tomorrow at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${doctorName ? ` with Dr. ${doctorName}` : ''}.`,
+            sound: prefs.soundEnabled ? 'default' : undefined,
+            data: { type: 'appointment_reminder', appointmentId },
+          },
+          trigger: { seconds } as any,
+        });
+        console.log('[NotificationService] Scheduled 1-day reminder for:', oneDayBefore);
+      }
+    }
+
+    // Schedule 2 hours before reminder
+    if (twoHoursBefore > now) {
+      const seconds = Math.floor((twoHoursBefore.getTime() - now.getTime()) / 1000);
+      if (seconds > 0) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Appointment Starting Soon',
+            body: `Your appointment is in 2 hours at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please be ready.`,
+            sound: prefs.soundEnabled ? 'default' : undefined,
+            data: { type: 'appointment_reminder', appointmentId },
+          },
+          trigger: { seconds } as any,
+        });
+        console.log('[NotificationService] Scheduled 2-hour reminder for:', twoHoursBefore);
+      }
+    }
+
+  } catch (error) {
+    console.error('Failed to schedule appointment reminders:', error);
   }
 }

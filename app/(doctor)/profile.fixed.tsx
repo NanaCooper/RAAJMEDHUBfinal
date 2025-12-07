@@ -1,245 +1,274 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useAuth } from "../../hooks/useAuth";
+import { doc, getDoc, db } from "../../utils/firebaseConfig";
 import {
   View,
   Text,
   StyleSheet,
-  Platform,
   ScrollView,
-  TextInput,
   StatusBar,
   ActivityIndicator,
   TouchableOpacity,
-  Animated,
-  Easing,
   Image,
-  Keyboard,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
-/**
- * Cleaned Doctor profile component (temporary fixed file)
- */
+// --- 🎨 Unified Premium Theme ---
+const COLORS = {
+  bg: "#F8F9FA",
+  surface: "#FFFFFF",
+  primary: "#0A2463",
+  primarySoft: "#E9ECEF",
+  secondary: "#00A896",
+  textMain: "#212529",
+  textSec: "#6C757D",
+  border: "#E9ECEF",
+  success: "#28A745",
+  danger: "#FF6B6B",
+};
 
-const BG = "#f6f8ff";
-const CARD = "#ffffff";
-const PRIMARY = "#0b6efd";
-const MUTED = "#6b7280";
-const DANGER = "#d83b3b";
-const SNACK_BG = "#0b6efd";
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.06,
+  shadowRadius: 16,
+  elevation: 4,
+};
 
 export default function DoctorProfile(): React.ReactElement {
-  const initialProfile = useMemo(
-    () => ({
-      name: "Dr. Nana Cooper",
-      specialization: "General Practitioner",
-      qualifications: "MBBS, MD (Family Medicine)",
-      bio:
-        "Passionate about patient-centered care, preventive medicine and continuity of care.",
-      fee: "50",
-      avatarUri: "",
-    }),
-    []
-  );
-
-  const [specialization, setSpecialization] = useState(initialProfile.specialization);
-  const [qualifications, setQualifications] = useState(initialProfile.qualifications);
-  const [bio, setBio] = useState(initialProfile.bio);
-  const [fee, setFee] = useState(initialProfile.fee);
-  const [avatarUri, setAvatarUri] = useState<string | undefined>(initialProfile.avatarUri || undefined);
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedMsg, setSavedMsg] = useState<string | null>(null);
-
-  const snackAnim = useRef(new Animated.Value(0)).current;
-
-  const dirty = useMemo(() => {
-    return (
-      specialization !== initialProfile.specialization ||
-      qualifications !== initialProfile.qualifications ||
-      bio !== initialProfile.bio ||
-      fee !== initialProfile.fee ||
-      (avatarUri || "") !== (initialProfile.avatarUri || "")
-    );
-  }, [specialization, qualifications, bio, fee, avatarUri, initialProfile]);
+  const { session, signOut } = useAuth();
+  const [profile, setProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!savedMsg) return;
-    Animated.timing(snackAnim, {
-      toValue: 1,
-      duration: 250,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-
-    const t = setTimeout(() => {
-      Animated.timing(snackAnim, {
-        toValue: 0,
-        duration: 320,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }).start(() => setSavedMsg(null));
-    }, 2200);
-
-    return () => clearTimeout(t);
-  }, [savedMsg, snackAnim]);
-
-  const validate = (): string | null => {
-    if (!specialization.trim()) return "Please enter your specialization.";
-    if (!qualifications.trim()) return "Please list your qualifications.";
-    const feeNum = Number(fee);
-    if (!fee || Number.isNaN(feeNum) || feeNum <= 0) return "Please enter a valid consultation fee.";
-    if (bio.length > 800) return "Bio is too long (max 800 characters).";
-    return null;
-  };
-
-  const handleSave = async () => {
-    setError(null);
-    Keyboard.dismiss();
-    const v = validate();
-    if (v) {
-      setError(v);
-      return;
+    async function fetchProfile() {
+      if (!session?.uid) return;
+      setProfileLoading(true);
+      setProfileError(null);
+      try {
+        const userRef = doc(db, "users", session.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          setProfile(userSnap.data());
+        } else {
+          setProfile(null);
+        }
+      } catch {
+        setProfileError("Failed to load profile");
+      } finally {
+        setProfileLoading(false);
+      }
     }
+    fetchProfile();
+  }, [session?.uid]);
 
-    try {
-      setLoading(true);
-      await new Promise((res) => setTimeout(res, 900));
-      setSavedMsg("Profile updated");
-    } catch (err) {
-      console.error("Save error", err);
-      setError("Unable to save profile. Try again later.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // --- Helper Components ---
 
-  const handleChangePhoto = async () => {
-    try {
-      const fakeUri = avatarUri ? undefined : "https://placehold.co/300x300/png?text=Dr+N";
-      setAvatarUri(fakeUri);
-      setSavedMsg("Profile photo updated (mock)");
-    } catch (err) {
-      console.error("Photo error", err);
-      setError("Unable to update photo.");
-    }
-  };
+  const InfoField = ({ label, value, icon }: { label: string, value: string, icon: any }) => (
+    <View style={styles.fieldGroup}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.fieldContainer}>
+        <Feather name={icon} size={18} color={COLORS.textSec} style={styles.fieldIcon} />
+        <Text style={styles.fieldValue}>{value || "Not provided"}</Text>
+      </View>
+    </View>
+  );
 
-  const snackTranslateY = snackAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [20, 0],
-  });
+  // --- Render States ---
+
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading Profile...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <Feather name="alert-triangle" size={40} color={COLORS.danger} />
+        <Text style={styles.errorText}>{profileError}</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <View style={styles.photoWrap}>
-              <View style={styles.photo}>
-                {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.photoImage} />
-                ) : (
-                  <Text style={styles.photoInitial}>{initialProfile.name.charAt(0)}</Text>
-                )}
-              </View>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
-              <TouchableOpacity style={styles.changePhoto} onPress={handleChangePhoto} accessibilityRole="button">
-                <Feather name="camera" size={14} color={PRIMARY} />
-                <Text style={styles.changePhotoText}>Change photo</Text>
-              </TouchableOpacity>
-            </View>
+     
 
-            <View style={styles.infoWrap}>
-              <Text style={styles.name}>{initialProfile.name}</Text>
-              <Text style={styles.spec}>{specialization}</Text>
-              <Text style={styles.small}>{qualifications}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+        {/* --- Profile Header --- */}
+        <View style={styles.headerCard}>
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatarText}>
+              {profile?.fullName ? profile.fullName.charAt(0).toUpperCase() : "D"}
+            </Text>
+            <View style={styles.verifiedBadge}>
+              <MaterialCommunityIcons name="check-decagram" size={22} color={COLORS.primary} />
             </View>
           </View>
 
-          <View style={styles.form}>
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          <Text style={styles.nameText}>{profile?.fullName || "Doctor"}</Text>
 
-            <Text style={styles.label}>Specialization</Text>
-            <TextInput style={styles.input} value={specialization} onChangeText={setSpecialization} placeholder="e.g., Cardiology" />
-
-            <Text style={styles.label}>Qualifications</Text>
-            <TextInput style={styles.input} value={qualifications} onChangeText={setQualifications} placeholder="e.g., MBBS, MD" />
-
-            <Text style={styles.label}>Bio <Text style={styles.mutedText}>({bio.length}/800)</Text></Text>
-            <TextInput style={[styles.input, styles.textArea]} value={bio} onChangeText={setBio} placeholder="Short professional bio" multiline maxLength={800} />
-
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Consultation fee (USD)</Text>
-                <TextInput style={styles.input} value={fee} onChangeText={(t) => setFee(t.replace(/[^\d.]/g, ""))} keyboardType="numeric" placeholder="50" />
-              </View>
-
-              <View style={styles.feePreview}>
-                <Text style={styles.label}>Preview</Text>
-                <View style={styles.feeBox}>
-                  <MaterialIcons name="attach-money" size={18} color={PRIMARY} />
-                  <Text style={styles.feeText}>${fee || "0"}</Text>
-                </View>
-              </View>
-            </View>
-
-            <TouchableOpacity style={[styles.saveBtn, (!dirty || loading) && styles.saveBtnDisabled]} onPress={handleSave} disabled={!dirty || loading} accessibilityRole="button">
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{dirty ? "Save changes" : "No changes"}</Text>}
-            </TouchableOpacity>
+          <View style={styles.specBadge}>
+            <Text style={styles.specText}>{profile?.specialization || "General Practitioner"}</Text>
           </View>
         </View>
+
+        {/* --- Professional Info --- */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Professional Credentials</Text>
+          <View style={styles.card}>
+             <InfoField
+               label="Qualifications"
+               value={profile?.qualifications}
+               icon="award"
+             />
+             <View style={styles.divider} />
+             <InfoField
+               label="License / ID"
+               value={session?.uid?.substring(0, 8).toUpperCase() || "N/A"}
+               icon="hash"
+             />
+          </View>
+        </View>
+
+        {/* --- Personal Info --- */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Contact Information</Text>
+          <View style={styles.card}>
+            <InfoField
+              label="Email Address"
+              value={profile?.email}
+              icon="mail"
+            />
+            <View style={styles.divider} />
+            <InfoField
+              label="Phone Number"
+              value={profile?.contact}
+              icon="phone"
+            />
+            <View style={styles.divider} />
+            <InfoField
+              label="Date of Birth"
+              value={profile?.dob}
+              icon="calendar"
+            />
+          </View>
+        </View>
+
+        {/* --- Actions --- */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={() => signOut()}>
+          <Feather name="log-out" size={18} color={COLORS.danger} />
+          <Text style={styles.logoutText}>Sign Out</Text>
+        </TouchableOpacity>
+
       </ScrollView>
-
-      <Animated.View pointerEvents="none" style={[styles.snack, { transform: [{ translateY: snackTranslateY }], opacity: snackAnim }]}> 
-        <View style={styles.snackInner}>
-          <Feather name="check-circle" size={18} color="#fff" />
-          <Text style={styles.snackText}>{savedMsg ?? "Saved"}</Text>
-        </View>
-      </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  content: { padding: 20 },
-  card: {
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bg },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+
+  loadingText: { marginTop: 16, color: COLORS.textSec, fontSize: 14, fontWeight: '500' },
+  errorText: { marginTop: 16, color: COLORS.danger, fontSize: 14, fontWeight: '600' },
+
+  // Top Bar
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
   },
-  profileRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 24 },
-  photoWrap: { alignItems: "center", marginRight: 24 },
-  photo: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#e1e8f5", alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  photoImage: { width: 80, height: 80, borderRadius: 40 },
-  photoInitial: { fontSize: 28, fontWeight: "bold", color: PRIMARY },
-  changePhoto: { flexDirection: "row", alignItems: "center", paddingVertical: 4, paddingHorizontal: 8, backgroundColor: "#e1f0ff", borderRadius: 8 },
-  changePhotoText: { marginLeft: 6, fontSize: 12, fontWeight: "600", color: PRIMARY },
-  infoWrap: { flex: 1, paddingTop: 8 },
-  name: { fontSize: 18, fontWeight: "bold", color: "#1c274c", marginBottom: 4 },
-  spec: { fontSize: 14, color: MUTED, marginBottom: 2 },
-  small: { fontSize: 12, color: MUTED },
-  form: {},
-  label: { fontSize: 14, color: MUTED, marginBottom: 8, fontWeight: "500" },
-  input: { backgroundColor: BG, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, marginBottom: 16 },
-  textArea: { minHeight: 120, textAlignVertical: "top", paddingTop: 12 },
-  mutedText: { color: "#a0a0a0", fontSize: 12 },
-  row: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
-  feePreview: { marginLeft: 16, alignItems: "center" },
-  feeBox: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: BG, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 20 },
-  feeText: { fontSize: 16, fontWeight: "bold", color: PRIMARY },
-  saveBtn: { backgroundColor: PRIMARY, borderRadius: 12, padding: 16, alignItems: "center", marginTop: 16 },
-  saveBtnDisabled: { backgroundColor: "#a0cfff" },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  errorText: { color: DANGER, marginBottom: 12, textAlign: "center" },
-  snack: { position: "absolute", bottom: Platform.OS === "ios" ? 40 : 20, left: 20, right: 20, zIndex: 10 },
-  snackInner: { flexDirection: "row", alignItems: "center", backgroundColor: SNACK_BG, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
-  snackText: { color: "#fff", marginLeft: 10, fontWeight: "600" },
+  screenTitle: { fontSize: 24, fontWeight: '800', color: COLORS.textMain },
+  settingsBtn: { padding: 8, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+
+  // Header Card
+  headerCard: {
+    alignItems: 'center',
+    marginBottom: 30,
+    marginTop: 10,
+  },
+  avatarContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 4,
+    borderColor: COLORS.surface,
+    ...SHADOW,
+  },
+  avatarText: { fontSize: 40, fontWeight: '800', color: COLORS.primary },
+  verifiedBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 2,
+  },
+  nameText: { fontSize: 22, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 },
+  specBadge: {
+    backgroundColor: COLORS.primary + '15', // 15% opacity
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  specText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
+
+  // Sections
+  sectionContainer: { marginBottom: 24 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textSec, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOW,
+  },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 16 },
+
+  // Fields
+  fieldGroup: {},
+  fieldLabel: { fontSize: 13, color: COLORS.textSec, marginBottom: 6, fontWeight: '600' },
+  fieldContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.input,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  fieldIcon: { marginRight: 12 },
+  fieldValue: { fontSize: 16, color: COLORS.textMain, fontWeight: '500', flex: 1 },
+
+  // Logout
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 16,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  logoutText: { color: COLORS.danger, fontWeight: '700', fontSize: 15, marginLeft: 8 },
 });

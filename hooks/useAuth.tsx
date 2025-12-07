@@ -1,17 +1,31 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { useRouter, useSegments } from 'expo-router';
 import { db, doc, getDoc, setDoc, getAuthInstance } from '../utils/firebaseConfig';
+import * as WebBrowser from "expo-web-browser";
+import { useAuthRequest } from "expo-auth-session/providers/google";
+import { GoogleAuthProvider, signInWithCredential, getAuth } from "firebase/auth";
+import { ANDROID_CLIENT_ID, IOS_CLIENT_ID, WEB_CLIENT_ID } from "../constants/Config";
 
-type User = { uid: string; email?: string | null } | null;
+WebBrowser.maybeCompleteAuthSession();
+
+type AuthUser = { uid: string; email?: string | null } | null;
+
+interface UserData {
+  [key: string]: any;
+}
 
 interface AuthContextType {
   signIn: (email?: string, password?: string) => Promise<void>;
   signOut: () => Promise<void>;
-  signUp: (email?: string, password?: string, role?: 'patient' | 'doctor') => Promise<void>;
-  session?: User;
+  signUp: (email?: string, password?: string) => Promise<void>;
+  session?: AuthUser;
+  user?: UserData | null;
   isLoading: boolean;
   userType?: string | null;
   setUserType: (type: 'patient' | 'doctor') => Promise<void>;
+  reloadUser: () => Promise<void>;
+  promptGoogleSignIn: () => Promise<void>;
+  googleAuthRequest: any;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,41 +38,165 @@ export function useAuth() {
   return context;
 }
 
-function useProtectedRoute(session: User | null | undefined, isLoading: boolean, userType: string | null) {
-    const segments = useSegments();
-    const router = useRouter();
+// This hook will protect our routes
+function useProtectedRoute(session: AuthUser | null | undefined, isLoading: boolean, user: UserData | null) {
+  const segments = useSegments();
+  const router = useRouter();
 
-    useEffect(() => {
-        const inAuthGroup = segments[0] === '(auth)';
+  useEffect(() => {
+    const isModalOpen = segments[0] === '(modals)';
+    const isPatientRecordScreen = segments[0] === 'patients' && segments.length > 1;
+    const isOAuthRedirect = segments[0] === 'oauthredirect';
 
-        if (isLoading) return;
+    // If a modal is open or we are viewing a specific patient's record, don't perform any navigation logic.
+    if (isModalOpen || isPatientRecordScreen) {
+      return;
+    }
+    // Exit early if authentication is still loading
+    if (isLoading) {
+      return;
+    }
 
-        // Redirect authenticated users from auth group
-        if (session && inAuthGroup) {
-            if (userType) {
-                if (userType === 'patient') {
-                    router.replace('/(patient)');
-                } else if (userType === 'doctor') {
-                    router.replace('/(doctor)');
-                }
-            } else {
-                // If userType is not set (e.g., new user just signed up), go to user type selection
-                router.replace('/user-type-selection');
-            }
-        } else if (!session && !inAuthGroup) {
-            // Redirect unauthenticated users to login
-            router.replace('/login');
+    const inAuthGroup = segments[0] === '(auth)';
+
+    try {
+      // If the user is not signed in and not in the auth group, redirect to login.
+      if (!session) {
+        // Allow oauthredirect to stay mounted so it can process the token
+        if (!inAuthGroup && !isOAuthRedirect) {
+          router.replace('/login');
         }
-    }, [session, segments, router, isLoading, userType]);
+        return;
+      }
+
+      // --- User is signed in ---
+
+      // If user data is still loading, wait. This can happen briefly while the user document is being fetched.
+      if (!user) {
+        return;
+      }
+
+      // 1. Redirect to profile completion if needed.
+      // Check for false or undefined (if field is missing)
+      if (!user.profileComplete) {
+        // Check last segment to avoid group name issues
+        const isAtCompleteProfile = segments[segments.length - 1] === 'complete-profile';
+        if (!isAtCompleteProfile) {
+          console.log('Redirecting to complete-profile');
+          router.replace('/complete-profile');
+        }
+        return;
+      }
+
+      // 2. Redirect to user type selection if needed.
+      if (!user.role) {
+        const isAtUserTypeSelection = segments[segments.length - 1] === 'user-type-selection';
+        if (!isAtUserTypeSelection) {
+          console.log('Redirecting to user-type-selection');
+          router.replace('/user-type-selection');
+        }
+        return;
+      }
+
+      // --- User is fully authenticated and configured ---
+      const userType = user.role;
+      const expectedGroup = `(${userType})`;
+      const isSharedRoute = ['settings', 'appointments', 'booking', 'consultation', 'doctors', 'patients'].includes(segments[0] as string);
+
+      // 3. If user is in an auth screen (login, signup) or oauthredirect, redirect them away to their dashboard.
+      if (inAuthGroup || isOAuthRedirect) {
+        router.replace(userType === 'patient' ? '/(patient)' : '/(doctor)');
+        return;
+      }
+
+      // 4. If the user is on a route that doesn't match their role and is not a shared route, redirect.
+      if (segments[0] !== expectedGroup && !isSharedRoute) {
+        router.replace(userType === 'patient' ? '/(patient)' : '/(doctor)');
+      }
+    } catch (e) {
+      console.warn('Navigation failed. This can happen on initial load.', e);
+    }
+  }, [session, isLoading, user, segments, router]);
 }
 
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<User | null>(null);
+  const [session, setSession] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [userType, setUserTypeState] = useState<string | null>(null);
+  
+  // Google Auth Request Hook - Lifted to AuthProvider to persist across navigation
+  const [request, response, promptAsync] = useAuthRequest({
+    iosClientId: IOS_CLIENT_ID,
+    androidClientId: ANDROID_CLIENT_ID,
+    webClientId: WEB_CLIENT_ID,
+    scopes: ["profile", "email"],
+    // Try single slash format which is sometimes required for custom schemes
+    redirectUri: 'com.cooperlistic.medicare:/oauthredirect',
+  });
+
+  useEffect(() => {
+    if (request) {
+      console.log("Generated Redirect URI:", request.redirectUri);
+    }
+  }, [request]);
+
+  // Handle Google Auth Response
+  useEffect(() => {
+    if (response) {
+      console.log("Google Auth Response received:", JSON.stringify(response, null, 2));
+    }
+    
+    if (response?.type === "success") {
+      const { id_token } = response.params;
+      const auth = getAuth();
+      const credential = GoogleAuthProvider.credential(id_token);
+      
+      // Set loading true while we process the sign in
+      setIsLoading(true);
+      
+      signInWithCredential(auth, credential)
+        .then(async (userCredential) => {
+          console.log("Google sign-in successful with Firebase.");
+          // The onAuthStateChanged listener will pick this up and handle the rest
+          // But we can force a reload or check here if needed
+        })
+        .catch((error) => {
+          console.error("Firebase sign-in error:", error);
+          setIsLoading(false);
+        });
+    } else if (response?.type === 'error') {
+        console.error("Google Sign-In Error:", response.error);
+    }
+  }, [response]);
+
   // We use a lazily-initialized auth instance provided by utils/firebaseConfig.
   // Call getAuthInstance() where needed to ensure the React Native persistence
   // initialization (if available) has completed.
+
+  const reloadUser = async () => {
+    const authInst = await getAuthInstance();
+    const currentUser = authInst.currentUser;
+    if (currentUser) {
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        setUser({ uid: currentUser.uid, ...userSnap.data() });
+      } else {
+        // If the user exists in Auth but not Firestore, create a basic profile.
+        // This is common for social sign-ins on first login.
+        const newUser = {
+          email: currentUser.email,
+          createdAt: new Date().toISOString(),
+          profileComplete: false, // Explicitly set profile as incomplete
+        };
+        await setDoc(userRef, newUser);
+        setUser({ uid: currentUser.uid, ...newUser });
+      }
+    } else {
+      setUser(null);
+    }
+  };
 
   const signIn = async (email?: string, password?: string) => {
     if (!email || !password) {
@@ -81,9 +219,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email?: string, password?: string, role?: 'patient' | 'doctor') => {
-    if (!email || !password || !role) {
-        throw new Error("Email, password, and role are required for sign up.");
+  const signUp = async (email?: string, password?: string) => {
+    if (!email || !password) {
+        throw new Error("Email and password are required for sign up.");
     }
     setIsLoading(true);
     try {
@@ -96,10 +234,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userCredential = await createUserWithEmailAndPassword(authInst, email, password);
       }
       // Create user document in Firestore immediately after successful registration
+      // Do NOT set `role` here. Role assignment must happen via the user-type-selection flow
+      // or by an admin/cloud function to avoid automatic role assignment.
       await setDoc(doc(db, "users", userCredential.user.uid), {
         email: userCredential.user.email,
-        role: role,
         createdAt: new Date().toISOString(),
+        profileComplete: false,
       });
       // onAuthStateChanged will handle setting the session and userType
     } catch (error: any) {
@@ -131,12 +271,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session) {
       try {
         setIsLoading(true);
-        await setDoc(doc(db, "users", session.uid), { role: type }, { merge: true });
-        setUserTypeState(type);
-        setIsLoading(false); // Reset loading after update
+        const userRef = doc(db, "users", session.uid);
+        await setDoc(userRef, { role: type }, { merge: true });
+        // After setting the type, reload the user data to get the updated profile
+        await reloadUser();
+        setIsLoading(false);
       } catch (error) {
         console.error("Error setting user type in Firestore:", error);
-        setIsLoading(false); // Reset loading on error
+        setIsLoading(false);
         throw error;
       }
     }
@@ -152,34 +294,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // shim provides onAuthStateChanged as a method; real SDK exposes a function.
       if (authInst && typeof authInst.onAuthStateChanged === 'function') {
         unsubscribe = authInst.onAuthStateChanged(async (user: any) => {
+          setIsLoading(true);
           setSession(user);
           if (user) {
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
             if (userSnap.exists()) {
-              setUserTypeState(userSnap.data().role || null);
+              setUser({ uid: user.uid, ...userSnap.data() });
             } else {
-              setUserTypeState(null);
+              // This case handles a new user signing up via a method like Google Sign-In
+              // where the user document might not have been created yet.
+              const newUser = {
+                email: user.email,
+                createdAt: new Date().toISOString(),
+                profileComplete: false,
+              };
+              await setDoc(userRef, newUser);
+              setUser({ uid: user.uid, ...newUser });
             }
           } else {
-            setUserTypeState(null);
+            setUser(null);
           }
           setIsLoading(false);
         });
       } else {
         const { onAuthStateChanged } = await import('firebase/auth');
         unsubscribe = onAuthStateChanged(authInst, async (user) => {
+          setIsLoading(true);
           setSession(user);
           if (user) {
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
             if (userSnap.exists()) {
-              setUserTypeState(userSnap.data().role || null);
+              setUser({ uid: user.uid, ...userSnap.data() });
             } else {
-              setUserTypeState(null);
+              // Create user doc for social auth if it doesn't exist
+              const newUser = {
+                email: user.email,
+                createdAt: new Date().toISOString(),
+                profileComplete: false,
+              };
+              await setDoc(userRef, newUser);
+              setUser({ uid: user.uid, ...newUser });
             }
           } else {
-            setUserTypeState(null);
+            setUser(null);
           }
           setIsLoading(false);
         });
@@ -192,21 +351,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useProtectedRoute(session, isLoading, userType);
+  useProtectedRoute(session, isLoading, user);
 
   const value = {
     signIn,
     signOut: signOutUser,
     signUp,
     session,
+    user,
     isLoading,
-    userType,
+    userType: user?.role || null, // Derive userType directly from the user object
     setUserType,
+    reloadUser,
+    promptGoogleSignIn: async () => {
+      console.log("Prompting Google Sign In...");
+      if (!request) {
+        console.warn("Google Auth Request is not ready yet.");
+        return;
+      }
+      try {
+        await promptAsync();
+      } catch (e) {
+        console.error("Failed to prompt Google Sign In:", e);
+      }
+    },
+    googleAuthRequest: request,
   };
 
+  // Render children only when the core auth functions are available.
+  // This prevents race conditions on initial load.
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      {!isLoading && children}
     </AuthContext.Provider>
   );
 }

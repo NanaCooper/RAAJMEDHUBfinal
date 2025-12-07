@@ -5,11 +5,30 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "medicare",
+    "scheme": "com.cooperlistic.medicare",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "medicare.ios.com",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "medicare.ios.com",
+              "com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "medicare.ios.com",
+              "com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm"
+            ]
+          }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +46,11 @@
       "favicon": "./assets/images/favicon.png"
     },
     "extra": {
-      "googleClientId": "631948568273-1600930e9qornkpk2p57q15agb20bvpc.apps.googleusercontent.com"
+      "googleClientId": "631948568273-1600930e9qornkpk2p57q15agb20bvpc.apps.googleusercontent.com",
+      "router": {},
+      "eas": {
+        "projectId": "f1571ba6-d691-416d-ad8c-5d029e9dfb2d"
+      }
     },
     "plugins": [
       "expo-router",
@@ -43,7 +66,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,4 +1,5 @@
-import { db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot } from '../utils/firebaseConfig';
+import { db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot, addDoc, collection } from '../utils/firebaseConfig';
+import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import type { AppUser } from '../types/user';
 
 export async function createUserProfile(user: AppUser) {
@@ -37,6 +38,37 @@ export async function updateUserProfile(userId: string, patch: Partial<AppUser>)
     return await getUserProfile(userId);
   } catch (err) {
     console.error('updateUserProfile error', err);
+    throw err;
+  }
+}
+
+export async function updateUserPassword(currentPassword: string, newPassword: string) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (user && user.email) {
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    try {
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+    } catch (error) {
+      console.error("Error updating password:", error);
+      throw error;
+    }
+  } else {
+    throw new Error("User not found or email not available.");
+  }
+}
+
+export async function requestDataExport(userId: string) {
+  try {
+    await addDoc(collection(db, 'data-exports'), {
+      userId,
+      requestedAt: serverTimestamp(),
+      status: 'pending',
+    });
+  } catch (err) {
+    console.error('requestDataExport error', err);
     throw err;
   }
 }

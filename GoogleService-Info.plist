@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>631948568273-1600930e9qornkpk2p57q15agb20bvpc.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyCxtNz7U40V_12gQmUMuw53Df64W_zOPdI</string>
+	<key>GCM_SENDER_ID</key>
+	<string>631948568273</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>medicare.ios.com</string>
+	<key>PROJECT_ID</key>
+	<string>medicareapp-f0dc0</string>
+	<key>STORAGE_BUCKET</key>
+	<string>medicareapp-f0dc0.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:631948568273:ios:4f1a1042487ed8c83507f0</string>
+</dict>
+</plist>

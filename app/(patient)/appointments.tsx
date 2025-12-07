@@ -1,4 +1,7 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useAuth } from '../../hooks/useAuth';
+import { subscribeToAppointments } from '../../services/appointments';
+import { getDoctor } from '../../services/doctors';
 import {
   View,
   Text,
@@ -8,30 +11,95 @@ import {
   TextInput,
   Modal,
   ScrollView,
-  Platform,
   ActivityIndicator,
+  StatusBar,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
 import moment from 'moment-timezone';
-import { useForm, Controller, SubmitHandler, Control, UseFormSetValue, UseFormWatch, UseFormSetError, UseFormClearErrors, FieldErrors } from 'react-hook-form';
-import { useRouter } from 'expo-router';
+import { useForm, Controller, SubmitHandler } from 'react-hook-form';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as yup from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { Feather } from "@expo/vector-icons";
+
+// --- Theme Constants ---
+const COLORS = {
+  bg: "#F8FAFC",        // Slate 50
+  surface: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primarySoft: "#EEF2FF",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  border: "#E2E8F0",
+  success: "#10B981",
+  warning: "#F59E0B",
+  error: "#EF4444",
+  inputBg: "#F1F5F9"
+};
+
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 4,
+};
+
+// --- Data & Utilities ---
+
+const scanTypes = [
+  {
+    id: 'ct',
+    name: 'CT Scan',
+    icon: 'layers',
+    description: 'Computer Tomography scan using X-rays and computer processing',
+    duration: '15-30 min',
+    preparation: ['No food 4 hours before', 'No metallic objects', 'Wear comfortable clothing', 'Bring previous scans']
+  },
+  {
+    id: 'xray',
+    name: 'X-Ray',
+    icon: 'image',
+    description: 'Traditional radiographic imaging for bones and chest',
+    duration: '5-10 min',
+    preparation: ['Remove metallic objects', 'Wear comfortable clothing']
+  },
+  {
+    id: 'mammogram',
+    name: 'Mammogram',
+    icon: 'aperture',
+    description: 'X-ray examination of breast tissue for cancer screening',
+    duration: '20-30 min',
+    preparation: ['No deodorant/lotion', 'Wear two-piece clothing', 'Schedule 1 week after period']
+  },
+  {
+    id: 'ultrasound',
+    name: 'Ultrasound',
+    icon: 'activity',
+    description: 'Sound wave imaging for soft tissues and organs',
+    duration: '15-30 min',
+    preparation: ['Full bladder required', 'No food 6-8h before (abdominal)', 'Wear loose clothing']
+  },
+  {
+    id: 'mri',
+    name: 'MRI',
+    icon: 'disc',
+    description: 'Magnetic Resonance Imaging for detailed tissue examination',
+    duration: '30-60 min',
+    preparation: ['No metallic objects/implants', 'No makeup', 'Notify if claustrophobic', 'No food 4h before']
+  }
+];
 
 // Custom sanitization functions
-const sanitizeText = (value: string) => {
-  return value.trim().replace(/[^\w\s-]/g, '');
-};
+const sanitizeText = (value: string) => value.trim().replace(/[^\w\s-]/g, '');
+const sanitizeMedicalNotes = (value: string) => value.trim().replace(/[^\w\s,.;:-]/g, '');
 
-const sanitizeMedicalNotes = (value: string) => {
-  return value.trim().replace(/[^\w\s,.;:-]/g, '');
-};
-
-// Validation schema
+// Types & Validation
 interface FormValues {
-  patientId: string;
-  lastName: string;
+  phone: string;
+  lastName?: string;
   firstName: string;
   middleName?: string;
   dob: string;
@@ -42,479 +110,192 @@ interface FormValues {
 }
 
 const validationSchema = yup.object().shape({
-  patientId: yup
-    .string()
-    .required('ID is required')
-    .min(6, 'ID must be at least 6 characters')
-    .matches(/^[A-Z0-9-]+$/i, 'ID can only contain letters, numbers, and hyphens')
-    .transform(sanitizeText),
-  
-  lastName: yup
-    .string()
-    .required('Last name is required')
-    .min(2, 'Last name must be at least 2 characters')
-    .matches(/^[A-Za-z\s-]+$/, 'Last name can only contain letters, spaces, and hyphens')
-    .transform(sanitizeText),
-  
-  firstName: yup
-    .string()
-    .required('First name is required')
-    .min(2, 'First name must be at least 2 characters')
-    .matches(/^[A-Za-z\s-]+$/, 'First name can only contain letters, spaces, and hyphens')
-    .transform(sanitizeText),
-  
-  middleName: yup
-    .string()
-    .optional()
-    .matches(/^[A-Za-z\s-]*$/, 'Middle name can only contain letters, spaces, and hyphens')
-    .transform(value => value ? sanitizeText(value) : value),
-  
-  dob: yup
-    .string()
-    .required('Date of birth is required')
-    .test('age', 'Patient must be between 0 and 120 years old', value => {
-      if (!value) return false;
-      const age = moment().diff(moment(value), 'years');
-      return age >= 0 && age <= 120;
-    }),
-  
-  sex: yup
-    .string()
-    .required('Sex is required')
-    .oneOf(['male', 'female', 'other'] as const, 'Invalid sex selected'),
-  
-  weight: yup
-    .string()
-    .optional()
-    .matches(/^\d*\.?\d*$/, 'Weight must be a valid number')
-    .test('weight-range', 'Weight must be between 1 and 500', value => {
-      if (!value) return true;
-      const numValue = parseFloat(value);
-      return !isNaN(numValue) && numValue > 0 && numValue <= 500;
-    }),
-  
-  weightUnit: yup
-    .string()
-    .optional()
-    .oneOf(['kg', 'lb'] as const, 'Invalid weight unit'),
-  
-  notes: yup
-    .string()
-    .optional()
-    .max(1000, 'Notes must not exceed 1000 characters')
-    .transform(sanitizeMedicalNotes),
+  phone: yup.string().required('Required').matches(/^[+\d][\d\s\-().]{6,}$/, 'Invalid phone').transform(sanitizeText),
+  lastName: yup.string().optional().matches(/^[A-Za-z\s-]*$/, 'Invalid characters').transform(v => v ? sanitizeText(v) : v),
+  firstName: yup.string().required('Required').min(2).matches(/^[A-Za-z\s-]+$/, 'Invalid characters').transform(sanitizeText),
+  middleName: yup.string().optional().matches(/^[A-Za-z\s-]*$/, 'Invalid characters').transform(v => v ? sanitizeText(v) : v),
+  dob: yup.string().required('Required').test('age', 'Invalid age', v => { if(!v) return false; const age = moment().diff(moment(v), 'years'); return age >= 0 && age <= 120; }),
+  sex: yup.string().required('Required').oneOf(['male', 'female', 'other']),
+  weight: yup.string().optional().matches(/^\d*\.?\d*$/, 'Number only').test('range', 'Invalid weight', v => { if(!v) return true; const n = parseFloat(v); return !isNaN(n) && n > 0 && n <= 500; }),
+  weightUnit: yup.string().optional().oneOf(['kg', 'lb']),
+  notes: yup.string().optional().max(1000).transform(sanitizeMedicalNotes),
 });
 
-interface ScanType {
-  id: string;
-  name: string;
-  description: string;
-  duration: string;
-  price: string;
-  preparation: string[];
-}
 
-type Appointment = {
-  id: string;
-  date: string;
-  time: string;
-  doctor: string;
-  status: "upcoming" | "completed" | "cancelled";
-  patientId: string;
-  scanType?: {
-    id: string;
-    name: string;
-  };
-};
 
 type Tab = 'upcoming' | 'past' | 'book';
 
-// Component constants
-const scanTypes = [
-  {
-    id: 'ct',
-    name: 'CT Scan',
-    description: 'Computer Tomography scan using X-rays and computer processing',
-    duration: '15-30 minutes',
-    price: '₱8,000 - ₱15,000',
-    preparation: [
-      'No food 4 hours before scan',
-      'No metallic objects/jewelry',
-      'Wear comfortable clothing',
-      'Bring previous scans if any'
-    ]
-  },
-  {
-    id: 'xray',
-    name: 'X-Ray',
-    description: 'Traditional radiographic imaging for bones and chest',
-    duration: '5-10 minutes',
-    price: '₱800 - ₱2,000',
-    preparation: [
-      'Remove metallic objects/jewelry',
-      'Wear comfortable clothing',
-      'No special diet restrictions'
-    ]
-  },
-  {
-    id: 'mammogram',
-    name: 'Mammogram',
-    description: 'X-ray examination of breast tissue for cancer screening',
-    duration: '20-30 minutes',
-    price: '₱3,000 - ₱5,000',
-    preparation: [
-      'No deodorant, lotion, or powder',
-      'Wear two-piece clothing',
-      'Schedule 1 week after period',
-      'Bring previous mammograms'
-    ]
-  },
-  {
-    id: 'ultrasound',
-    name: 'Ultrasound',
-    description: 'Sound wave imaging for soft tissues and organs',
-    duration: '15-30 minutes',
-    price: '₱1,500 - ₱3,500',
-    preparation: [
-      'Full bladder required',
-      'No food 6-8 hours before (abdominal)',
-      'Wear loose comfortable clothing'
-    ]
-  },
-  {
-    id: 'mri',
-    name: 'MRI',
-    description: 'Magnetic Resonance Imaging for detailed tissue examination',
-    duration: '30-60 minutes',
-    price: '₱12,000 - ₱25,000',
-    preparation: [
-      'No metallic objects/implants',
-      'No makeup or hair products',
-      'Notify staff of claustrophobia',
-      'No food 4 hours before scan'
-    ]
-  }
-];
+// --- Main Component ---
 
 export default function Appointments() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const { session } = useAuth();
+  
+  // State
   const [activeTab, setActiveTab] = useState<Tab>('upcoming');
+
+  useEffect(() => {
+    if (params?.tab && ['upcoming', 'past', 'book'].includes(params.tab as string)) {
+      setActiveTab(params.tab as Tab);
+    }
+  }, [params?.tab]);
+
   const [selectedDate, setSelectedDate] = useState<string>(moment().format('YYYY-MM-DD'));
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showDobPicker, setShowDobPicker] = useState(false);
-  const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   const [selectedScan, setSelectedScan] = useState<string | null>(null);
   const [showScanDetails, setShowScanDetails] = useState<boolean>(false);
   const [availableSlots, setAvailableSlots] = useState<{ [date: string]: string[] }>({});
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
-  const [conflictingAppointments, setConflictingAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
   const [userTimezone] = useState(moment.tz.guess());
-  // Scan type data
-  const scanTypes = [
-    {
-      id: 'ct',
-      name: 'CT Scan',
-      description: 'Computer Tomography scan using X-rays and computer processing',
-      duration: '15-30 minutes',
-      price: '₱8,000 - ₱15,000',
-      preparation: [
-        'No food 4 hours before scan',
-        'No metallic objects/jewelry',
-        'Wear comfortable clothing',
-        'Bring previous scans if any'
-      ]
-    },
-    {
-      id: 'xray',
-      name: 'X-Ray',
-      description: 'Traditional radiographic imaging for bones and chest',
-      duration: '5-10 minutes',
-      price: '₱800 - ₱2,000',
-      preparation: [
-        'Remove metallic objects/jewelry',
-        'Wear comfortable clothing',
-        'No special diet restrictions'
-      ]
-    },
-    {
-      id: 'mammogram',
-      name: 'Mammogram',
-      description: 'X-ray examination of breast tissue for cancer screening',
-      duration: '20-30 minutes',
-      price: '₱3,000 - ₱5,000',
-      preparation: [
-        'No deodorant, lotion, or powder',
-        'Wear two-piece clothing',
-        'Schedule 1 week after period',
-        'Bring previous mammograms'
-      ]
-    },
-    {
-      id: 'ultrasound',
-      name: 'Ultrasound',
-      description: 'Sound wave imaging for soft tissues and organs',
-      duration: '15-30 minutes',
-      price: '₱1,500 - ₱3,500',
-      preparation: [
-        'Full bladder required',
-        'No food 6-8 hours before (abdominal)',
-        'Wear loose comfortable clothing'
-      ]
-    },
-    {
-      id: 'mri',
-      name: 'MRI',
-      description: 'Magnetic Resonance Imaging for detailed tissue examination',
-      duration: '30-60 minutes',
-      price: '₱12,000 - ₱25,000',
-      preparation: [
-        'No metallic objects/implants',
-        'No makeup or hair products',
-        'Notify staff of claustrophobia',
-        'No food 4 hours before scan'
-      ]
-    }
-  ];
 
-  const appointments: Appointment[] = [
-    { 
-      id: "1", 
-      date: "2025-11-10", 
-      time: "10:00", 
-      doctor: "Dr. Nana Cooper", 
-      status: "upcoming",
-      patientId: "123456",
-      scanType: { id: "mri", name: "MRI" }
-    },
-    { 
-      id: "2", 
-      date: "2025-10-15", 
-      time: "09:00", 
-      doctor: "Dr. Alex Riley", 
-      status: "completed",
-      patientId: "123456",
-      scanType: { id: "ct", name: "CT Scan" }
-    },
-    { 
-      id: "3", 
-      date: "2025-09-02", 
-      time: "13:30", 
-      doctor: "Dr. Sam Lee", 
-      status: "cancelled",
-      patientId: "123456",
-      scanType: { id: "xray", name: "X-Ray" }
-    },
-  ];
+  useEffect(() => {
+    (async () => {
+      
+    })();
+  }, []);
 
+  // Mock Logic (Preserved)
+  const doctorSchedule = useMemo(() => ({
+    workDays: [0, 1, 2, 3, 4, 5, 6], // All days (Sun-Sat)
+    workHours: { start: '00:00', end: '23:59', lunchBreak: { start: '', end: '' } }, // 24 hours
+    appointmentDuration: 30,
+    unavailableDates: ['2025-11-25', '2025-12-25']
+  }), []);
+
+  // Form Setup
   const methods = useForm<FormValues>({
     defaultValues: { 
-      patientId: '', 
-      lastName: '', 
-      firstName: '', 
-      middleName: undefined, 
-      dob: '', 
-      sex: 'male', 
-      weightUnit: 'kg', 
-      weight: undefined, 
-      notes: undefined 
+      phone: '', lastName: '', firstName: '', middleName: undefined, 
+      dob: '', sex: 'male', weightUnit: 'kg', weight: undefined, notes: undefined 
     },
     mode: 'onBlur',
     resolver: (yupResolver(validationSchema) as any)
   });
   
-  const { 
-    control, 
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-    setError,
-    clearErrors
-  } = methods;
-
+  const { control, handleSubmit, setValue, watch, setError, formState: { errors } } = methods;
   const dob = watch('dob');
-  const age = dob ? moment().diff(moment(dob), 'years') : undefined;
+  moment().diff(moment(dob), 'years');
 
-  // Filter appointments by tab
-  const filteredAppointments = useMemo(() => {
-    const now = moment();
-    if (activeTab === 'upcoming') {
-      return appointments.filter(a => moment(a.date).isAfter(now, 'day') || a.status === 'upcoming');
-    }
-    if (activeTab === 'past') {
-      return appointments.filter(a => moment(a.date).isBefore(now, 'day') || a.status === 'completed' || a.status === 'cancelled');
-    }
-    return appointments;
-  }, [appointments, activeTab]);
+  // --- Effects ---
 
-  // Mock available slots (fetch from API in production)
-  const currentDaySlots = useMemo(() => {
-    if (!selectedDate) return [];
-    return availableSlots[selectedDate] || [];
-  }, [selectedDate, availableSlots]);
+  // Load Appointments
+  useEffect(() => {
+    if (!session?.uid) return;
 
-  const checkForDuplicateAppointments = (values: FormValues) => {
-    if (!selectedDate || !selectedSlot) return [];
-    
-    const proposedTime = moment.tz(`${selectedDate} ${selectedSlot}`, userTimezone);
-    const thirtyDaysBefore = proposedTime.clone().subtract(30, 'days');
-    const thirtyDaysAfter = proposedTime.clone().add(30, 'days');
-
-    return appointments.filter(apt => {
-      // Check for same patient ID
-      const samePatient = values.patientId === apt.patientId;
-      if (!samePatient) return false;
-
-      const aptTime = moment.tz(`${apt.date} ${apt.time}`, userTimezone);
-      // Check if appointment is within 30 days before or after
-      const isWithinTimeframe = aptTime.isBetween(thirtyDaysBefore, thirtyDaysAfter, 'day', '[]');
-      // Check if it's the same scan type
-      const sameScanType = apt.scanType?.id === selectedScan;
-
-      return isWithinTimeframe && sameScanType;
-    });
-  };
-
-  const onConfirm: SubmitHandler<FormValues> = async (values) => {
-    try {
-      // Basic validation
-      if (!selectedSlot || !selectedDoctor) {
-        setError('root', { 
-          type: 'manual',
-          message: 'Please select a doctor and time slot.'
-        });
-        return;
-      }
-
-      if (!selectedScan) {
-        setError('root', {
-          type: 'manual',
-          message: 'Please select a scan type.'
-        });
-        return;
-      }
-
-      // Check for duplicate appointments
-      const duplicates = checkForDuplicateAppointments(values);
-      if (duplicates.length > 0) {
-        setError('root', {
-          type: 'manual',
-          message: `Warning: You already have ${duplicates.length} similar appointment(s) scheduled within 30 days. Please confirm with your doctor if multiple scans are needed.`
-        });
-        return;
-      }
-
-      // Validate age restrictions for specific scan types
-      const currentScanType = scanTypes.find(s => s.id === selectedScan);
-      const patientAge = moment().diff(moment(values.dob), 'years');
-      if (currentScanType?.id === 'mammogram' && patientAge < 40) {
-        setError('root', {
-          type: 'manual',
-          message: 'Mammogram screening is typically recommended for patients 40 years and older. Please consult with your doctor for special cases.'
-        });
-        return;
-      }
-
-      const selectedScanType = scanTypes.find(s => s.id === selectedScan);
-      const payload = {
-        doctorId: selectedDoctor,
-        appointment: { 
-          date: selectedDate, 
-          time: selectedSlot,
-          scanType: {
-            id: selectedScanType?.id,
-            name: selectedScanType?.name,
-            duration: selectedScanType?.duration,
-            price: selectedScanType?.price
-          }
-        },
-        patient: { ...values, age },
-      };
-      console.log('Confirm booking payload:', payload);
-      router.push('/(modals)/booking-confirmation');
-    } catch (error) {
-      console.error('Error confirming appointment:', error);
-      setError('root', {
-        type: 'manual',
-        message: 'An error occurred while confirming your appointment. Please try again.'
+    const unsubscribe = subscribeToAppointments(session.uid, 'patient', async (appts) => {
+      // 1. Identify unique doctor IDs that need fetching
+      const doctorIdsToFetch = new Set<string>();
+      appts.forEach((a: any) => {
+        // Robust ID extraction
+        const rawId = a.doctorId;
+        const docId = (typeof rawId === 'object' && rawId?.id) ? rawId.id : rawId;
+        
+        if (!a.doctorName && docId && typeof docId === 'string') {
+          doctorIdsToFetch.add(docId);
+        }
       });
+
+      // 2. Fetch doctors in parallel (with caching in service layer)
+      const doctorMap: { [id: string]: string } = {};
+      await Promise.all(Array.from(doctorIdsToFetch).map(async (id) => {
+        try {
+          const doc = await getDoctor(id);
+          if (doc) {
+            doctorMap[id] = (doc as any).fullName || (doc as any).name || 'Doctor';
+          }
+        } catch (e) {
+          console.warn('Failed to fetch doctor details for', id, e);
+        }
+      }));
+
+      // 3. Map appointments
+      const mapped = appts.map((a: any) => {
+        let doctorName = a.doctorName;
+        const rawId = a.doctorId;
+        const docId = (typeof rawId === 'object' && rawId?.id) ? rawId.id : rawId;
+
+        if (!doctorName && docId && typeof docId === 'string') {
+            doctorName = doctorMap[docId];
+        }
+
+        return {
+          id: a.id,
+          date: a.startAt ? (typeof a.startAt === 'string' ? a.startAt.split(' ')[0] : moment(a.startAt.toDate()).format('YYYY-MM-DD')) : '',
+          time: a.startAt ? (typeof a.startAt === 'string' ? a.startAt.split(' ')[1] : moment(a.startAt.toDate()).format('HH:mm')) : '',
+          doctor: doctorName || null,
+          status: a.status || 'upcoming',
+          patientId: a.patientId,
+          scanType: a.scanType,
+        };
+      });
+      setAppointments(mapped);
+    });
+
+    return () => unsubscribe();
+  }, [session?.uid]);
+
+  // Load Profile
+  useEffect(() => {
+    async function loadProfile() {
+      if (!session?.uid) return;
+      try {
+        const { doc, getDoc, db } = await import('../../utils/firebaseConfig');
+        const userRef = doc(db, 'users', session.uid);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          // --- ROBUST NAME HANDLING ---
+          const nameParts = (data.fullName || '').split(' ').filter(Boolean);
+          const firstName = nameParts[0] || '';
+          const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+          setValue('firstName', firstName);
+          setValue('lastName', lastName);
+          // --- END FIX ---
+          setValue('dob', data.dob || '');
+          setValue('phone', data.contact || data.phone || '');
+        }
+      } catch (e) { console.error('Failed to load profile', e); }
     }
-  };
+    loadProfile();
+  }, [session?.uid, setValue]);
 
-  const renderAppointmentList = () => (
-    <FlatList
-      data={filteredAppointments}
-      keyExtractor={(i) => i.id}
-      contentContainerStyle={styles.listContent}
-      showsVerticalScrollIndicator={false}
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <View style={styles.cardLeft}>
-            <Text style={styles.dateText}>{item.date}</Text>
-            <Text style={styles.timeText}>{item.time}</Text>
-          </View>
+  // --- Logic Helpers ---
 
-          <View style={styles.cardRight}>
-            <Text style={styles.doctorText}>{item.doctor}</Text>
-            <Text style={[styles.status, item.status === "upcoming" ? styles.upcoming : item.status === "completed" ? styles.completed : styles.cancelled]}>
-              {item.status.toUpperCase()}
-            </Text>
-          </View>
-        </View>
-      )}
-    />
-  );
-
-  // Scan type data
-  // Scan type data already declared as a constant at the top of the file
-
-  // Mock doctor schedule - in production, fetch from API
-  const doctorSchedule = {
-    workDays: [1, 2, 3, 4, 5], // Monday to Friday
-    workHours: {
-      start: '09:00',
-      end: '17:00',
-      lunchBreak: { start: '12:00', end: '13:00' }
-    },
-    appointmentDuration: 30, // minutes
-    unavailableDates: ['2025-11-25', '2025-12-25'] // holidays or time off
-  };
-
-  // Check if a date should be disabled
-  const isDateDisabled = (date: string) => {
+  const isDateDisabled = useCallback((date: string) => {
     const dayOfWeek = moment(date).day();
     const isWorkDay = doctorSchedule.workDays.includes(dayOfWeek);
     const isUnavailable = doctorSchedule.unavailableDates.includes(date);
     const isPast = moment(date).isBefore(moment(), 'day');
     return !isWorkDay || isUnavailable || isPast;
-  };
+  }, [doctorSchedule]);
 
-  // Generate available time slots for a date
-  const generateTimeSlots = (date: string) => {
+  const generateTimeSlots = useCallback((date: string) => {
     const slots: string[] = [];
     const startTime = moment.tz(date + ' ' + doctorSchedule.workHours.start, userTimezone);
     const endTime = moment.tz(date + ' ' + doctorSchedule.workHours.end, userTimezone);
-    const lunchStart = moment.tz(date + ' ' + doctorSchedule.workHours.lunchBreak.start, userTimezone);
-    const lunchEnd = moment.tz(date + ' ' + doctorSchedule.workHours.lunchBreak.end, userTimezone);
+    
+    // Only check lunch break if it's defined and valid
+    const hasLunch = doctorSchedule.workHours.lunchBreak.start && doctorSchedule.workHours.lunchBreak.end;
+    const lunchStart = hasLunch ? moment.tz(date + ' ' + doctorSchedule.workHours.lunchBreak.start, userTimezone) : null;
+    const lunchEnd = hasLunch ? moment.tz(date + ' ' + doctorSchedule.workHours.lunchBreak.end, userTimezone) : null;
 
     let currentTime = startTime.clone();
     while (currentTime.isBefore(endTime)) {
-      // Skip lunch break
-      if (currentTime.isSameOrAfter(lunchStart) && currentTime.isBefore(lunchEnd)) {
+      if (hasLunch && lunchStart && lunchEnd && currentTime.isSameOrAfter(lunchStart) && currentTime.isBefore(lunchEnd)) {
         currentTime = lunchEnd.clone();
         continue;
       }
-
-      const timeSlot = currentTime.format('HH:mm');
-      slots.push(timeSlot);
+      slots.push(currentTime.format('HH:mm'));
       currentTime.add(doctorSchedule.appointmentDuration, 'minutes');
     }
-
     return slots;
-  };
+  }, [doctorSchedule, userTimezone]);
 
-  // Check for conflicting appointments
-  const checkConflicts = (date: string, time: string) => {
+  const checkConflicts = useCallback((date: string, time: string) => {
     const selectedDateTime = moment.tz(date + ' ' + time, userTimezone);
     const duration = doctorSchedule.appointmentDuration;
     const selectedEnd = selectedDateTime.clone().add(duration, 'minutes');
@@ -527,498 +308,569 @@ export default function Appointments() {
         (selectedEnd.isAfter(aptDateTime) && selectedEnd.isSameOrBefore(aptEnd))
       );
     });
-  };
+  }, [appointments, doctorSchedule, userTimezone]);
 
-  // Fetch available slots when date changes
+  // Fetch Slots
   useEffect(() => {
-    if (!selectedDate || isDateDisabled(selectedDate)) {
-      setAvailableSlots({});
-      return;
-    }
-
+    if (!selectedDate || isDateDisabled(selectedDate)) { setAvailableSlots({}); return; }
     setLoadingSlots(true);
-    // Simulate API call delay
     const fetchSlots = async () => {
       try {
-        // In production, this would be an API call
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300)); // Smoother UI transition
         const slots = generateTimeSlots(selectedDate);
-        
-        // Filter out slots that have conflicts
-        const availableSlots = slots.filter(time => {
-          const conflicts = checkConflicts(selectedDate, time);
-          return conflicts.length === 0;
-        });
+        const validSlots = slots.filter(time => checkConflicts(selectedDate, time).length === 0);
+        setAvailableSlots(prev => ({ ...prev, [selectedDate]: validSlots }));
+      } finally { setLoadingSlots(false); }
+    };
+    fetchSlots();
+  }, [selectedDate, generateTimeSlots, isDateDisabled, checkConflicts]);
 
-        setAvailableSlots(prev => ({
-          ...prev,
-          [selectedDate]: availableSlots
-        }));
-      } catch (error) {
-        console.error('Error fetching slots:', error);
-        alert('Failed to load available time slots');
-      } finally {
-        setLoadingSlots(false);
-      }
+  // --- Event Handlers ---
+
+  const filteredAppointments = useMemo(() => {
+    const now = moment();
+    if (activeTab === 'upcoming') {
+      return appointments.filter(a => 
+        moment(a.date).isSameOrAfter(now, 'day') && 
+        a.status !== 'completed' && 
+        a.status !== 'cancelled'
+      );
+    }
+    if (activeTab === 'past') {
+      return appointments.filter(a => 
+        moment(a.date).isBefore(now, 'day') || 
+        a.status === 'completed' || 
+        a.status === 'cancelled'
+      );
+    }
+    return appointments;
+  }, [appointments, activeTab]);
+
+  const currentDaySlots = useMemo(() => selectedDate ? (availableSlots[selectedDate] || []) : [], [selectedDate, availableSlots]);
+
+  const onInvalid = (errors: any) => {
+    console.error("--- [appointments.tsx] Form Validation FAILED ---");
+    console.error("[LOG] Validation Errors:", JSON.stringify(errors, null, 2));
+    setError('root', { message: 'Form is invalid. Please check all fields and try again.' });
+  };
+
+  const onConfirm: SubmitHandler<FormValues> = async (values) => {
+    console.log("--- [appointments.tsx] onConfirm triggered ---");
+
+    // Check active appointments limit (Max 3)
+    const activeAppointments = appointments.filter(a => 
+      a.status !== 'completed' && a.status !== 'cancelled'
+    );
+    
+    if (activeAppointments.length >= 3) {
+       Alert.alert(
+         "Booking Limit Reached", 
+         "You can only have a maximum of 3 active appointments. Please complete existing appointments before booking a new one."
+       );
+       return;
+    }
+
+    if (!selectedSlot) {
+      console.error("[LOG] onConfirm: Failed. No time slot selected.");
+      setError('root', { message: 'Please select a time slot.' });
+      return;
+    }
+    if (!selectedScan) {
+      console.error("[LOG] onConfirm: Failed. No scan type selected.");
+      setError('root', { message: 'Please select a scan type.' });
+      return;
+    }
+    console.log(`[LOG] onConfirm: Slot selected: ${selectedSlot}, Scan selected: ${selectedScan}`);
+    console.log("[LOG] onConfirm: Form values:", JSON.stringify(values, null, 2));
+
+    const selectedScanType = scanTypes.find(s => s.id === selectedScan);
+    
+    const appointmentData = {
+      patientId: session?.uid,
+      doctorId: null, // To be assigned by admin
+      startAt: `${selectedDate} ${selectedSlot}`,
+      status: 'pending',
+      scanType: { id: selectedScanType?.id, name: selectedScanType?.name },
+      patientDetails: { ...values },
     };
 
-    fetchSlots();
-  }, [selectedDate]);
+    console.log("[LOG] onConfirm: Prepared appointment data:", JSON.stringify(appointmentData, null, 2));
+    console.log("[LOG] onConfirm: Navigating to booking-confirmation modal...");
 
-  // Update conflicts when slot is selected
-  useEffect(() => {
-    if (selectedDate && selectedSlot) {
-      const conflicts = checkConflicts(selectedDate, selectedSlot);
-      setConflictingAppointments(conflicts);
-    } else {
-      setConflictingAppointments([]);
+    router.push({
+      pathname: "/(modals)/booking-confirmation",
+      params: {
+        date: selectedDate,
+        time: selectedSlot,
+        appointmentData: JSON.stringify({
+          ...appointmentData,
+          startAt: moment
+            .tz(`${selectedDate} ${selectedSlot}`, userTimezone)
+            .toISOString(),
+        }),
+      },
+    });
+  };
+
+
+
+  // --- Renderers ---
+
+  const renderAppointmentCard = ({ item }: { item: any }) => {
+    const statusColors = {
+      upcoming: { bg: '#ECFDF5', text: '#047857' }, // Emerald
+      completed: { bg: '#F1F5F9', text: '#475569' }, // Slate
+      cancelled: { bg: '#FEF2F2', text: '#DC2626' }, // Red
+      pending: { bg: '#FEFCE8', text: '#A16207' }, // Yellow
+    };
+
+    let displayStatus = item.status;
+    const appointmentDateTime = moment(item.date + ' ' + item.time);
+    if (appointmentDateTime.isBefore(moment()) && (displayStatus === 'upcoming' || displayStatus === 'pending')) {
+      displayStatus = 'completed';
     }
-  }, [selectedDate, selectedSlot]);
-  
+
+    const style = statusColors[displayStatus as keyof typeof statusColors] || statusColors.upcoming;
+
+    return (
+      <TouchableOpacity 
+        style={styles.card} 
+        activeOpacity={0.9}
+        onPress={() => router.push({ pathname: '/(patient)/appointment-details', params: { appointment: JSON.stringify(item) }})}
+      >
+        <View style={styles.cardDate}>
+           <Text style={styles.cardDay}>{moment(item.date).format('DD')}</Text>
+           <Text style={styles.cardMonth}>{moment(item.date).format('MMM')}</Text>
+        </View>
+        
+        <View style={styles.cardContent}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.cardTitle}>{item.scanType?.name || 'Consultation'}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: style.bg }]}>
+               <Text style={[styles.statusText, { color: style.text }]}>{displayStatus}</Text>
+            </View>
+          </View>
+          <Text style={styles.cardSubtitle}>
+            {item.doctor ? `Dr. ${item.doctor}` : 'Doctor to be assigned soon'}
+          </Text>
+          <View style={styles.cardMetaRow}>
+             <Feather name="clock" size={14} color={COLORS.textSec} />
+             <Text style={styles.cardMetaText}>{moment(item.date + ' ' + item.time).format('h:mm A')}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderBookingForm = () => (
-    <ScrollView 
-      style={styles.bookingForm}
-      contentContainerStyle={styles.bookingFormContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.calendarWrap}>
-        <Text style={styles.sectionTitle}>Select Date</Text>
-        <Calendar
-          onDayPress={(d) => {
-            if (!isDateDisabled(d.dateString)) {
-              setSelectedDate(d.dateString);
-              setSelectedSlot(null);
-            }
-          }}
-          minDate={moment().format('YYYY-MM-DD')}
-          markedDates={{
-            ...Object.fromEntries(
-              doctorSchedule.workDays.map(day => {
-                const date = moment().day(day).format('YYYY-MM-DD');
-                return [date, { marked: true, dotColor: '#0b6efd' }];
-              })
-            ),
-            ...Object.fromEntries(
-              doctorSchedule.unavailableDates.map(date => [
-                date,
-                { disabled: true, disableTouchEvent: true }
-              ])
-            ),
-            [selectedDate]: { selected: true, selectedColor: '#0b6efd' }
-          }}
-          disabledDaysIndexes={[0, 6]} // Disable weekends
-          disableAllTouchEventsForDisabledDays={true}
-        />
+    <ScrollView contentContainerStyle={styles.bookingContent} showsVerticalScrollIndicator={false}>
+      
+      {/* Calendar Section */}
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionHeader}>Select Date</Text>
+        <View style={styles.calendarWrapper}>
+          <Calendar
+            onDayPress={(d) => { if (!isDateDisabled(d.dateString)) { setSelectedDate(d.dateString); setSelectedSlot(null); } }}
+            minDate={moment().format('YYYY-MM-DD')}
+            markedDates={{
+              [selectedDate]: { selected: true, selectedColor: COLORS.primary },
+              ...doctorSchedule.unavailableDates.reduce((acc, date) => ({...acc, [date]: { disabled: true, disableTouchEvent: true, textColor: '#cbd5e1' }}), {})
+            }}
+            theme={{
+              backgroundColor: '#ffffff',
+              calendarBackground: '#ffffff',
+              textSectionTitleColor: '#b6c1cd',
+              selectedDayBackgroundColor: COLORS.primary,
+              selectedDayTextColor: '#ffffff',
+              todayTextColor: COLORS.primary,
+              dayTextColor: '#2d4150',
+              textDisabledColor: '#d9e1e8',
+              arrowColor: COLORS.primary,
+              monthTextColor: COLORS.textMain,
+              textDayFontWeight: '500',
+              textMonthFontWeight: 'bold',
+              textDayHeaderFontWeight: '500',
+              textDayFontSize: 14,
+            }}
+            disabledDaysIndexes={[0, 6]}
+          />
+        </View>
       </View>
 
-      <View style={styles.form}>
-        <Text style={styles.sectionTitle}>
-          Available Time Slots — {selectedDate ? moment(selectedDate).format('ddd, DD MMM') : 'Select a date'}
+      {/* Time Slots */}
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionHeader}>
+          Available Times <Text style={{fontWeight: '400', color: COLORS.textSec}}>{selectedDate ? `• ${moment(selectedDate).format('MMM DD')}` : ''}</Text>
         </Text>
-        
         {loadingSlots ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color="#0b6efd" />
-            <Text style={styles.loadingText}>Loading available slots...</Text>
-          </View>
+          <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
         ) : currentDaySlots.length > 0 ? (
-          <FlatList
-            data={currentDaySlots}
-            keyExtractor={(s) => s}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingVertical: 8 }}
-            renderItem={({ item }) => {
-              const selected = item === selectedSlot;
-              const localTime = moment.tz(selectedDate + ' ' + item, userTimezone).format('hh:mm A');
-              return (
-                <TouchableOpacity 
-                  onPress={() => setSelectedSlot(item)} 
-                  style={[styles.slot, selected && styles.slotSelected]}
-                >
-                  <Text style={[styles.slotText, selected && { color: '#fff' }]}>{localTime}</Text>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        ) : (
-          <View style={styles.noSlotsContainer}>
-            <Text style={styles.noSlotsText}>
-              {selectedDate 
-                ? "No available slots for this date" 
-                : "Select a date to see available slots"}
-            </Text>
-          </View>
-        )}
+          <View>
+            {['Morning', 'Afternoon', 'Evening', 'Night'].map(period => {
+               const periodSlots = currentDaySlots.filter(time => {
+                 const hour = parseInt(time.split(':')[0]);
+                 if (period === 'Morning') return hour >= 6 && hour < 12;
+                 if (period === 'Afternoon') return hour >= 12 && hour < 18;
+                 if (period === 'Evening') return hour >= 18 && hour <= 23;
+                 if (period === 'Night') return hour >= 0 && hour < 6;
+                 return false;
+               });
+               
+               if (periodSlots.length === 0) return null;
 
-        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Select Scan Type</Text>
+               return (
+                 <View key={period} style={{ marginBottom: 16 }}>
+                   <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textSec, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{period}</Text>
+                   <FlatList
+                      data={periodSlots}
+                      keyExtractor={(s) => s}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 10 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity 
+                          onPress={() => setSelectedSlot(item)} 
+                          style={[styles.timeChip, item === selectedSlot && styles.timeChipSelected]}
+                        >
+                          <Text style={[styles.timeChipText, item === selectedSlot && styles.timeChipTextSelected]}>
+                            {moment(selectedDate + ' ' + item).format('h:mm A')}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                   />
+                 </View>
+               );
+            })}
+          </View>
+        ) : (
+           <View style={styles.emptyState}>
+             <Feather name="calendar" size={24} color={COLORS.textSec} />
+             <Text style={styles.emptyStateText}>No slots available for this date.</Text>
+           </View>
+        )}
+      </View>
+
+      {/* Scan Types */}
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionHeader}>Examination Type</Text>
         <FlatList
           data={scanTypes}
-          keyExtractor={(item) => item.id}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingVertical: 8 }}
+          contentContainerStyle={{ gap: 12, paddingRight: 20 }}
           renderItem={({ item }) => {
             const selected = item.id === selectedScan;
             return (
               <TouchableOpacity 
-                onPress={() => {
-                  setSelectedScan(selected ? null : item.id);
-                  setShowScanDetails(true);
-                }} 
-                style={[styles.scanOption, selected && styles.scanOptionSelected]}
+                onPress={() => { setSelectedScan(selected ? null : item.id); setShowScanDetails(true); }}
+                style={[styles.scanCard, selected && styles.scanCardSelected]}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.scanName, selected && { color: '#fff' }]}>{item.name}</Text>
-                <Text style={[styles.scanDuration, selected && { color: '#fff' }]}>{item.duration}</Text>
+                <View style={[styles.scanIcon, selected && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                   <Feather name={item.icon as any} size={20} color={selected ? '#fff' : COLORS.primary} />
+                </View>
+                <Text style={[styles.scanCardTitle, selected && { color: '#fff' }]}>{item.name}</Text>
               </TouchableOpacity>
             );
           }}
         />
 
         {selectedScan && showScanDetails && (
-          <View style={styles.scanDetails}>
-            <View style={styles.scanHeader}>
-              <View>
-                <Text style={styles.scanDetailName}>
-                  {scanTypes.find(s => s.id === selectedScan)?.name}
-                </Text>
-                <Text style={styles.scanPrice}>
-                  {scanTypes.find(s => s.id === selectedScan)?.price}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowScanDetails(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>Hide Details</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={styles.scanDescription}>
-              {scanTypes.find(s => s.id === selectedScan)?.description}
-            </Text>
-
-            <Text style={[styles.label, { marginTop: 12, marginBottom: 8 }]}>Required Preparation:</Text>
-            {scanTypes
-              .find(s => s.id === selectedScan)
-              ?.preparation.map((prep, index) => (
-                <View key={index} style={styles.prepItem}>
-                  <View style={styles.bullet} />
-                  <Text style={styles.prepText}>{prep}</Text>
-                </View>
-              ))
-            }
+          <View style={styles.detailsCard}>
+             <View style={styles.rowBetween}>
+               <Text style={styles.detailsTitle}>{scanTypes.find(s => s.id === selectedScan)?.name} Details</Text>
+               <TouchableOpacity onPress={() => setShowScanDetails(false)}>
+                 <Feather name="x" size={18} color={COLORS.textSec} />
+               </TouchableOpacity>
+             </View>
+             <Text style={styles.detailsDesc}>{scanTypes.find(s => s.id === selectedScan)?.description}</Text>
+             <Text style={styles.detailsLabel}>Preparation:</Text>
+             {scanTypes.find(s => s.id === selectedScan)?.preparation.map((p, i) => (
+               <View key={i} style={styles.bulletRow}>
+                 <View style={styles.bullet} />
+                 <Text style={styles.bulletText}>{p}</Text>
+               </View>
+             ))}
           </View>
         )}
+      </View>
 
-        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Patient Details</Text>
-
-        <Controller
-          control={control}
-          name="patientId"
-          render={({ field: { onChange, value } }) => (
-            <>
-              <Text style={styles.label}>ID</Text>
-              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="National ID / Passport" />
-            </>
-          )}
-        />
-
-        <View style={styles.rowInputs}>
-          <Controller control={control} name="lastName" render={({ field: { onChange, value } }) => (
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.label}>Last Name</Text>
-              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="Last name" />
-            </View>
+      {/* Patient Form */}
+      <View style={styles.sectionContainer}>
+        <Text style={styles.sectionHeader}>Patient Information</Text>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Phone Number</Text>
+          <Controller control={control} name="phone" render={({ field: { onChange, value } }) => (
+             <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="+1 234 567 8900" keyboardType="phone-pad" placeholderTextColor="#94A3B8" />
           )} />
-
-          <Controller control={control} name="firstName" render={({ field: { onChange, value } }) => (
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>First Name</Text>
-              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="First name" />
-            </View>
-          )} />
+          {errors.phone && <Text style={styles.errorText}>{errors.phone.message}</Text>}
         </View>
 
-        <Controller control={control} name="middleName" render={({ field: { onChange, value } }) => (
-          <>
-            <Text style={styles.label}>Middle Name</Text>
-            <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="Middle name (optional)" />
-          </>
-        )} />
-
-        <View style={{ marginTop: 10 }}>
-          <Text style={styles.label}>Date of Birth</Text>
-          <Controller control={control} name="dob" render={({ field: { onChange, value } }) => (
-            <TouchableOpacity onPress={() => setShowDobPicker(true)} style={[styles.input, { justifyContent: 'center' }]}>
-              <Text>{value ? moment(value).format('DD/MM/YY') : 'Select date of birth'}</Text>
-            </TouchableOpacity>
-          )} />
-          {age !== undefined ? <Text style={{ marginTop: 6, color: '#666' }}>Age: {age} years</Text> : null}
+        <View style={styles.rowGap}>
+           <View style={{ flex: 1 }}>
+             <Text style={styles.inputLabel}>First Name</Text>
+             <Controller control={control} name="firstName" render={({ field: { onChange, value } }) => (
+               <TextInput style={[styles.input, styles.readOnlyInput]} value={value} onChangeText={onChange} editable={false} />
+             )} />
+           </View>
+           <View style={{ flex: 1 }}>
+             <Text style={styles.inputLabel}>Last Name</Text>
+             <Controller control={control} name="lastName" render={({ field: { onChange, value } }) => (
+               <TextInput style={[styles.input, styles.readOnlyInput]} value={value} onChangeText={onChange} editable={false} />
+             )} />
+           </View>
         </View>
 
-        <Modal visible={showDobPicker} transparent animationType="slide">
-          <View style={styles.modalWrap}>
-            <View style={styles.modalContent}>
-              <Calendar onDayPress={(d) => { setValue('dob', d.dateString); setShowDobPicker(false); }} maxDate={moment().format('YYYY-MM-DD')} />
-              <TouchableOpacity onPress={() => setShowDobPicker(false)} style={styles.modalCloseBtn}><Text style={{ color: '#0b6efd' }}>Close</Text></TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
-        <View style={{ marginTop: 10 }}>
-          <Text style={styles.label}>Sex</Text>
-          <View style={{ flexDirection: 'row', marginTop: 8 }}>
-            {[
-              { key: 'male', label: 'Male' },
-              { key: 'female', label: 'Female' },
-              { key: 'other', label: 'Other' },
-            ].map((opt) => (
-              <Controller key={opt.key} control={control} name="sex" render={({ field: { onChange, value } }) => (
-                <TouchableOpacity onPress={() => onChange(opt.key as any)} style={[styles.sexOption, value === opt.key && styles.sexOptionSelected]}>
-                  <Text style={value === opt.key ? { color: '#fff' } : { color: '#333' }}>{opt.label}</Text>
-                </TouchableOpacity>
+        <View style={styles.rowGap}>
+           <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Date of Birth</Text>
+              <Controller control={control} name="dob" render={({ field: { onChange, value } }) => (
+                 <TouchableOpacity onPress={() => setShowDobPicker(true)} style={[styles.input, styles.readOnlyInput, { justifyContent: 'center' }]}>
+                    <Text style={{ color: value ? COLORS.textMain : '#94A3B8' }}>{value ? moment(value).format('MMM DD, YYYY') : 'Select'}</Text>
+                 </TouchableOpacity>
               )} />
-            ))}
-          </View>
-        </View>
-
-        <View style={{ marginTop: 10 }}>
-          <Text style={styles.label}>Weight</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-            <Controller control={control} name="weight" render={({ field: { onChange, value } }) => (
-              <TextInput keyboardType="numeric" style={[styles.input, { flex: 1 }]} value={value} onChangeText={onChange} placeholder="e.g. 70" />
-            )} />
-
-            <Controller control={control} name="weightUnit" render={({ field: { onChange, value } }) => (
-              <View style={{ marginLeft: 8, flexDirection: 'row' }}>
-                <TouchableOpacity onPress={() => onChange('kg')} style={[styles.unitBtn, value === 'kg' && styles.unitBtnActive]}><Text style={value === 'kg' ? { color: '#fff' } : {}}>kg</Text></TouchableOpacity>
-                <TouchableOpacity onPress={() => onChange('lb')} style={[styles.unitBtn, value === 'lb' && styles.unitBtnActive]}><Text style={value === 'lb' ? { color: '#fff' } : {}}>lb</Text></TouchableOpacity>
+           </View>
+           <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Sex</Text>
+              <View style={styles.segmentControl}>
+                {['male', 'female'].map((s) => (
+                   <Controller key={s} control={control} name="sex" render={({ field: { onChange, value } }) => (
+                      <TouchableOpacity onPress={() => onChange(s)} style={[styles.segmentBtn, value === s && styles.segmentBtnActive]}>
+                        <Text style={[styles.segmentText, value === s && styles.segmentTextActive]}>{s.charAt(0).toUpperCase() + s.slice(1)}</Text>
+                      </TouchableOpacity>
+                   )} />
+                ))}
               </View>
-            )} />
-          </View>
+           </View>
         </View>
 
-        <Controller control={control} name="notes" render={({ field: { onChange, value } }) => (
-          <>
-            <Text style={[styles.label, { marginTop: 12 }]}>Medical Comments / History</Text>
-            <TextInput style={[styles.input, { height: 100 }]} value={value} onChangeText={onChange} multiline placeholder="Add any relevant medical history" />
-          </>
-        )} />
-
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.confirmBtn} onPress={handleSubmit(onConfirm as any)}>
-            <Text style={styles.confirmText}>Confirm Booking</Text>
-          </TouchableOpacity>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Notes (Optional)</Text>
+          <Controller control={control} name="notes" render={({ field: { onChange, value } }) => (
+             <TextInput style={[styles.input, { height: 80, paddingTop: 12 }]} value={value} onChangeText={onChange} multiline placeholder="Medical history, allergies..." placeholderTextColor="#94A3B8" />
+          )} />
         </View>
       </View>
+
+      {errors.root && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-circle" size={20} color="#B91C1C" />
+          <Text style={styles.errorBannerText}>{errors.root.message}</Text>
+        </View>
+      )}
+
+      <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit(onConfirm, onInvalid)} activeOpacity={0.8}>
+        <Text style={styles.submitBtnText}>Confirm Booking</Text>
+        <Feather name="arrow-right" size={20} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Date Picker Modal */}
+      <Modal visible={showDobPicker} transparent animationType="fade">
+         <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+               <Calendar onDayPress={(d) => { setValue('dob', d.dateString); setShowDobPicker(false); }} maxDate={moment().format('YYYY-MM-DD')} />
+               <TouchableOpacity style={styles.modalClose} onPress={() => setShowDobPicker(false)}>
+                 <Text style={styles.modalCloseText}>Close</Text>
+               </TouchableOpacity>
+            </View>
+         </View>
+      </Modal>
     </ScrollView>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.tabs}>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]} 
-            onPress={() => setActiveTab('upcoming')}
-          >
-            <Text style={[styles.tabText, activeTab === 'upcoming' && styles.activeTabText]}>Upcoming</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'past' && styles.activeTab]} 
-            onPress={() => setActiveTab('past')}
-          >
-            <Text style={[styles.tabText, activeTab === 'past' && styles.activeTabText]}>Past</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'book' && styles.activeTab]} 
-            onPress={() => setActiveTab('book')}
-          >
-            <Text style={[styles.tabText, activeTab === 'book' && styles.activeTabText]}>Book New</Text>
-          </TouchableOpacity>
-        </View>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      
+      {/* Header */}
+     
 
-        {activeTab === 'book' ? renderBookingForm() : renderAppointmentList()}
+      {/* Tabs */}
+      <View style={styles.tabContainer}>
+        <View style={styles.tabWrapper}>
+          {['upcoming', 'past', 'book'].map((t) => (
+            <TouchableOpacity 
+              key={t} 
+              style={[styles.tabBtn, activeTab === t && styles.tabBtnActive]} 
+              onPress={() => setActiveTab(t as Tab)}
+            >
+               <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
+                 {t === 'book' ? 'New Booking' : t.charAt(0).toUpperCase() + t.slice(1)}
+               </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Content */}
+      <View style={styles.content}>
+        {activeTab === 'book' ? renderBookingForm() : (
+          <FlatList
+            data={filteredAppointments}
+            keyExtractor={(i) => i.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            renderItem={renderAppointmentCard}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                 <Feather name="calendar" size={40} color="#CBD5E1" />
+                 <Text style={[styles.emptyStateText, { fontSize: 16, marginTop: 12 }]}>No appointments found.</Text>
+              </View>
+            }
+          />
+        )}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   content: { flex: 1 },
-  listContent: { paddingTop: 16, paddingBottom: 40 },
-  bookingFormContent: { paddingTop: 16, paddingBottom: 120 },
-
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#eee' },
-  tab: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  activeTab: { borderBottomWidth: 2, borderColor: '#0b6efd' },
-  tabText: { color: '#666' },
-  activeTabText: { color: '#0b6efd', fontWeight: '600' },
-
-  bookingForm: { flex: 1, paddingHorizontal: 16 },
-  calendarWrap: { marginTop: 12, marginBottom: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-
-  form: { marginTop: 8, paddingBottom: 40 },
-  label: { color: '#666', fontSize: 13 },
-  input: { height: 44, borderWidth: 1, borderColor: '#eee', borderRadius: 8, paddingHorizontal: 10, marginTop: 6, backgroundColor: '#fafafa' },
-  rowInputs: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-
-  card: {
-    flexDirection: "row",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#f2f2f2",
-    marginBottom: 10,
-    backgroundColor: "#fafafa",
-    marginHorizontal: 16,
-  },
-  cardLeft: { width: 110 },
-  dateText: { fontWeight: "700" },
-  timeText: { color: "#666", marginTop: 6 },
-  cardRight: { flex: 1, alignItems: "flex-end" },
-  doctorText: { fontWeight: "700" },
-  status: { marginTop: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, fontWeight: "700" },
-  upcoming: { backgroundColor: "#edf7f1", color: "#0a8a59" },
-  completed: { backgroundColor: "#eef2ff", color: "#4b5cff" },
-  cancelled: { backgroundColor: "#fff0f0", color: "#d83b3b" },
-
-  // Time slot styles
-  loadingContainer: { 
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    marginVertical: 8
-  },
-  loadingText: { 
-    marginTop: 8,
-    color: '#666',
-    fontSize: 14
-  },
-  noSlotsContainer: {
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    marginVertical: 8
-  },
-  noSlotsText: {
-    color: '#666',
-    fontSize: 14,
-    textAlign: 'center'
-  },
-  slot: { 
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-    marginRight: 8,
-    backgroundColor: '#fff'
-  },
-  slotSelected: { 
-    backgroundColor: '#0b6efd',
-    borderColor: '#0b6efd'
-  },
-  slotText: { 
-    color: '#333',
-    fontWeight: '600'
-  },
-
-  sexOption: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee', marginRight: 8 },
-  sexOptionSelected: { backgroundColor: '#0b6efd', borderColor: '#0b6efd' },
-
-  unitBtn: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#eee', marginLeft: 6 },
-  unitBtnActive: { backgroundColor: '#0b6efd', borderColor: '#0b6efd' },
-
-  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '92%', maxHeight: '80%', backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' },
-  modalCloseBtn: { padding: 12, alignItems: 'center' },
-
-  // Scan type styles
-  scanOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-    marginRight: 8,
-    backgroundColor: '#fff',
-    minWidth: 140,
-  },
-  scanOptionSelected: {
-    backgroundColor: '#0b6efd',
-    borderColor: '#0b6efd',
-  },
-  scanName: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  scanDuration: {
-    fontSize: 13,
-    color: '#666',
-  },
-  scanDetails: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  scanHeader: {
+  
+  // Header
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: COLORS.bg,
   },
-  scanDetailName: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  scanPrice: {
-    fontSize: 15,
-    color: '#0b6efd',
-    fontWeight: '600',
-  },
-  scanDescription: {
-    color: '#4a4a4a',
-    lineHeight: 20,
+  headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textMain, letterSpacing: -0.5 },
+  historyBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center' },
+
+  // Tabs
+  tabContainer: { paddingHorizontal: 20, marginBottom: 10 },
+  tabWrapper: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 12, padding: 4 },
+  tabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  tabBtnActive: { backgroundColor: '#fff', ...SHADOW },
+  tabText: { fontSize: 13, fontWeight: '600', color: COLORS.textSec },
+  tabTextActive: { color: COLORS.textMain },
+
+  // Lists
+  listContent: { padding: 20, paddingBottom: 100 },
+  bookingContent: { padding: 20, paddingBottom: 120 },
+
+  // Cards
+  card: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 16,
+    ...SHADOW,
   },
-  closeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#e9ecef',
+  cardDate: { 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: COLORS.primarySoft, 
+    borderRadius: 12, 
+    width: 60, 
+    height: 60, 
+    marginRight: 16 
   },
-  closeButtonText: {
-    color: '#495057',
-    fontSize: 13,
-  },
-  prepItem: {
+  cardDay: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
+  cardMonth: { fontSize: 12, fontWeight: '600', color: COLORS.primary, textTransform: 'uppercase' },
+  cardContent: { flex: 1, justifyContent: 'center' },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textMain },
+  cardSubtitle: { fontSize: 14, color: COLORS.textSec, marginTop: 2 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  cardMetaText: { fontSize: 12, color: COLORS.textSec, marginLeft: 6 },
+  calendarButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginLeft: 'auto',
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  bullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#0b6efd',
-    marginRight: 8,
-  },
-  prepText: {
-    color: '#4a4a4a',
-    flex: 1,
+  calendarButtonText: {
+    marginLeft: 4,
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '600',
   },
 
-  actions: { marginTop: 18, alignItems: 'center' },
-  confirmBtn: { backgroundColor: '#0b6efd', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8 },
-  confirmText: { color: '#fff', fontWeight: '700' },
+  // Booking Form Sections
+  sectionContainer: { marginBottom: 24 },
+  sectionHeader: { fontSize: 18, fontWeight: '700', color: COLORS.textMain, marginBottom: 12 },
+  
+  // Calendar
+  calendarWrapper: { borderRadius: 16, overflow: 'hidden', ...SHADOW, backgroundColor: '#fff' },
+  
+  // Time Slots
+  timeChip: { 
+    paddingVertical: 10, paddingHorizontal: 16, 
+    borderRadius: 20, backgroundColor: '#fff', 
+    borderWidth: 1, borderColor: COLORS.border 
+  },
+  timeChipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  timeChipText: { fontSize: 14, fontWeight: '600', color: COLORS.textMain },
+  timeChipTextSelected: { color: '#fff' },
+
+  // Scan Cards
+  scanCard: {
+    width: 140, padding: 16, borderRadius: 16,
+    backgroundColor: '#fff', marginRight: 12,
+    borderWidth: 1, borderColor: COLORS.border,
+    ...SHADOW
+  },
+  scanCardSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  scanIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  scanCardTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textMain, marginBottom: 4 },
+
+  // Scan Details
+  detailsCard: { marginTop: 16, padding: 16, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+  detailsTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textMain },
+  detailsDesc: { fontSize: 13, color: COLORS.textSec, marginTop: 6, lineHeight: 20 },
+  detailsLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textMain, marginTop: 12, marginBottom: 6 },
+  bulletRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  bullet: { width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.primary, marginRight: 8 },
+  bulletText: { fontSize: 13, color: COLORS.textSec },
+
+  // Inputs
+  inputGroup: { marginBottom: 16 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textMain, marginBottom: 6 },
+  input: { 
+    backgroundColor: COLORS.inputBg, borderRadius: 12, 
+    paddingHorizontal: 16, height: 50, 
+    fontSize: 15, color: COLORS.textMain 
+  },
+  readOnlyInput: { backgroundColor: '#F1F5F9', opacity: 0.7, color: COLORS.textSec },
+  rowGap: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  errorText: { color: COLORS.error, fontSize: 12, marginTop: 4 },
+
+  // Segment Control (Sex)
+  segmentControl: { flexDirection: 'row', backgroundColor: COLORS.inputBg, borderRadius: 12, padding: 4, height: 50 },
+  segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
+  segmentBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+  segmentText: { fontSize: 13, color: COLORS.textSec, fontWeight: '500' },
+  segmentTextActive: { color: COLORS.textMain, fontWeight: '600' },
+
+  // Submit
+  submitBtn: { 
+    backgroundColor: COLORS.primary, flexDirection: 'row', 
+    alignItems: 'center', justifyContent: 'center', 
+    paddingVertical: 16, borderRadius: 16, 
+    ...SHADOW, shadowColor: COLORS.primary 
+  },
+  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', marginRight: 8 },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, marginBottom: 16 },
+  errorBannerText: { color: '#B91C1C', marginLeft: 8, fontSize: 13, flex: 1 },
+
+  // Empty States
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
+  emptyStateText: { color: COLORS.textSec, fontStyle: 'italic' },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20, ...SHADOW },
+  modalClose: { marginTop: 16, alignSelf: 'center', padding: 10 },
+  modalCloseText: { color: COLORS.primary, fontWeight: '600' }
 });

@@ -34,7 +34,10 @@ export default function MessageInput({ onSend, onTyping, onAttach }: { onSend: (
   };
 
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: false, quality: 0.8 });
+    // Use new ImagePicker.MediaType when available (avoids deprecation warning),
+    // otherwise fall back to the older MediaTypeOptions for compatibility.
+    const mediaTypesOption = (ImagePicker as any).MediaType?.Images ?? ImagePicker.MediaTypeOptions.Images;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: mediaTypesOption, allowsEditing: false, quality: 0.8 });
     // modern ImagePicker returns { canceled, assets }
     // @ts-ignore
     if (res.canceled) return;

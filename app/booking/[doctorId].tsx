@@ -1,25 +1,28 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
   FlatList,
   TextInput,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import moment from 'moment';
 import { useForm, Controller } from 'react-hook-form';
+import { getDoctor } from '../../services/doctors';
+import { useAuth } from '../../hooks/useAuth';
+import { doc, getDoc, db } from '../../utils/firebaseConfig';
 
 type Params = { doctorId?: string };
 
 type FormValues = {
-  patientId: string;
+  phone: string;
   lastName: string;
   firstName: string;
   middleName?: string;
@@ -32,22 +35,66 @@ type FormValues = {
 
 export default function BookingScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const params = useLocalSearchParams<Params>();
   const doctorId = params.doctorId ?? 'unknown';
 
-  // Mock doctor
-  const doctor = useMemo(() => ({ id: doctorId, name: 'Dr. Nana Cooper', specialty: 'General Practitioner' }), [doctorId]);
+  const [doctor, setDoctor] = useState<any>({ id: doctorId, name: 'Doctor', specialty: '' });
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const d = await getDoctor(doctorId);
+        if (!mounted) return;
+        if (d) setDoctor(d);
+      } catch (e) {
+        console.error('Failed to load doctor', e);
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, [doctorId]);
 
   const [selectedDate, setSelectedDate] = useState<string>(moment().format('YYYY-MM-DD'));
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showDobPicker, setShowDobPicker] = useState(false);
 
   const { control, handleSubmit, watch, setValue } = useForm<FormValues>({
-    defaultValues: { patientId: '', lastName: '', firstName: '', middleName: '', dob: undefined, sex: 'male', weightUnit: 'kg', weight: '', notes: '' },
+    defaultValues: { phone: '', lastName: '', firstName: '', middleName: '', dob: undefined, sex: 'male', weightUnit: 'kg', weight: '', notes: '' },
   });
 
   const dob = watch('dob');
   const age = dob ? moment().diff(moment(dob), 'years') : undefined;
+
+  // Load user profile and auto-fill form
+  useEffect(() => {
+    async function loadProfile() {
+      if (!session?.uid) {
+        setLoadingProfile(false);
+        return;
+      }
+      setLoadingProfile(true);
+      try {
+        const userRef = doc(db, 'users', session.uid);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          // Auto-fill form with profile data
+          setValue('firstName', data.fullName?.split(' ')[0] || '');
+          setValue('lastName', data.fullName?.split(' ').slice(1).join(' ') || '');
+          setValue('dob', data.dob || '');
+          setValue('phone', data.contact || data.phone || '');
+        }
+      } catch (e) {
+        console.error('Failed to load profile', e);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
+    loadProfile();
+  }, [session?.uid, setValue]);
 
   // Mock availability per-date (could be fetched from services/appointments)
   const mockSlotsForDate = (date: string) => {
@@ -66,20 +113,52 @@ export default function BookingScreen() {
     }
 
     // basic validation
-    if (!values.patientId || !values.lastName || !values.firstName || !values.dob) {
-      Alert.alert('Missing fields', 'Please complete required personal details (ID, Last name, First name, DOB).');
+    if (!values.phone || !values.lastName || !values.firstName || !values.dob) {
+      Alert.alert('Missing fields', 'Please complete required personal details (Phone, Last name, First name, DOB).');
       return;
     }
 
-    const payload = {
+    if (!session?.uid) {
+      Alert.alert('Error', 'You must be logged in to book an appointment.');
+      return;
+    }
+
+    const startAt = moment(`${selectedDate} ${selectedSlot}`, 'YYYY-MM-DD hh:mm A').toISOString();
+
+    const appointmentData = {
+      patientId: session.uid,
       doctorId,
-      appointment: { date: selectedDate, time: selectedSlot },
-      patient: { ...values, age },
+      startAt,
+      status: 'pending',
+      notes: values.notes,
+      scanType: { name: 'Consultation', id: 'consultation' },
+      patientDetails: {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        phone: values.phone,
+        dob: values.dob,
+        sex: values.sex,
+        weight: values.weight,
+        weightUnit: values.weightUnit,
+        age,
+      }
     };
-    console.log('Confirm booking payload:', payload);
-    // open booking-confirmation modal
-    router.push('/(modals)/booking-confirmation');
+
+    console.log('Confirm booking payload:', appointmentData);
+    // open booking-confirmation modal and pass details
+    const q = `?date=${encodeURIComponent(selectedDate)}&time=${encodeURIComponent(selectedSlot || '')}&appointmentData=${encodeURIComponent(JSON.stringify(appointmentData))}`;
+    router.push((`/(modals)/booking-confirmation${q}`) as any);
   };
+
+  if (loadingProfile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#0b6efd" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -122,11 +201,11 @@ export default function BookingScreen() {
 
         <Controller
           control={control}
-          name="patientId"
+          name="phone"
           render={({ field: { onChange, value } }) => (
             <>
-              <Text style={styles.label}>ID</Text>
-              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="National ID / Passport" />
+              <Text style={styles.label}>Phone Number</Text>
+              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="+1 555-0100" keyboardType="phone-pad" />
             </>
           )}
         />
@@ -134,15 +213,15 @@ export default function BookingScreen() {
         <View style={styles.rowInputs}>
           <Controller control={control} name="lastName" render={({ field: { onChange, value } }) => (
             <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.label}>Last Name</Text>
-              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="Last name" />
+              <Text style={[styles.label, { color: '#0b6efd', fontWeight: '700' }]}>Last Name (from profile)</Text>
+              <TextInput style={[styles.input, { backgroundColor: '#f0f7ff', borderColor: '#0b6efd' }]} value={value} onChangeText={onChange} placeholder="Last name" />
             </View>
           )} />
 
           <Controller control={control} name="firstName" render={({ field: { onChange, value } }) => (
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>First Name</Text>
-              <TextInput style={styles.input} value={value} onChangeText={onChange} placeholder="First name" />
+              <Text style={[styles.label, { color: '#0b6efd', fontWeight: '700' }]}>First Name (from profile)</Text>
+              <TextInput style={[styles.input, { backgroundColor: '#f0f7ff', borderColor: '#0b6efd' }]} value={value} onChangeText={onChange} placeholder="First name" />
             </View>
           )} />
         </View>
@@ -155,20 +234,67 @@ export default function BookingScreen() {
         )} />
 
         <View style={{ marginTop: 10 }}>
-          <Text style={styles.label}>Date of Birth</Text>
+          <Text style={[styles.label, { color: '#0b6efd', fontWeight: '700' }]}>Date of Birth (from profile)</Text>
           <Controller control={control} name="dob" render={({ field: { onChange, value } }) => (
-            <TouchableOpacity onPress={() => setShowDobPicker(true)} style={[styles.input, { justifyContent: 'center' }]}>
-              <Text>{value ? moment(value).format('DD/MM/YY') : 'Select date of birth'}</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity onPress={() => setShowDobPicker(true)} style={[styles.input, { backgroundColor: '#f0f7ff', borderColor: '#0b6efd', justifyContent: 'center', paddingVertical: 12 }]}>
+                <Text style={{ fontSize: 16, color: value ? '#333' : '#999' }}>
+                  {value ? moment(value).format('MMMM DD, YYYY') : 'Select date of birth'}
+                </Text>
+              </TouchableOpacity>
+              {age !== undefined && value ? (
+                <Text style={{ marginTop: 8, color: '#0b6efd', fontWeight: '600', fontSize: 13 }}>
+                  ✓ Age: {age} years old
+                </Text>
+              ) : null}
+            </>
           )} />
-          {age !== undefined ? <Text style={{ marginTop: 6, color: '#666' }}>Age: {age} years</Text> : null}
         </View>
 
-        <Modal visible={showDobPicker} transparent animationType="slide">
-          <View style={styles.modalWrap}>
-            <View style={styles.modalContent}>
-              <Calendar onDayPress={(d) => { setValue('dob', d.dateString); setShowDobPicker(false); }} maxDate={moment().format('YYYY-MM-DD')} />
-              <TouchableOpacity onPress={() => setShowDobPicker(false)} style={styles.modalCloseBtn}><Text style={{ color: '#0b6efd' }}>Close</Text></TouchableOpacity>
+        <Modal visible={showDobPicker} transparent animationType="fade">
+          <View style={styles.dobModalOverlay}>
+            <View style={styles.dobModalContent}>
+              <View style={styles.dobModalHeader}>
+                <Text style={styles.dobModalTitle}>Select Your Date of Birth</Text>
+                <TouchableOpacity onPress={() => setShowDobPicker(false)}>
+                  <Text style={styles.dobModalCloseBtn}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.calendarContainer}>
+                <Calendar 
+                  onDayPress={(d) => { 
+                    setValue('dob', d.dateString);
+                    setShowDobPicker(false); 
+                  }} 
+                  maxDate={moment().format('YYYY-MM-DD')}
+                  minDate={moment().subtract(120, 'years').format('YYYY-MM-DD')}
+                  theme={{
+                    backgroundColor: '#fff',
+                    calendarBackground: '#fff',
+                    textSectionTitleColor: '#0b6efd',
+                    selectedDayBackgroundColor: '#0b6efd',
+                    selectedDayTextColor: '#fff',
+                    todayTextColor: '#0b6efd',
+                    todayBackgroundColor: '#e8f4ff',
+                    dayTextColor: '#333',
+                    textDisabledColor: '#ddd',
+                    dotColor: '#0b6efd',
+                    selectedDotColor: '#fff',
+                    arrowColor: '#0b6efd',
+                    monthTextColor: '#333',
+                  }}
+                />
+              </View>
+
+              <View style={styles.dobModalFooter}>
+                <TouchableOpacity 
+                  onPress={() => setShowDobPicker(false)} 
+                  style={styles.dobModalDismissBtn}
+                >
+                  <Text style={styles.dobModalDismissText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -252,7 +378,56 @@ const styles = StyleSheet.create({
   unitBtn: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#eee', marginLeft: 6 },
   unitBtnActive: { backgroundColor: '#0b6efd', borderColor: '#0b6efd' },
 
-  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '92%', maxHeight: '80%', backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' },
-  modalCloseBtn: { padding: 12, alignItems: 'center' },
+  dobModalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'flex-end',
+  },
+  dobModalContent: { 
+    backgroundColor: '#fff', 
+    borderTopLeftRadius: 20, 
+    borderTopRightRadius: 20,
+    paddingBottom: 24,
+    maxHeight: '90%',
+  },
+  dobModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dobModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  dobModalCloseBtn: {
+    fontSize: 24,
+    color: '#999',
+    fontWeight: '600',
+  },
+  calendarContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+  },
+  dobModalFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  dobModalDismissBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  dobModalDismissText: {
+    color: '#666',
+    fontWeight: '600',
+    fontSize: 14,
+  },
 });

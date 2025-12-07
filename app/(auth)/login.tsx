@@ -10,21 +10,49 @@ import {
   StatusBar,
   ActivityIndicator,
   Pressable,
+  ScrollView,
+  Image,
 } from "react-native";
-import { AntDesign } from '@expo/vector-icons';
+import {
+  Feather,
+  MaterialCommunityIcons,
+} from "@expo/vector-icons";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
-import { signInWithGoogle } from '../../services/auth';
+import { GoogleSignInButton } from '../../components/GoogleSignInButton';
+
+// --- 🏥 Premium Healthcare Theme ---
+const COLORS = {
+  bg: "#F8FAFC",        // Slate 50
+  surface: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primarySoft: "#EEF2FF",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  border: "#E2E8F0",
+  success: "#10B981",   // Emerald
+  danger: "#EF4444",    // Red
+  warning: "#F59E0B",   // Amber
+  inputBg: "#F1F5F9",   // Slate 100
+};
+
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 4,
+};
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn, isLoading: authLoading } = useAuth(); // Destructure signIn and authLoading
+  const { signIn, isLoading: authLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [secure, setSecure] = useState(true);
-  const [loading, setLoading] = useState(false); // Local loading state
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isValidEmail = (value: string) =>
@@ -43,328 +71,243 @@ export default function LoginScreen() {
       return;
     }
 
-    setLoading(true); // Start local loading indicator
+    setLoading(true);
     try {
       await signIn(email.trim(), password);
-      // Navigation is now handled by useProtectedRoute in useAuth.tsx
     } catch (err: any) {
       console.log("Sign in error:", err);
-      // Firebase Auth errors often have 'auth/' prefix, can be parsed for better messages
       const errorMessage = err.message.includes('auth/') 
-        ? err.message.split('auth/')[1].replace(/\([^)]+\)/g, '').replace(/-/g, ' ').trim() // Basic parsing
-        : "Sign in failed. Please check your credentials and try again.";
+        ? err.message.split('auth/')[1].replace(/\([^)]+\)/g, '').replace(/-/g, ' ').trim()
+        : "Sign in failed. Check credentials.";
       setError(errorMessage);
     } finally {
-      setLoading(false); // Stop local loading indicator
+      setLoading(false);
     }
   };
 
   const overallLoading = loading || authLoading;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f6f8ff" />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <View style={styles.container}>
-          <View style={styles.brand}>
-            <Text style={styles.logo}>MediCare</Text>
-            <Text style={styles.tagline}>Modern, secure healthcare in your pocket</Text>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          showsVerticalScrollIndicator={false}
+        >
+          {/* --- Brand Header --- */}
+          <View style={styles.header}>
+            <View style={styles.logoIcon}>
+              <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
+            </View>
+            <Text style={styles.appName}>RAAJ MedHub<Text style={styles.appNameDot}>.</Text></Text>
+            <Text style={styles.tagline}>Professional Healthcare Management</Text>
           </View>
 
+          {/* --- Login Card --- */}
           <View style={styles.card}>
-            <Text style={styles.heading}>Welcome back</Text>
-            <Text style={styles.subheading}>Sign in to continue</Text>
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="you@company.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-                textContentType="username"
-                value={email}
-                onChangeText={(t) => setEmail(t)}
-                returnKeyType="next"
-                editable={!overallLoading}
-                accessibilityLabel="Email input"
-              />
+            <View style={styles.cardHeader}>
+              <Text style={styles.title}>Welcome Back</Text>
+              <Text style={styles.subtitle}>Securely access your patient portal</Text>
             </View>
 
-            <View style={styles.inputRow}>
-              <View style={styles.passwordLabelRow}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <Pressable onPress={() => setSecure((s) => !s)} disabled={overallLoading}>
-                  <Text style={styles.toggle}>{secure ? "Show" : "Hide"}</Text>
+            {error && (
+              <View style={styles.errorContainer}>
+                <Feather name="alert-circle" size={16} color={COLORS.danger} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <View style={styles.inputContainer}>
+                <Feather name="mail" size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="name@example.com"
+                  placeholderTextColor="#ADB5BD"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!overallLoading}
+                />
+              </View>
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Password</Text>
+                <Pressable onPress={() => router.push("/forgot-password")}>
+                  <Text style={styles.forgotLink}>Forgot?</Text>
                 </Pressable>
               </View>
-
-              <TextInput
-                style={styles.input}
-                placeholder="••••••••"
-                secureTextEntry={secure}
-                autoCapitalize="none"
-                autoComplete="password"
-                textContentType="password"
-                value={password}
-                onChangeText={(t) => setPassword(t)}
-                returnKeyType="done"
-                editable={!overallLoading}
-                accessibilityLabel="Password input"
-              />
+              <View style={styles.inputContainer}>
+                <Feather name="lock" size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#ADB5BD"
+                  secureTextEntry={secure}
+                  value={password}
+                  onChangeText={setPassword}
+                  editable={!overallLoading}
+                />
+                <Pressable onPress={() => setSecure(!secure)} style={styles.eyeIcon}>
+                  <Feather name={secure ? "eye-off" : "eye"} size={20} color={COLORS.textSec} />
+                </Pressable>
+              </View>
             </View>
 
+            {/* Sign In Button */}
             <TouchableOpacity
-              style={styles.forgotRow}
-              onPress={() => router.push("/forgot-password")}
-              accessibilityRole="button"
-              disabled={overallLoading}
-            >
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, (!email || !password || overallLoading) && styles.primaryBtnDisabled]}
+              style={[styles.primaryBtn, overallLoading && styles.btnDisabled]}
               onPress={handleSignIn}
-              disabled={!email || !password || overallLoading}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !email || !password || overallLoading }}
+              disabled={overallLoading}
             >
               {overallLoading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.primaryBtnText}>Sign in</Text>
+                <>
+                  <Text style={styles.primaryBtnText}>Sign In</Text>
+                  <Feather name="arrow-right" size={20} color="#FFF" />
+                </>
               )}
             </TouchableOpacity>
 
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.divider} />
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text style={styles.orText}>OR CONTINUE WITH</Text>
+              <View style={styles.line} />
             </View>
 
-            <TouchableOpacity
-              style={[styles.googleBtn, overallLoading && styles.primaryBtnDisabled]}
-              onPress={async () => {
-                setError(null);
-                setLoading(true);
-                try {
-                  await signInWithGoogle();
-                } catch (err: any) {
-                  console.warn('Google sign-in error', err);
-                  setError(err?.message || 'Google sign in failed.');
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              accessibilityRole="button"
-              disabled={overallLoading}
-            >
-              {overallLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <View style={styles.googleContent}>
-                  <AntDesign name="google" size={18} color="#fff" />
-                  <Text style={styles.googleBtnText}>Sign in with Google</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={() => router.push("/register")}
-              accessibilityRole="button"
-              disabled={overallLoading}
-            >
-              <Text style={styles.secondaryBtnText}>Create an account</Text>
-            </TouchableOpacity>
+            {/* Google Button */}
+            <GoogleSignInButton />
           </View>
 
+          {/* --- Footer --- */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              By signing in you agree to our{" "}
-              <Text style={styles.link}>Terms</Text> and <Text style={styles.link}>Privacy Policy</Text>.
-            </Text>
+            <Text style={styles.footerText}>New to MedHub?</Text>
+            <TouchableOpacity onPress={() => router.push("/register")}>
+              <Text style={styles.createLink}>Create Account</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const PRIMARY = "#0b6efd";
-const BACKGROUND = "#f6f8ff";
-const CARD = "#ffffff";
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BACKGROUND },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   flex: { flex: 1 },
-  container: {
-    flex: 1,
-    padding: 24,
-    justifyContent: "center",
-  },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
 
-  brand: {
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  logo: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: PRIMARY,
-    letterSpacing: 0.6,
-  },
-  tagline: {
-    marginTop: 6,
-    color: "#5b6b8a",
-    fontSize: 13,
-  },
-
-  card: {
-    backgroundColor: CARD,
+  // --- Header ---
+  header: { alignItems: 'center', marginBottom: 32 },
+  logoIcon: {
+    width: 56,
+    height: 56,
     borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-
-  heading: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 6,
-    color: "#0f1724",
-  },
-  subheading: {
-    color: "#6b7280",
-    marginBottom: 14,
-  },
-
-  error: {
-    color: "#d83b3b",
-    marginBottom: 10,
-    fontSize: 13,
-    textAlign: "center",
-  },
-
-  inputRow: {
-    marginBottom: 12,
-  },
-  inputLabel: {
-    fontSize: 13,
-    color: "#8892a8",
-    marginBottom: 6,
-  },
-  input: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#eef2ff",
-    paddingHorizontal: 12,
-    backgroundColor: "#fbfdff",
-    color: "#0f1724",
-  },
-  passwordLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  toggle: {
-    color: PRIMARY,
-    fontWeight: "600",
-  },
-
-  forgotRow: {
-    alignItems: "flex-end",
-    marginBottom: 14,
-  },
-  forgotText: {
-    color: PRIMARY,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  primaryBtn: {
-    backgroundColor: PRIMARY,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  primaryBtnDisabled: {
-    backgroundColor: "#93b5ff",
-  },
-  primaryBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 14,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#eef2ff",
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: "#9aa7c7",
-    fontSize: 12,
-  },
-
-  secondaryBtn: {
-    borderWidth: 1,
-    borderColor: "rgba(11,110,253,0.12)",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  secondaryBtnText: {
-    color: PRIMARY,
-    fontWeight: "700",
-  },
-
-  footer: {
-    marginTop: 18,
-    alignItems: "center",
-    paddingHorizontal: 10,
-  },
-  footerText: {
-    color: "#9aa7c7",
-    fontSize: 12,
-    textAlign: "center",
-  },
-  link: {
-    color: PRIMARY,
-    fontWeight: "700",
-  },
-  googleBtn: {
-    backgroundColor: '#de4d41',
-    paddingVertical: 12,
-    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
+    ...SHADOW,
+    shadowColor: COLORS.primary,
   },
-  googleContent: {
+  appName: { fontSize: 32, fontWeight: '800', color: COLORS.primary, letterSpacing: -0.5 },
+  appNameDot: { color: COLORS.primary },
+  tagline: { fontSize: 14, color: COLORS.textSec, marginTop: 8, fontWeight: '500' },
+
+  // --- Card ---
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 24,
+    ...SHADOW,
+  },
+  cardHeader: { marginBottom: 24 },
+  title: { fontSize: 22, fontWeight: '700', color: COLORS.textMain, marginBottom: 8 },
+  subtitle: { fontSize: 14, color: COLORS.textSec },
+
+  // --- Inputs ---
+  inputGroup: { marginBottom: 20 },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  label: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
+  forgotLink: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
+  
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    height: 56,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  inputIcon: { marginRight: 12 },
+  input: { flex: 1, fontSize: 16, color: COLORS.textMain, height: '100%' },
+  eyeIcon: { padding: 8 },
+
+  // --- Errors ---
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.danger,
+  },
+  errorText: { color: COLORS.danger, fontSize: 13, marginLeft: 8, flex: 1 },
+
+  // --- Buttons ---
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    height: 56,
+    borderRadius: 14,
+    marginBottom: 24,
+    gap: 8,
+    ...SHADOW,
+    shadowOpacity: 0.15,
+  },
+  btnDisabled: { opacity: 0.7 },
+  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+    height: 56,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     gap: 10,
   },
-  googleBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    marginLeft: 10,
-  },
+  googleBtnText: { fontSize: 16, fontWeight: '600', color: COLORS.textMain },
+
+  // --- Divider ---
+  divider: { flexDirection: 'row', alignItems: 'center', marginBottom: 24 },
+  line: { flex: 1, height: 1, backgroundColor: COLORS.border },
+  orText: { marginHorizontal: 16, fontSize: 12, color: COLORS.textSec, fontWeight: '600' },
+
+  // --- Footer ---
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32, gap: 6 },
+  footerText: { color: COLORS.textSec, fontSize: 14 },
+  createLink: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
 });

@@ -1,218 +1,307 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  FlatList,
+  ScrollView,
+  Image,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useAuth } from "../../hooks/useAuth";
+import moment from "moment-timezone";
+import { subscribeToAppointments } from '../../services/appointments';
 
-/**
- * Polished Doctor Dashboard
- * - Elevated, card-based layout with refined spacing and typography
- * - Iconography via @expo/vector-icons for a premium, consistent look
- * - Better color tokens and subtle shadows for depth
- * - Touchable message rows and stat cards prepared for navigation
- */
+// --- 🎨 Unified Premium Theme ---
+const COLORS = {
+  bg: "#F8FAFC",        // Slate 50
+  surface: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primaryDark: "#312E81",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  border: "#E2E8F0",
+  success: "#10B981",   // Emerald
+  accent: "#F59E0B",    // Amber
+};
 
-const BG = "#f6f8ff";
-const PRIMARY = "#0b6efd";
-const CARD = "#ffffff";
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.06,
+  shadowRadius: 16,
+  elevation: 4,
+};
 
 export default function DoctorDashboard() {
   const router = useRouter();
+  const { session, user } = useAuth();
+  const [appointments, setAppointments] = useState<any[]>([]);
 
-  // Mock data
-  const todaysAppointments = 8;
-  const patientsInQueue = 3;
-  const patientsSeenThisWeek = 26;
-  const recentMessages = [
-    { id: "1", from: "Nana Cooper", text: "Thanks doc — prescription received.", time: "09:12" },
-    { id: "2", from: "Alex Riley", text: "Can we reschedule tomorrow?", time: "Yesterday" },
-  ];
+  // --- Logic (Preserved) ---
+  useEffect(() => {
+    if (!session?.uid) return;
+    const unsubAppts = subscribeToAppointments(session.uid, 'doctor', (items: any) => setAppointments(items));
+    return () => { try { unsubAppts(); } catch {} };
+  }, [session?.uid]);
 
-  const StatCard = ({ icon, value, label, onPress }: { icon: React.ReactNode; value: number | string; label: string; onPress?: () => void }) => (
-    <TouchableOpacity style={styles.statCard} activeOpacity={0.85} onPress={onPress}>
-      <View style={styles.statIconWrap}>{icon}</View>
-      <Text style={styles.statNumber}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
+  const todaysAppointments = appointments.filter(a => {
+    if (!a.startAt) return false;
+    const date = typeof a.startAt === 'string' ? a.startAt.split(' ')[0] : (a.startAt?.toDate ? a.startAt.toDate() : new Date(a.startAt));
+    const day = moment(date).format('YYYY-MM-DD');
+    return day === moment().format('YYYY-MM-DD');
+  }).length;
 
-  const renderMessage = ({ item }: { item: typeof recentMessages[0] }) => (
-    <TouchableOpacity
-      style={styles.messageRow}
-      activeOpacity={0.8}
-      onPress={() => {
-        // navigate to conversation (placeholder)
-        router.push(`/doctor-messages/${item.id}`);
-      }}
-    >
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{item.from.charAt(0)}</Text>
-      </View>
+  const patientsInQueue = appointments.filter(a => ['pending','waiting','checked-in'].includes((a.status || '').toString())).length;
 
-      <View style={styles.messageContent}>
-        <Text style={styles.messageFrom}>{item.from}</Text>
-        <Text style={styles.messageText} numberOfLines={1}>
-          {item.text}
-        </Text>
-      </View>
+  const patientsSeenThisWeek = appointments.filter(a => {
+    const status = a.status || '';
+    if (status !== 'completed') return false;
+    if (!a.startAt) return false;
+    const date = typeof a.startAt === 'string' ? a.startAt.split(' ')[0] : (a.startAt?.toDate ? a.startAt.toDate() : new Date(a.startAt));
+    return moment(date).isAfter(moment().subtract(7, 'days'));
+  }).length;
 
-      <Text style={styles.messageTime}>{item.time}</Text>
-    </TouchableOpacity>
-  );
+
+
+
+
+
+  // --- Helper: Time of Day Greeting ---
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Welcome";
+    if (hour < 18) return "Welcome";
+    return "Welcome";
+  };
+
+  if (!session) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
-      <View style={styles.container}>
-        <View style={styles.cardRow}>
-          <StatCard
-            icon={<MaterialIcons name="calendar-today" size={20} color={PRIMARY} />}
-            value={todaysAppointments}
-            label="Today's Appointments"
-            onPress={() => router.push("/(doctor)/schedule")}
-          />
-          <StatCard
-            icon={<Feather name="users" size={20} color="#16a34a" />}
-            value={patientsInQueue}
-            label="In Queue"
-            onPress={() => router.push("/(doctor)/queue")}
-          />
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+
+      {/* --- Header Section --- */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.dateText}>{moment().format("dddd, MMMM Do")}</Text>
+          <Text style={styles.greetingText}>{getGreeting()}, Dr. {user?.fullName || "User"}</Text>
         </View>
-
-        <View style={styles.bigCard}>
-          <View style={styles.bigCardHeader}>
-            <Text style={styles.bigCardTitle}>Quick Stats</Text>
-            <Text style={styles.bigCardSub}>This week</Text>
-          </View>
-          <View style={styles.bigCardBody}>
-            <View style={styles.bigStat}>
-              <Text style={styles.bigStatNumber}>{patientsSeenThisWeek}</Text>
-              <Text style={styles.bigStatLabel}>Patients seen</Text>
-            </View>
-
-            <View style={styles.pulse}>
-              <View style={styles.pulseDot} />
-              <Text style={styles.pulseText}>Clinic running smoothly — keep up the good work</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.messagesCard}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Messages</Text>
-            <TouchableOpacity onPress={() => router.push("/(doctor)/messages")}>
-              <Text style={styles.viewAll}>View all</Text>
-            </TouchableOpacity>
-          </View>
-
-          <FlatList
-            data={recentMessages}
-            keyExtractor={(i) => i.id}
-            renderItem={renderMessage}
-            ItemSeparatorComponent={() => <View style={styles.sep} />}
-          />
-        </View>
+        <TouchableOpacity style={styles.profileBtn} onPress={() => router.push("/(doctor)/profile")}>
+          <Text style={styles.profileInitial}>{(user?.fullName || "D").charAt(0)}</Text>
+        </TouchableOpacity>
       </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
+
+        {/* --- Quick Stats Overview --- */}
+        <Text style={styles.sectionTitle}>Overview</Text>
+
+        <View style={styles.statsGrid}>
+          {/* Hero Card: Today */}
+          <TouchableOpacity
+            style={[styles.statCard, styles.heroCard]}
+            onPress={() => router.push("/(doctor)/schedule")}
+            activeOpacity={0.9}
+          >
+            <View style={styles.iconCircleLight}>
+              <Feather name="calendar" size={24} color="#FFF" />
+            </View>
+            <View>
+              <Text style={styles.heroNumber}>{todaysAppointments}</Text>
+              <Text style={styles.heroLabel}>Appointments Today</Text>
+            </View>
+            <Feather name="arrow-right" size={20} color="#FFF" style={styles.heroArrow} />
+          </TouchableOpacity>
+
+          {/* Secondary Cards Row */}
+          <View style={styles.secondaryStatsRow}>
+            <TouchableOpacity
+              style={styles.secondaryCard}
+              onPress={() => router.push("/(doctor)/queue")}
+            >
+              <View style={[styles.iconBox, { backgroundColor: '#ECFDF5' }]}>
+                <Feather name="users" size={20} color={COLORS.success} />
+              </View>
+              <Text style={styles.secondaryNumber}>{patientsInQueue}</Text>
+              <Text style={styles.secondaryLabel}>Waiting Queue</Text>
+            </TouchableOpacity>
+
+            <View style={styles.secondaryCard}>
+              <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
+                <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.primary} />
+              </View>
+              <Text style={styles.secondaryNumber}>{patientsSeenThisWeek}</Text>
+              <Text style={styles.secondaryLabel}>Seen This Week</Text>
+            </View>
+          </View>
+        </View>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  container: { flex: 1, paddingHorizontal: 20, paddingBottom: 20 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
 
-  cardRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
+  // Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: COLORS.bg,
   },
-
-  statCard: {
-    flex: 1,
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 6,
-    alignItems: "center",
-    // shadow
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+  dateText: {
+    fontSize: 13,
+    color: COLORS.textSec,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  statIconWrap: {
+  greetingText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.textMain,
+    marginTop: 4,
+  },
+  profileBtn: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: "#f0f6ff",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  statNumber: { fontSize: 22, fontWeight: "800", color: PRIMARY },
-  statLabel: { fontSize: 12, color: "#6b7280", marginTop: 6, textAlign: "center" },
-
-  bigCard: {
-    marginTop: 16,
-    backgroundColor: CARD,
     borderRadius: 14,
+    backgroundColor: COLORS.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW,
+  },
+  profileInitial: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+
+  scrollView: { flex: 1, paddingHorizontal: 24 },
+
+  // Titles
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textMain,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  seeAll: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+
+  // Stats Grid
+  statsGrid: { gap: 16 },
+
+  // Hero Card
+  statCard: {
+    borderRadius: 20,
+    padding: 20,
+    ...SHADOW,
+  },
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
+  },
+  iconCircleLight: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  heroNumber: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#FFF',
+    lineHeight: 38,
+  },
+  heroLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  heroArrow: {
+    marginLeft: 'auto',
+    opacity: 0.8,
+  },
+
+  // Secondary Stats
+  secondaryStatsRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  secondaryCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.04)",
-    // elevation / shadow
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    ...SHADOW,
   },
-  bigCardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  bigCardTitle: { fontSize: 16, fontWeight: "800", color: "#0f1724" },
-  bigCardSub: { color: "#6b7280", fontSize: 12 },
-
-  bigCardBody: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  bigStat: { flex: 1 },
-  bigStatNumber: { fontSize: 28, fontWeight: "900", color: "#0f1724" },
-  bigStatLabel: { color: "#6b7280", marginTop: 6 },
-
-  pulse: { flex: 1.3, marginLeft: 12, flexDirection: "row", alignItems: "center" },
-  pulseDot: { width: 10, height: 10, borderRadius: 6, backgroundColor: "#10b981", marginRight: 10 },
-  pulseText: { color: "#475569", fontSize: 13 },
-
-  messagesCard: { marginTop: 18 },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#0f1724" },
-  viewAll: { color: PRIMARY, fontWeight: "700" },
-
-  messageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: "#eef6ff",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
+  secondaryNumber: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.textMain,
   },
-  avatarText: { color: PRIMARY, fontWeight: "800" },
+  secondaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSec,
+    marginTop: 4,
+  },
 
-  messageContent: { flex: 1 },
-  messageFrom: { fontWeight: "700", color: "#0f1724" },
-  messageText: { color: "#6b7280", marginTop: 4 },
-
-  messageTime: { color: "#9aa7c7", fontSize: 12, marginLeft: 8 },
-
-  sep: { height: 1, backgroundColor: "rgba(15,23,36,0.03)" },
+  // Empty State
+  emptyState: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: COLORS.textSec,
+    marginTop: 8,
+    fontSize: 14,
+  },
 });

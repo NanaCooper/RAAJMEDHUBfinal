@@ -12,6 +12,22 @@ import { useRouter } from "expo-router";
 
 export default function BranchInfoModal() {
   const router = useRouter();
+  const [doctors, setDoctors] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { listDoctors } = await import('../../services/doctors');
+        const list = await listDoctors();
+        if (!mounted) return;
+        setDoctors(list.map((d: any) => d.fullName || d.name || 'Doctor'));
+      } catch (e) {
+        console.error('Failed to load doctors for branch', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const branch = {
     name: "MediCare Central",
@@ -19,7 +35,7 @@ export default function BranchInfoModal() {
     phone: "+1 555-0101",
     hours: "Mon-Fri 08:00-17:00",
     services: ["General Consultation", "Lab Tests", "Pediatrics"],
-    doctors: ["Dr. Nana Cooper", "Dr. Alex Riley"],
+    doctors,
   };
 
   return (

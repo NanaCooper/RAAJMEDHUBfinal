@@ -30,6 +30,19 @@ const initialWeek: DayAvailability[] = [
   { day: "Sun", enabled: false, start: "00:00", end: "00:00" },
 ];
 
+const COLORS = {
+  primary: "#0A2463", 
+  secondary: "#00A896", 
+  accent: "#FF6B6B", 
+  success: "#28A745", 
+  warning: "#FFC107", 
+  bg: "#F8F9FA", 
+  surface: "#FFFFFF", 
+  textMain: "#212529",
+  textSec: "#6C757D",
+  border: "#E9ECEF",
+};
+
 export default function AvailabilityManagement() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [week, setWeek] = useState<DayAvailability[]>(initialWeek);
@@ -95,8 +108,7 @@ export default function AvailabilityManagement() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.description}>
           Set your weekly availability. Toggle a day on and edit start / end
-          times. This is a mock interface — replace with time pickers / calendar
-          picker later.
+          times. 
         </Text>
 
         {week.map((d, i) => (
@@ -133,7 +145,7 @@ export default function AvailabilityManagement() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     height: 72,
     paddingTop: Platform.OS === "ios" ? 24 : 14,
@@ -142,61 +154,67 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: 1,
-    borderColor: "#eee",
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
   },
   hamburger: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  hamburgerIcon: { fontSize: 22 },
-  title: { fontSize: 18, fontWeight: "600" },
+  hamburgerIcon: { fontSize: 22, color: COLORS.textMain },
+  title: { fontSize: 18, fontWeight: "600", color: COLORS.textMain },
   profileBtn: { padding: 6 },
   avatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#0b6efd",
+    backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: { color: "#fff", fontWeight: "700" },
 
   content: { padding: 16 },
-  description: { color: "#666", marginBottom: 12 },
+  description: { color: COLORS.textSec, marginBottom: 20, textAlign: 'center', fontSize: 14 },
 
   dayRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: "#fff",
-    marginBottom: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#f4f4f4",
+    borderColor: COLORS.border,
   },
-  dayLeft: { width: 110, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  dayLabel: { fontWeight: "700", marginRight: 8 },
+  dayLeft: { width: 120, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dayLabel: { fontWeight: "700", fontSize: 16, color: COLORS.textMain },
 
   dayRight: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" },
   timeInput: {
-    width: 80,
-    height: 36,
+    width: 85,
+    height: 40,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: COLORS.border,
     borderRadius: 8,
     paddingHorizontal: 8,
-    backgroundColor: "#fafafa",
+    backgroundColor: COLORS.bg,
     textAlign: "center",
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textMain,
   },
   disabledInput: {
-    opacity: 0.5,
+    backgroundColor: '#f0f0f0',
+    color: '#999',
+    opacity: 0.7,
   },
-  toText: { marginHorizontal: 8, color: "#666" },
+  toText: { marginHorizontal: 10, color: COLORS.textSec, fontWeight: '500' },
 
   saveBtn: {
-    marginTop: 12,
-    backgroundColor: "#0b6efd",
-    borderRadius: 8,
-    paddingVertical: 12,
+    marginTop: 20,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 16,
     alignItems: "center",
   },
-  saveBtnText: { color: "#fff", fontWeight: "700" },
+  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

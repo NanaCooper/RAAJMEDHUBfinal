@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,34 @@ import {
   TextInput,
   StatusBar,
   Pressable,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { useAuth } from "../../hooks/useAuth";
+import { subscribeToAppointments } from '../../services/appointments';
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+
+// --- 🎨 Unified Premium Theme ---
+const COLORS = {
+  bg: "#F8FAFC",        // Slate 50
+  surface: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primarySoft: "#EEF2FF",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  border: "#E2E8F0",
+  success: "#10B981",
+  input: "#F1F5F9",     // Slate 100
+};
+
+const SHADOW = {
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 4,
+};
 
 type Patient = {
   id: string;
@@ -22,41 +46,47 @@ type Patient = {
   avatarColor?: string;
 };
 
-const BG = "#f6f8ff";
-const CARD = "#ffffff";
-const PRIMARY = "#0b6efd";
-const MUTED = "#6b7280";
-
 export default function MyPatients() {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const { session } = useAuth();
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const patients: Patient[] = [
-    {
-      id: "p1",
-      name: "Nana Cooper",
-      lastVisit: "2025-11-02",
-      nextAppointment: "2025-11-12",
-      conditions: ["Hypertension"],
-      avatarColor: "#eaf4ff",
-    },
-    {
-      id: "p2",
-      name: "Alex Riley",
-      lastVisit: "2025-10-21",
-      nextAppointment: "2025-11-10",
-      conditions: ["Diabetes", "Asthma"],
-      avatarColor: "#fff5e6",
-    },
-    {
-      id: "p3",
-      name: "Sam Lee",
-      lastVisit: "2025-11-01",
-      nextAppointment: undefined,
-      conditions: ["Allergies"],
-      avatarColor: "#f6f9ee",
-    },
-  ];
+  useEffect(() => {
+    if (!session?.uid) return;
+    const unsub = subscribeToAppointments(session.uid, 'doctor', (items) => {
+      const map: Record<string, any> = {};
+      items.forEach((it: any) => {
+        const pid = it.patientId || it.patientDetails?.id;
+        if (!pid) return;
+        // Logic to keep the latest appointment info for the patient
+        if (!map[pid] || (map[pid].startAt || 0) < (it.startAt || 0)) {
+           const firstName = it.patientDetails?.firstName || '';
+           const lastName = it.patientDetails?.lastName || '';
+           const fullName = `${firstName} ${lastName}`.trim() || 'Patient';
+
+           let dateStr = '';
+           if (it.startAt) {
+             const d = typeof it.startAt === 'string' ? new Date(it.startAt) : it.startAt.toDate();
+             dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+           }
+
+           map[pid] = {
+             id: pid,
+             name: fullName,
+             lastVisit: dateStr,
+             nextAppointment: dateStr, // simplified logic
+             conditions: it.patientDetails?.conditions || [],
+             avatarColor: COLORS.primarySoft
+          };
+        }
+      });
+      setPatients(Object.values(map));
+      setLoading(false);
+    });
+    return () => { try { unsub(); } catch {} };
+  }, [session?.uid]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -66,209 +96,194 @@ export default function MyPatients() {
         p.name.toLowerCase().includes(q) ||
         p.conditions.join(" ").toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, patients]);
 
-  const openPatient = (id: string) => {
-    router.push(`/patients/${id}`);
-  };
+  const openPatient = (id: string) => router.push(`/patients/${id}`);
+  const startChat = (id: string) => router.push(`/doctor-messages/${id}`);
 
-  const startChat = (id: string) => {
-    // In this project the patient chat route is /doctor-messages/:conversationId or /messages/:conversationId.
-    // We'll navigate to the doctor conversation route placeholder with the patient id.
-    router.push(`/doctor-messages/${id}`);
-  };
+  // --- Renderers ---
+
+  const renderPatientCard = ({ item }: { item: Patient }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => openPatient(item.id)}
+      activeOpacity={0.9}
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.avatarContainer}>
+          <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+        </View>
+        <View style={styles.infoContainer}>
+          <Text style={styles.patientName}>{item.name}</Text>
+          <View style={styles.metaRow}>
+            <Feather name="clock" size={12} color={COLORS.textSec} />
+            <Text style={styles.metaText}>Last Visit: {item.lastVisit || 'N/A'}</Text>
+          </View>
+        </View>
+      </View>
+
+      {item.conditions.length > 0 && (
+        <View style={styles.conditionsRow}>
+          {item.conditions.slice(0, 3).map((c, index) => (
+            <View key={index} style={styles.conditionPill}>
+              <Text style={styles.conditionText}>{c}</Text>
+            </View>
+          ))}
+          {item.conditions.length > 3 && (
+             <Text style={styles.moreText}>+{item.conditions.length - 3}</Text>
+          )}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={BG} />
-      <View style={styles.content}>
-        <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Feather name="search" size={18} color="#9aa7c7" />
-            <TextInput
-              placeholder="Search patients or conditions"
-              style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
-              returnKeyType="search"
-              accessible
-              accessibilityLabel="Search patients"
-            />
-            {query.length > 0 ? (
-              <Pressable onPress={() => setQuery("")} style={styles.clearBtn} accessibilityLabel="Clear search">
-                <Feather name="x" size={16} color="#9aa7c7" />
-              </Pressable>
-            ) : null}
-          </View>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => router.push("/doctor/my-patients/new" as any)}    
-            accessibilityLabel="Add patient"
-          >
-            <Feather name="user-plus" size={18} color="#fff" />
-          </TouchableOpacity>
+      {/* Header */}
+      
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <Feather name="search" size={20} color={COLORS.textSec} style={styles.searchIcon} />
+        <TextInput
+          placeholder="Search by name or condition..."
+          style={styles.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholderTextColor={COLORS.textSec}
+        />
+        {query.length > 0 && (
+          <Pressable onPress={() => setQuery("")} style={{ padding: 4 }}>
+            <Feather name="x-circle" size={18} color={COLORS.textSec} />
+          </Pressable>
+        )}
+      </View>
+
+      {/* List */}
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-
+      ) : (
         <FlatList
           data={filtered}
           keyExtractor={(i) => i.id}
-          style={{ width: "100%", marginTop: 12 }}
-          contentContainerStyle={{ paddingBottom: 32 }}
-          renderItem={({ item }) => (
-            <View style={styles.patientCard}>
-              <TouchableOpacity style={styles.patientLeft} onPress={() => openPatient(item.id)} activeOpacity={0.85}>
-                <View style={[styles.avatarCircle, { backgroundColor: item.avatarColor ?? "#eef6ff" }]}>
-                  <Text style={styles.avatarCircleText}>{item.name.charAt(0)}</Text>
-                </View>
-                <View style={styles.patientMiddle}>
-                  <Text style={styles.patientName}>{item.name}</Text>
-                  <Text style={styles.patientMeta}>
-                    Last visit: <Text style={styles.metaValue}>{item.lastVisit}</Text>
-                    {item.nextAppointment ? (
-                      <Text> · Next: <Text style={styles.metaValue}>{item.nextAppointment}</Text></Text>
-                    ) : null}
-                  </Text>
-
-                  <View style={styles.conditionsRow}>
-                    {item.conditions.map((c) => (
-                      <View key={c} style={styles.conditionPill}>
-                        <Text style={styles.conditionText}>{c}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              <View style={styles.patientActions}>
-                <TouchableOpacity style={styles.iconAction} onPress={() => startChat(item.id)} accessibilityLabel={`Message ${item.name}`}>
-                  <Feather name="message-circle" size={18} color={PRIMARY} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.viewBtn} onPress={() => openPatient(item.id)} accessibilityLabel={`View ${item.name}`}>
-                  <Text style={styles.viewBtnText}>View</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+          renderItem={renderPatientCard}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No patients found</Text>
-              <Text style={styles.emptySubtitle}>Try a different search term or add a new patient.</Text>
+            <View style={styles.emptyState}>
+               <MaterialCommunityIcons name="account-group-outline" size={48} color={COLORS.textSec} />
+               <Text style={styles.emptyText}>No patients found</Text>
+               <Text style={styles.emptySub}>Patients will appear here after appointments.</Text>
             </View>
           }
         />
-      </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  content: { flex: 1, paddingHorizontal: 20, paddingTop: 14 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  searchRow: { flexDirection: "row", alignItems: "center" },
-  searchBox: {
-    flex: 1,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: CARD,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.03)",
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
+  // Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: COLORS.bg,
   },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    height: "100%",
-    color: "#0f1724",
-    fontSize: 15,
-  },
-  clearBtn: { padding: 8 },
-
+  headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textMain, letterSpacing: -0.5 },
   addBtn: {
-    marginLeft: 12,
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#0b6efd",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW,
+    shadowColor: COLORS.primary,
   },
 
-  patientCard: {
-    marginTop: 12,
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    height: 50,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.03)",
-    shadowColor: "#000",
-    shadowOpacity: 0.02,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    borderColor: COLORS.border,
   },
+  searchIcon: { marginRight: 12 },
+  searchInput: { flex: 1, fontSize: 16, color: COLORS.textMain, height: '100%' },
 
-  patientLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
-  avatarCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+  // List
+  listContent: { paddingHorizontal: 20, paddingBottom: 40 },
+
+  // Card
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOW,
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  avatarContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 12,
   },
-  avatarCircleText: { color: PRIMARY, fontWeight: "800", fontSize: 18 },
+  avatarText: { fontSize: 20, fontWeight: '700', color: COLORS.primary },
+  infoContainer: { flex: 1 },
+  patientName: { fontSize: 17, fontWeight: '700', color: COLORS.textMain, marginBottom: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { fontSize: 13, color: COLORS.textSec, fontWeight: '500' },
 
-  patientMiddle: { flex: 1 },
-  patientName: { fontSize: 16, fontWeight: "800", color: "#0f1724" },
-  patientMeta: { color: MUTED, marginTop: 4, fontSize: 13 },
-  metaValue: { color: "#0f1724", fontWeight: "700" },
+  chatBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
 
-  conditionsRow: { flexDirection: "row", marginTop: 8, flexWrap: "wrap" },
+  conditionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   conditionPill: {
-    backgroundColor: "#f3f7ff",
-    paddingHorizontal: 8,
+    backgroundColor: COLORS.input,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
-    marginRight: 8,
-    marginTop: 6,
+    borderRadius: 8,
   },
-  conditionText: { color: "#0b6efd", fontSize: 12, fontWeight: "700" },
+  conditionText: { fontSize: 12, fontWeight: '600', color: COLORS.textSec },
+  moreText: { fontSize: 12, color: COLORS.textSec, alignSelf: 'center' },
 
-  patientActions: { flexDirection: "row", alignItems: "center", marginLeft: 8 },
-  iconAction: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: "#fbfdff",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,36,0.03)",
-  },
-  viewBtn: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "rgba(11,110,253,0.12)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  viewBtnText: { color: PRIMARY, fontWeight: "700" },
+  divider: { height: 1, backgroundColor: COLORS.border, marginBottom: 12 },
 
-  empty: { padding: 28, alignItems: "center" },
-  emptyTitle: { fontSize: 16, fontWeight: "700", color: "#0f1724", marginBottom: 6 },
-  emptySubtitle: { color: MUTED, textAlign: "center" },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  linkText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
+
+  // Empty State
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
+  emptyText: { fontSize: 18, fontWeight: '700', color: COLORS.textMain, marginTop: 16 },
+  emptySub: { fontSize: 14, color: COLORS.textSec, marginTop: 4 },
 });

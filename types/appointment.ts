@@ -10,7 +10,7 @@ export interface ScanType {
 export interface Appointment {
   id?: string;
   patientId: string;
-  doctorId: string;
+  doctorId?: string | null; // Optional - admin will assign
   startAt: Timestamp | string; // Firestore Timestamp or ISO string
   endAt?: Timestamp | string;
   status?: AppointmentStatus;

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -9,33 +9,41 @@ export default function DoctorProfilePublic() {
   const router = useRouter();
   const params = useLocalSearchParams<Params>();
   const id = params.id ?? "unknown";
+  const [doctor, setDoctor] = useState<any>(null);
 
-  const doctor = useMemo(() => ({
-    id,
-    name: "Dr. Nana Cooper",
-    specialty: "General Practitioner",
-    rating: 4.8,
-    bio: "Experienced GP focusing on family medicine and preventive care.",
-    fee: "$50",
-  }), [id]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { getDoctor } = await import('../../services/doctors');
+        const d = await getDoctor(id);
+        if (!mounted) return;
+        setDoctor(d);
+      } catch (e) {
+        console.error('Failed to load doctor', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [id]);
 
   const handleBook = () => {
+    if (!doctor) return;
     router.push(`/booking/${doctor.id}`);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.name}>{doctor.name}</Text>
-        <Text style={styles.spec}>{doctor.specialty} • {doctor.rating}★</Text>
+  <Text style={styles.name}>{doctor?.fullName || doctor?.name || 'Doctor'}</Text>
+  <Text style={styles.spec}>{doctor?.specialization || 'Specialization'} • {doctor?.rating ?? 4.5}★</Text>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>About</Text>
-        <Text style={styles.text}>{doctor.bio}</Text>
+  <Text style={styles.text}>{doctor?.bio || ''}</Text>
 
         <Text style={[styles.label, { marginTop: 12 }]}>Consultation Fee</Text>
-        <Text style={styles.text}>{doctor.fee}</Text>
+  <Text style={styles.text}>{doctor?.fee || '-'}</Text>
 
         <View style={styles.actions}>
           <TouchableOpacity style={styles.bookBtn} onPress={handleBook}>

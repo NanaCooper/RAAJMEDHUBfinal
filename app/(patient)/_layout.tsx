@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,10 @@ import { Drawer } from "expo-router/drawer";
 import { useRouter, usePathname } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { subscribeToAppointments } from "../../services/appointments";
+import { sendAppointmentNotification } from "../../services/notifications";
+import { getDoctor } from "../../services/doctors";
 
 // --- Light Theme Colors ---
 const DRAWER_BG = "#f7f9fc";
@@ -23,11 +27,9 @@ const BORDER_COLOR = "#e1e6f0";
 const menuItems = [
   { label: "Dashboard", route: "/(patient)/", icon: "home" },
   { label: "Appointments", route: "/(patient)/appointments", icon: "calendar" },
-  { label: "Find Doctors", route: "/(patient)/doctors", icon: "search" },
-  { label: "Messages", route: "/(patient)/messages", icon: "message-square" },
-  { label: "Medical Records", route: "/(patient)/medical-records", icon: "file-text" },
   { label: "My Profile", route: "/(patient)/profile", icon: "user" },
   { label: "Our Branches", route: "/(patient)/branches", icon: "map-pin" },
+  { label: "Settings", route: "/(patient)/settings", icon: "settings" },
   { label: "Logout", route: "/login", icon: "log-out" },
 ];
 
@@ -74,6 +76,64 @@ const menuItems = [
 }
 
 export default function PatientLayout() {
+  const { session } = useAuth();
+  const notifiedAppointmentsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!session?.uid) return;
+
+    // Load notified appointments from storage
+    const loadNotified = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('notified_assignments');
+        if (stored) {
+          notifiedAppointmentsRef.current = new Set(JSON.parse(stored));
+        }
+      } catch (e) { console.error("Failed to load notified appointments", e); }
+    };
+    loadNotified();
+
+    const unsubscribe = subscribeToAppointments(session.uid, 'patient', async (appointments) => {
+      let newNotified = false;
+      
+      for (const appt of appointments) {
+        // Check if doctor is assigned and we haven't notified yet
+        if (appt.doctorId && appt.id && !notifiedAppointmentsRef.current.has(appt.id) && appt.status !== 'cancelled') {
+          
+          let doctorName = 'A doctor';
+          // Try to get doctor name from appointment or fetch it
+          if ((appt as any).doctorName) {
+             doctorName = (appt as any).doctorName;
+          } else {
+             const docProfile = await getDoctor(appt.doctorId);
+             if (docProfile && (docProfile as any).fullName) {
+                doctorName = (docProfile as any).fullName;
+             } else if (docProfile && (docProfile as any).name) {
+                doctorName = (docProfile as any).name;
+             }
+          }
+
+          // Send notification
+          await sendAppointmentNotification(
+            "Doctor Assigned",
+            `${doctorName} has been assigned to you on this day`,
+            appt.id
+          );
+
+          // Mark as notified
+          notifiedAppointmentsRef.current.add(appt.id);
+          newNotified = true;
+        }
+      }
+
+      if (newNotified) {
+        await AsyncStorage.setItem('notified_assignments', JSON.stringify(Array.from(notifiedAppointmentsRef.current)));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [session?.uid]);
+
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}
@@ -83,20 +143,14 @@ export default function PatientLayout() {
         headerShown: true,
         headerStyle: { backgroundColor: "#fff", elevation: 0, shadowOpacity: 0 },
         headerTitleStyle: { fontWeight: "bold" },
-        headerRight: () => (
-            <TouchableOpacity onPress={() => {}} style={{ marginRight: 15 }}>
-                <Feather name="bell" size={22} color="#1d2b3e" />
-            </TouchableOpacity>
-        )
+        
       }}
     >
       <Drawer.Screen name="index" options={{ title: "Dashboard" }} />
       <Drawer.Screen name="appointments" options={{ title: "Appointments" }} />
-      <Drawer.Screen name="doctors" options={{ title: "Find Doctors" }} />
-      <Drawer.Screen name="messages" options={{ title: "Messages" }} />
       <Drawer.Screen name="profile" options={{ title: "My Profile" }} />
-      <Drawer.Screen name="medical-records" options={{ title: "Medical Records" }} />
       <Drawer.Screen name="branches" options={{ title: "Our Branches" }} />
+      <Drawer.Screen name="settings" options={{ title: "Settings" }} />
     </Drawer>
   );
 }

@@ -1,14 +1,16 @@
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { AuthProvider } from '../hooks/useAuth';
 import * as Font from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import { initializeNotifications, setupNotificationResponseListener } from '../services/notifications';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [fontsLoaded, setFontsLoaded] = React.useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     async function loadFonts() {
@@ -27,6 +29,23 @@ export default function RootLayout() {
     }
 
     loadFonts();
+    
+    // Initialize notifications
+    initializeNotifications();
+
+    // Handle notification taps
+    const subscription = setupNotificationResponseListener((conversationId, messageId) => {
+      // Navigate to the conversation
+      // Note: Adjust the path based on your routing structure
+      router.push({
+        pathname: '/(patient)/messages/[id]',
+        params: { id: conversationId }
+      });
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   if (!fontsLoaded) {
