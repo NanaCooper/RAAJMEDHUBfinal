@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, ReactNode, useCallback } from 'react';
+import { Alert } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { db, doc, getDoc, setDoc, getAuthInstance } from '../utils/firebaseConfig';
 import * as WebBrowser from "expo-web-browser";
@@ -181,7 +182,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
-        setUser({ uid: currentUser.uid, ...userSnap.data() });
+        const userData = userSnap.data();
+        console.log("Checking suspension for user:", currentUser.uid, userData);
+        // Check for suspension
+        if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
+          console.log("User is suspended. Signing out.");
+          Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
+          await signOutUser();
+          return;
+        }
+        setUser({ uid: currentUser.uid, ...userData });
       } else {
         // If the user exists in Auth but not Firestore, create a basic profile.
         // This is common for social sign-ins on first login.
@@ -249,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signOutUser = async () => {
+  const signOutUser = useCallback(async () => {
     setIsLoading(true);
     try {
       const authInst = await getAuthInstance();
@@ -264,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Firebase Sign Out Error:", error.message);
       throw error;
     }
-  };
+  }, []);
 
   // Function to set user type and store it in Firestore
   const setUserType = async (type: 'patient' | 'doctor') => {
@@ -300,7 +310,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
             if (userSnap.exists()) {
-              setUser({ uid: user.uid, ...userSnap.data() });
+              const userData = userSnap.data();
+              console.log("AuthStateChanged: Checking suspension for user:", user.uid, userData);
+              if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
+                console.log("AuthStateChanged: User is suspended. Signing out.");
+                Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
+                await signOutUser();
+                return;
+              }
+              setUser({ uid: user.uid, ...userData });
             } else {
               // This case handles a new user signing up via a method like Google Sign-In
               // where the user document might not have been created yet.
@@ -326,7 +344,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userRef = doc(db, "users", user.uid);
             const userSnap = await getDoc(userRef);
             if (userSnap.exists()) {
-              setUser({ uid: user.uid, ...userSnap.data() });
+              const userData = userSnap.data();
+              console.log("AuthStateChanged (import): Checking suspension for user:", user.uid, userData);
+              if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
+                console.log("AuthStateChanged (import): User is suspended. Signing out.");
+                Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
+                await signOutUser();
+                return;
+              }
+              setUser({ uid: user.uid, ...userData });
             } else {
               // Create user doc for social auth if it doesn't exist
               const newUser = {
@@ -349,7 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [signOutUser]);
 
   useProtectedRoute(session, isLoading, user);
 
