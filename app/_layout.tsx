@@ -34,13 +34,22 @@ export default function RootLayout() {
     initializeNotifications();
 
     // Handle notification taps
-    const subscription = setupNotificationResponseListener((conversationId, messageId) => {
-      // Navigate to the conversation
-      // Note: Adjust the path based on your routing structure
-      router.push({
-        pathname: '/(patient)/messages/[id]',
-        params: { id: conversationId }
-      });
+    const subscription = setupNotificationResponseListener((conversationId, messageId, data) => {
+      // Handle different notification types
+      if (data?.type === 'appointment_reminder' || data?.type === 'doctor_assigned' || data?.type === 'patient_assigned') {
+        // Navigate to appointments tab
+        // We need to determine if user is patient or doctor, but for now we can try generic routing
+        // or just let the user navigate manually. 
+        // Ideally, we'd check the user role here or in the listener.
+        // For now, let's assume patient view for appointment details if possible, or just open app.
+        // router.push('/(patient)/appointments'); 
+      } else if (conversationId) {
+        // Navigate to the conversation
+        router.push({
+          pathname: '/(patient)/messages/[id]',
+          params: { id: conversationId }
+        });
+      }
     });
 
     return () => {

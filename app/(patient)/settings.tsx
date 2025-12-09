@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'expo-router';
 import { updateUserProfile, updateUserPassword, requestDataExport } from '../../services/users';
@@ -67,6 +68,33 @@ const SettingRow = ({ label, children }: { label: string; children: React.ReactN
     {children}
   </View>
 );
+
+const PasswordInput = ({ 
+  value, 
+  onChangeText, 
+  placeholder 
+}: { 
+  value: string; 
+  onChangeText: (text: string) => void; 
+  placeholder: string; 
+}) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <View style={styles.passwordContainer}>
+      <TextInput
+        style={styles.passwordInput}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.textSec}
+        secureTextEntry={!visible}
+      />
+      <TouchableOpacity onPress={() => setVisible(!visible)} style={styles.eyeIcon}>
+        <Feather name={visible ? "eye" : "eye-off"} size={20} color={COLORS.textSec} />
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 const PatientSettingsScreen = () => {
   const { user, signOut, reloadUser } = useAuth();
@@ -260,22 +288,7 @@ const PatientSettingsScreen = () => {
           />
         </Section>
 
-        <Section title="Emergency Contact">
-           <EditableInfoRow 
-             label="Name" 
-             value={profileData.emergencyContact.name} 
-             onChange={text => setProfileData(p => ({ ...p, emergencyContact: { ...p.emergencyContact, name: text } }))} 
-             isEditing={isEditingProfile} 
-             placeholder="Contact Name"
-           />
-           <EditableInfoRow 
-             label="Phone" 
-             value={profileData.emergencyContact.phone} 
-             onChange={text => setProfileData(p => ({ ...p, emergencyContact: { ...p.emergencyContact, phone: text } }))} 
-             isEditing={isEditingProfile} 
-             placeholder="Contact Phone"
-           />
-        </Section>
+        
 
         <Section title="Notification Preferences">
           <SettingRow label="Push Notifications">
@@ -285,20 +298,8 @@ const PatientSettingsScreen = () => {
                 trackColor={{ false: COLORS.border, true: COLORS.primary }} 
             />
           </SettingRow>
-          <SettingRow label="SMS Reminders">
-            <Switch 
-                value={notificationPrefs.sms} 
-                onValueChange={() => toggleNotification('sms')} 
-                trackColor={{ false: COLORS.border, true: COLORS.primary }} 
-            />
-          </SettingRow>
-          <SettingRow label="Email Notifications">
-            <Switch 
-                value={notificationPrefs.email} 
-                onValueChange={() => toggleNotification('email')} 
-                trackColor={{ false: COLORS.border, true: COLORS.primary }} 
-            />
-          </SettingRow>
+          
+          
           <View style={styles.divider} />
           <SettingRow label="Appointment Reminders">
             <Switch 
@@ -307,47 +308,30 @@ const PatientSettingsScreen = () => {
                 trackColor={{ false: COLORS.border, true: COLORS.primary }} 
             />
           </SettingRow>
-          <SettingRow label="New Message Alerts">
-            <Switch 
-                value={notificationPrefs.newMessageAlerts} 
-                onValueChange={() => toggleNotification('newMessageAlerts')} 
-                trackColor={{ false: COLORS.border, true: COLORS.primary }} 
-            />
-          </SettingRow>
+          
         </Section>
 
         <Section title="Security">
-            <View style={styles.row}>
-                <TextInput 
-                    placeholder="Current Password" 
-                    style={styles.input} 
+            <View style={styles.editRow}>
+                <Text style={styles.label}>Current Password</Text>
+                <PasswordInput 
+                    placeholder="Enter current password" 
                     value={passwordData.current} 
                     onChangeText={t => setPasswordData(p => ({...p, current: t}))} 
-                    secureTextEntry 
-                    placeholderTextColor={COLORS.textSec}
                 />
             </View>
-            <View style={styles.row}>
-                <TextInput 
-                    placeholder="New Password" 
-                    style={styles.input} 
+            <View style={styles.editRow}>
+                <Text style={styles.label}>New Password</Text>
+                <PasswordInput 
+                    placeholder="Enter new password" 
                     value={passwordData.new} 
                     onChangeText={t => setPasswordData(p => ({...p, new: t}))} 
-                    secureTextEntry 
-                    placeholderTextColor={COLORS.textSec}
                 />
             </View>
             <TouchableOpacity style={styles.button} onPress={handlePasswordChange} disabled={loading}>
                 {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Change Password</Text>}
             </TouchableOpacity>
         </Section>
-
-        <Section title="Privacy">
-            <TouchableOpacity style={styles.button} onPress={handleDataExport}>
-                <Text style={styles.buttonText}>Request Data Export</Text>
-            </TouchableOpacity>
-        </Section>
-
         <TouchableOpacity style={[styles.button, { backgroundColor: COLORS.danger, marginTop: 20 }]} onPress={handleLogout}>
           <Text style={styles.buttonText}>Logout</Text>
         </TouchableOpacity>
@@ -425,4 +409,22 @@ const styles = StyleSheet.create({
   buttonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 12 },
+  
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.input,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    flex: 1,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: COLORS.textMain,
+  },
+  eyeIcon: {
+    padding: 4,
+  },
 });

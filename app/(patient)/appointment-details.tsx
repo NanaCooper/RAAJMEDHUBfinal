@@ -99,7 +99,7 @@ const AppointmentDetailScreen = () => {
             {renderStatusBadge()}
           </View>
           <Text style={styles.cardSubtitle}>
-            {appointment.doctor ? `with Dr. ${appointment.doctor}` : 'Doctor to be assigned soon'}
+            {appointment.doctor && appointment.doctor !== 'null' && appointment.doctor !== 'undefined' ? `with Dr. ${appointment.doctor}` : 'Doctor to be assigned soon'}
           </Text>
 
           <View style={styles.divider} />

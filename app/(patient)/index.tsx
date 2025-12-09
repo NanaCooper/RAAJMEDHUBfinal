@@ -57,13 +57,76 @@ export default function PatientDashboard(): React.ReactElement {
     if (!session?.uid) return;
 
     const unsubAppointments = subscribeToAppointments(session.uid, 'patient', async (appts: Appointment[]) => {
+      console.log(`[Dashboard] Received ${appts.length} appointments`);
       const now = new Date();
       const startOfMonth = moment().startOf('month').toDate();
 
-      const upcomingAppts = appts
-        .filter(a => a.startAt && (typeof a.startAt === 'string' ? new Date(a.startAt) : a.startAt.toDate()) > now)
-        .sort((a, b) => (a.startAt > b.startAt ? 1 : -1));
+      const getDate = (a: any) => {
+        try {
+          if (a.startAt) {
+             if (typeof a.startAt === 'string') {
+                 const m = moment(a.startAt);
+                 if (m.isValid()) return m.toDate();
+                 console.warn(`[Dashboard] Invalid startAt string: ${a.startAt}`);
+             }
+             if (typeof a.startAt.toDate === 'function') return a.startAt.toDate();
+          }
+          if (a.date) {
+              const m = moment(a.date + (a.time ? ' ' + a.time : ''));
+              if (m.isValid()) return m.toDate();
+          }
+        } catch (e) {
+          console.warn("Invalid date for appt", a.id);
+        }
+        return new Date(0);
+      };
 
+      const upcomingAppts = appts
+        .filter(a => {
+            const d = getDate(a);
+            const isFuture = d > now;
+            if (!isFuture) console.log(`[Dashboard] Appt ${a.id} is not future. Date: ${d}, Now: ${now}`);
+            return isFuture;
+        })
+        .sort((a, b) => (getDate(a) > getDate(b) ? 1 : -1));
+
+      console.log(`[Dashboard] Upcoming appointments count: ${upcomingAppts.length}`);
+
+      // Helper to map appointments
+      const mapUpcoming = (list: any[], docMap: any = {}) => {
+        return list.slice(0, 5).map((a: any) => {
+            let doctorName = docMap[a.doctorId]?.fullName || a.doctorName;
+            if (doctorName === 'null' || doctorName === 'undefined') doctorName = null;
+
+            let date = "";
+            let time = "";
+            const d = getDate(a);
+            if (!isNaN(d.getTime()) && d.getTime() !== 0) {
+                date = d.toISOString();
+                // Fix: Use moment to format time consistently
+                time = moment(d).format('h:mm A'); 
+            } else {
+                date = a.date || "";
+                time = a.time || "";
+            }
+
+            return {
+            id: a.id,
+            date,
+            time,
+            doctorId: a.doctorId,
+            doctor: doctorName || "Dr. to be assigned",
+            location: docMap[a.doctorId]?.specialization || a.location || "RAAJ MEDHUB Clinic",
+            phone: docMap[a.doctorId]?.contact,
+            };
+        });
+      };
+
+      // 1. Immediate Render (Optimistic)
+      // Use existing 'doctors' state for immediate display
+      setUpcoming(mapUpcoming(upcomingAppts, doctors));
+
+      // 2. Fetch missing doctors
       const doctorIds = [...new Set(upcomingAppts.map(a => a.doctorId).filter(id => id && !doctors[id]))];
       if (doctorIds.length > 0) {
         const fetchedDoctors = await Promise.all(doctorIds.map(id => getDoctor(id!)));
@@ -71,34 +134,26 @@ export default function PatientDashboard(): React.ReactElement {
         fetchedDoctors.forEach(doc => {
           if (doc) newDoctors[doc.id] = doc;
         });
-        setDoctors((prev: any) => ({ ...prev, ...newDoctors }));
+        
+        // Update local doctors state
+        setDoctors((prev: any) => {
+            const updated = { ...prev, ...newDoctors };
+            // 3. Final Render with new doctors
+            setUpcoming(mapUpcoming(upcomingAppts, updated));
+            return updated;
+        });
+      } else {
+          // If no new doctors, just ensure we are using the latest list
+          setUpcoming(mapUpcoming(upcomingAppts, doctors));
       }
 
-      const upcomingMapped = upcomingAppts.slice(0, 5).map((a: any) => ({
-        id: a.id,
-        date: a.startAt ? (typeof a.startAt === 'string' ? a.startAt : a.startAt.toDate().toISOString()) : "",
-        time: a.startAt
-          ? (typeof a.startAt === 'string' ? new Date(a.startAt) : a.startAt.toDate()).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "",
-        doctorId: a.doctorId,
-        doctor: doctors[a.doctorId]?.fullName || a.doctorName || "Dr. to be assigned",
-        location: doctors[a.doctorId]?.specialization || a.location || "RAAJ MEDHUB Clinic",
-        phone: doctors[a.doctorId]?.contact,
-      }));
-      setUpcoming(upcomingMapped);
-
       const appointmentsThisMonth = appts.filter(a => {
-        const apptDate = a.startAt && (typeof a.startAt === 'string' ? new Date(a.startAt) : a.startAt.toDate());
+        const apptDate = getDate(a);
         return apptDate && apptDate >= startOfMonth;
       }).length;
 
       setStats(prev => ({ ...prev, appointmentsThisMonth, prescriptions: 0, labResults: 0 }));
-
-
-    });
+    }, (err) => console.error(err), session.email);
 
     return () => {
       unsubAppointments();

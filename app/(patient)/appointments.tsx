@@ -185,11 +185,76 @@ export default function Appointments() {
   useEffect(() => {
     if (!session?.uid) return;
 
+    // Pass user email for fallback query
     const unsubscribe = subscribeToAppointments(session.uid, 'patient', async (appts) => {
-      // 1. Identify unique doctor IDs that need fetching
+      // console.log("[Appointments] Received updates:", appts.length);
+      
+      // 1. Immediate update (Optimistic) - Show appointments immediately
+      const mapAppointment = (a: any, docMap: { [id: string]: string } = {}) => {
+        let doctorName = a.doctorName;
+        const rawId = a.doctorId;
+        const docId = (typeof rawId === 'object' && rawId?.id) ? rawId.id : rawId;
+
+        if (!doctorName && docId && typeof docId === 'string') {
+            doctorName = docMap[docId];
+        }
+
+        // Ensure doctorName is valid and not a stringified null/undefined
+        if (doctorName === 'null' || doctorName === 'undefined') {
+            doctorName = null;
+        }
+
+        // Handle Admin App 'serviceType' string
+        let finalScanType = a.scanType;
+        if (!finalScanType && a.serviceType) {
+            finalScanType = { name: a.serviceType, id: 'custom' };
+        }
+
+        let date = '';
+        let time = '';
+
+        if (a.startAt) {
+            if (typeof a.startAt === 'string') {
+                // Use moment to handle both ISO (T) and space-separated formats robustly
+                const d = moment(a.startAt);
+                if (d.isValid()) {
+                    date = d.format('YYYY-MM-DD');
+                    time = d.format('HH:mm');
+                } else {
+                    // Fallback for very unusual formats
+                    console.warn(`[Appointments] Could not parse startAt with moment: ${a.startAt}`);
+                    const parts = a.startAt.split(' ');
+                    date = parts[0];
+                    time = parts[1] || '';
+                }
+            } else if (a.startAt.toDate) {
+                const d = moment(a.startAt.toDate());
+                date = d.format('YYYY-MM-DD');
+                time = d.format('HH:mm');
+            }
+        } else if (a.date && a.time) {
+            // Fallback to direct date/time fields
+            date = a.date;
+            time = a.time;
+        }
+
+        return {
+          id: a.id,
+          date,
+          time,
+          doctor: doctorName || null,
+          status: a.status || 'upcoming',
+          patientId: a.patientId,
+          scanType: finalScanType,
+        };
+      };
+
+      // Render immediately with what we have
+      setAppointments(appts.map(a => mapAppointment(a)));
+
+      // 2. Identify unique doctor IDs that need fetching
       const doctorIdsToFetch = new Set<string>();
       appts.forEach((a: any) => {
-        // Robust ID extraction
         const rawId = a.doctorId;
         const docId = (typeof rawId === 'object' && rawId?.id) ? rawId.id : rawId;
         
@@ -198,7 +263,9 @@ export default function Appointments() {
         }
       });
 
-      // 2. Fetch doctors in parallel (with caching in service layer)
+      if (doctorIdsToFetch.size === 0) return;
+
+      // 3. Fetch doctors in parallel (with caching in service layer)
       const doctorMap: { [id: string]: string } = {};
       await Promise.all(Array.from(doctorIdsToFetch).map(async (id) => {
         try {
@@ -211,31 +278,12 @@ export default function Appointments() {
         }
       }));
 
-      // 3. Map appointments
-      const mapped = appts.map((a: any) => {
-        let doctorName = a.doctorName;
-        const rawId = a.doctorId;
-        const docId = (typeof rawId === 'object' && rawId?.id) ? rawId.id : rawId;
-
-        if (!doctorName && docId && typeof docId === 'string') {
-            doctorName = doctorMap[docId];
-        }
-
-        return {
-          id: a.id,
-          date: a.startAt ? (typeof a.startAt === 'string' ? a.startAt.split(' ')[0] : moment(a.startAt.toDate()).format('YYYY-MM-DD')) : '',
-          time: a.startAt ? (typeof a.startAt === 'string' ? a.startAt.split(' ')[1] : moment(a.startAt.toDate()).format('HH:mm')) : '',
-          doctor: doctorName || null,
-          status: a.status || 'upcoming',
-          patientId: a.patientId,
-          scanType: a.scanType,
-        };
-      });
-      setAppointments(mapped);
-    });
+      // 4. Final update with doctor names
+      setAppointments(appts.map(a => mapAppointment(a, doctorMap)));
+    }, (err) => console.error(err), session.email); // Pass email here
 
     return () => unsubscribe();
-  }, [session?.uid]);
+  }, [session?.uid, session?.email]);
 
   // Load Profile
   useEffect(() => {
@@ -328,20 +376,26 @@ export default function Appointments() {
   // --- Event Handlers ---
 
   const filteredAppointments = useMemo(() => {
-    const now = moment();
+    const now = moment().startOf('day'); // Compare dates at start of day
+    console.log(`[Appointments] Filtering ${appointments.length} appointments for tab: ${activeTab}`);
+    
     if (activeTab === 'upcoming') {
-      return appointments.filter(a => 
-        moment(a.date).isSameOrAfter(now, 'day') && 
-        a.status !== 'completed' && 
-        a.status !== 'cancelled'
-      );
+      return appointments.filter(a => {
+        const apptDate = moment(a.date);
+        const isValid = apptDate.isValid();
+        const isFuture = isValid && apptDate.isSameOrAfter(now);
+        const isNotFinished = a.status !== 'completed' && a.status !== 'cancelled';
+        
+        if (!isValid) console.warn(`[Appointments] Invalid date for appt ${a.id}: ${a.date}`);
+        
+        return isFuture && isNotFinished;
+      });
     }
     if (activeTab === 'past') {
-      return appointments.filter(a => 
-        moment(a.date).isBefore(now, 'day') || 
-        a.status === 'completed' || 
-        a.status === 'cancelled'
-      );
+      return appointments.filter(a => {
+        const apptDate = moment(a.date);
+        return apptDate.isBefore(now) || a.status === 'completed' || a.status === 'cancelled';
+      });
     }
     return appointments;
   }, [appointments, activeTab]);
@@ -446,12 +500,9 @@ export default function Appointments() {
         <View style={styles.cardContent}>
           <View style={styles.rowBetween}>
             <Text style={styles.cardTitle}>{item.scanType?.name || 'Consultation'}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: style.bg }]}>
-               <Text style={[styles.statusText, { color: style.text }]}>{displayStatus}</Text>
-            </View>
           </View>
           <Text style={styles.cardSubtitle}>
-            {item.doctor ? `Dr. ${item.doctor}` : 'Doctor to be assigned soon'}
+            {item.doctor && item.doctor !== 'null' && item.doctor !== 'undefined' ? `Dr. ${item.doctor}` : 'Doctor to be assigned soon'}
           </Text>
           <View style={styles.cardMetaRow}>
              <Feather name="clock" size={14} color={COLORS.textSec} />

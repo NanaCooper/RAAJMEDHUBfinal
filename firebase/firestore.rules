@@ -35,7 +35,8 @@ service cloud.firestore {
     function isAppointmentParticipant(appointmentData) {
       return isSignedIn() && (
         request.auth.uid == appointmentData.patientId || 
-        request.auth.uid == appointmentData.doctorId
+        request.auth.uid == appointmentData.doctorId ||
+        ('patientEmail' in appointmentData && request.auth.token.email == appointmentData.patientEmail)
       );
     }
 
@@ -88,16 +89,22 @@ service cloud.firestore {
     // Appointments - only participants can read/write
     match /appointments/{appointmentId} {
       allow create: if isSignedIn() && (
+        isAdmin() ||
         (isPatient() && request.resource.data.patientId == request.auth.uid && (!('doctorId' in request.resource.data) || request.resource.data.doctorId == null)) ||
         (isDoctor() && request.resource.data.doctorId == request.auth.uid)
       );
-      allow read: if isSignedIn() && isAppointmentParticipant(resource.data);
-      allow update: if isSignedIn() && 
-        isAppointmentParticipant(resource.data) && 
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        isAppointmentParticipant(resource.data)
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isAppointmentParticipant(resource.data) && 
         isAppointmentParticipant(request.resource.data) &&
         // Prevent changing patient/doctor IDs
         request.resource.data.patientId == resource.data.patientId &&
-        request.resource.data.doctorId == resource.data.doctorId;
+        request.resource.data.doctorId == resource.data.doctorId)
+      );
       allow delete: if isSignedIn() && isAppointmentParticipant(resource.data);
     }
 

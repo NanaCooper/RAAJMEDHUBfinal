@@ -2,6 +2,9 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// In-memory lock to prevent race conditions when scheduling reminders for the same appointment
+const schedulingLocks = new Map<string, Promise<void>>();
+
 /**
  * Notification Service for MediCare
  * Handles:
@@ -314,15 +317,14 @@ export async function isConversationMuted(conversationId: string): Promise<boole
  * Call this in your app root to handle notification taps
  */
 export function setupNotificationResponseListener(
-  onNotificationResponse: (conversationId: string, messageId: string) => void
+  onNotificationResponse: (conversationId?: string, messageId?: string, data?: any) => void
 ) {
   const subscription = Notifications.addNotificationResponseReceivedListener(response => {
     const data = response.notification.request.content.data as Record<string, any>;
     const conversationId = data.conversationId as string;
     const messageId = data.messageId as string;
-    if (conversationId && messageId) {
-      onNotificationResponse(conversationId, messageId);
-    }
+    
+    onNotificationResponse(conversationId, messageId, data);
   });
 
   return subscription; // Return subscription so it can be removed later
@@ -410,59 +412,158 @@ export async function sendAppointmentNotification(
 }
 
 /**
+ * Send a notification that a doctor has been assigned
+ */
+export async function sendDoctorAssignedNotification(
+  doctorName: string,
+  date: Date,
+  appointmentId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Doctor Assigned',
+        body: `Dr. ${doctorName} has been assigned to you on ${date.toLocaleDateString()}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'doctor_assigned', appointmentId },
+      },
+      trigger: null,
+    });
+    
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send doctor assigned notification:', error);
+  }
+}
+
+/**
+ * Send a notification to doctor that a patient has been assigned
+ */
+export async function sendPatientAssignedNotification(
+  patientName: string,
+  date: Date,
+  appointmentId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'New Patient Assigned',
+        body: `Patient ${patientName} has been assigned to you for ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'patient_assigned', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send patient assigned notification:', error);
+  }
+}
+
+/**
  * Schedule reminders for an appointment
  * - 1 day before
  * - 2 hours before
+ * Uses AsyncStorage to prevent duplicate scheduling
  */
 export async function scheduleAppointmentReminders(
   appointmentId: string,
   startAt: Date,
-  doctorName?: string
+  otherPartyName?: string, // Doctor name for patient, Patient name for doctor
+  role: 'patient' | 'doctor' = 'patient'
 ) {
+  // Prevent race conditions for the same appointment
+  if (schedulingLocks.has(appointmentId)) {
+    return schedulingLocks.get(appointmentId);
+  }
+
+  const task = (async () => {
+    try {
+      const prefs = await getNotificationPreferences();
+      if (!prefs.enabled) return;
+
+      const now = new Date();
+      const oneDayBefore = new Date(startAt.getTime() - 24 * 60 * 60 * 1000);
+      const twoHoursBefore = new Date(startAt.getTime() - 2 * 60 * 60 * 1000);
+
+      const partyLabel = role === 'patient' ? (otherPartyName ? ` with Dr. ${otherPartyName}` : '') : (otherPartyName ? ` with ${otherPartyName}` : '');
+
+      // Helper to manage duplicate scheduling
+      const scheduleUnique = async (triggerDate: Date, type: '1day' | '2hour', title: string, body: string) => {
+        const storageKey = `reminder_${appointmentId}_${type}`;
+        const triggerTime = triggerDate.getTime();
+        
+        // 1. Check existing
+        const storedData = await AsyncStorage.getItem(storageKey);
+        if (storedData) {
+          try {
+            const { id, time } = JSON.parse(storedData);
+            // If scheduled for the exact same time, skip
+            if (time === triggerTime) {
+              return;
+            }
+            // If time changed, cancel old one
+            await Notifications.cancelScheduledNotificationAsync(id);
+          } catch (e) {
+            // If legacy format (just ID string), try to cancel it
+            await Notifications.cancelScheduledNotificationAsync(storedData);
+          }
+        }
+
+        // 2. Schedule new if in future
+        if (triggerDate > now) {
+          const newId = await Notifications.scheduleNotificationAsync({
+            content: {
+              title,
+              body,
+              sound: prefs.soundEnabled ? 'default' : undefined,
+              data: { type: 'appointment_reminder', appointmentId },
+            },
+            trigger: { type: 'date', date: triggerDate } as any,
+          });
+          
+          // 3. Save new ID and Time
+          await AsyncStorage.setItem(storageKey, JSON.stringify({ id: newId, time: triggerTime }));
+          console.log(`[NotificationService] Scheduled ${type} reminder for: ${triggerDate.toISOString()} (Appt: ${startAt.toISOString()})`);
+        }
+      };
+
+      // Schedule 1 day before reminder
+      if (oneDayBefore > now) {
+        await scheduleUnique(
+          oneDayBefore, 
+          '1day', 
+          'Upcoming Appointment Reminder', 
+          `You have an appointment tomorrow at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${partyLabel}.`
+        );
+      }
+
+      // Schedule 2 hours before reminder
+      if (twoHoursBefore > now) {
+        await scheduleUnique(
+          twoHoursBefore, 
+          '2hour', 
+          'Appointment Starting Soon', 
+          `Your appointment is in 2 hours at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please be ready.`
+        );
+      }
+
+    } catch (error) {
+      console.error('Failed to schedule appointment reminders:', error);
+    }
+  })();
+
+  schedulingLocks.set(appointmentId, task);
   try {
-    console.log('[NotificationService] Scheduling reminders for appointment:', appointmentId);
-    const prefs = await getNotificationPreferences();
-    if (!prefs.enabled) return;
-
-    const now = new Date();
-    const oneDayBefore = new Date(startAt.getTime() - 24 * 60 * 60 * 1000);
-    const twoHoursBefore = new Date(startAt.getTime() - 2 * 60 * 60 * 1000);
-
-    // Schedule 1 day before reminder
-    if (oneDayBefore > now) {
-      const seconds = Math.floor((oneDayBefore.getTime() - now.getTime()) / 1000);
-      if (seconds > 0) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Upcoming Appointment Reminder',
-            body: `You have an appointment tomorrow at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${doctorName ? ` with Dr. ${doctorName}` : ''}.`,
-            sound: prefs.soundEnabled ? 'default' : undefined,
-            data: { type: 'appointment_reminder', appointmentId },
-          },
-          trigger: { seconds } as any,
-        });
-        console.log('[NotificationService] Scheduled 1-day reminder for:', oneDayBefore);
-      }
-    }
-
-    // Schedule 2 hours before reminder
-    if (twoHoursBefore > now) {
-      const seconds = Math.floor((twoHoursBefore.getTime() - now.getTime()) / 1000);
-      if (seconds > 0) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Appointment Starting Soon',
-            body: `Your appointment is in 2 hours at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please be ready.`,
-            sound: prefs.soundEnabled ? 'default' : undefined,
-            data: { type: 'appointment_reminder', appointmentId },
-          },
-          trigger: { seconds } as any,
-        });
-        console.log('[NotificationService] Scheduled 2-hour reminder for:', twoHoursBefore);
-      }
-    }
-
-  } catch (error) {
-    console.error('Failed to schedule appointment reminders:', error);
+    await task;
+  } finally {
+    schedulingLocks.delete(appointmentId);
   }
 }
