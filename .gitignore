@@ -44,6 +44,6 @@ app-example
 
 # local env and secrets
 .env
-google-services.json
+GoogleService-Info.plist
 gemini_models.txt
 temp.tsx
