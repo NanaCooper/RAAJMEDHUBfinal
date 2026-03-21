@@ -46,52 +46,39 @@ export default function DoctorSchedule() {
   const { session } = useAuth();
   const [appointments, setAppointments] = useState<ApptItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [doctorKey, setDoctorKey] = useState<string | null>(null);
+  // Code lookup removed in favor of session.uid
   const [error, setError] = useState<string | null>(null);
-
-  // Logic to find correct doctor ID/Code
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!session?.uid) return;
-      try {
-        const userRef = doc(db, 'users', session.uid);
-        const snap = await getDoc(userRef);
-        if (mounted && snap.exists()) {
-          const data: any = snap.data();
-          const code = data?.doctorCode || data?.code || null;
-          setDoctorKey(code || session.uid);
-        } else if (mounted) {
-          setDoctorKey(session.uid);
-        }
-      } catch {
-        if (mounted) setDoctorKey(session.uid);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [session?.uid]);
+  // Simplification: We rely on session.uid as the doctorId, consistent with other screens.
+  // If hybrid usage of doctorCode is needed, it should be handled by the backend or service mapping.
+  // For now, removing the separate doctorKey fetch to avoid sync issues.
 
   // Subscription
   useEffect(() => {
-    if (!doctorKey) return;
+    if (!session?.uid) return;
     setLoading(true);
     const unsub = subscribeToAppointments(
-      doctorKey,
+      session.uid,
       'doctor',
       async (items: any[]) => {
         // Fetch patient details for each appointment
         const enrichedItems = await Promise.all(items.map(async (item) => {
-            let details = null;
-            if (item.patientId) {
-                try {
-                    details = await getUserProfile(item.patientId);
-                } catch (e) {
-                    console.error("Failed to fetch patient", item.patientId);
-                }
+          let details = null;
+          if (item.patientId) {
+            try {
+              details = await getUserProfile(item.patientId);
+            } catch (e) {
+              // console.error("Failed to fetch patient", item.patientId);
             }
-            return { ...item, patientDetails: details } as any;
+          }
+          return { ...item, patientDetails: details } as any;
         }));
-        setAppointments(enrichedItems as ApptItem[]);
+        // rigorous filter: must have patient details to show
+        const validItems = enrichedItems.filter((i: any) => {
+          const hasDetails = i.patientDetails && (i.patientDetails.id || i.patientDetails.fullName || i.patientDetails.firstName);
+          return hasDetails;
+        });
+
+        setAppointments(validItems as ApptItem[]);
         setLoading(false);
         if (error) setError(null);
       },
@@ -99,14 +86,14 @@ export default function DoctorSchedule() {
         setLoading(false);
         const code = err?.code || '';
         if (code === 'permission-denied') {
-          setError('You do not have permission to view these appointments. Ensure your doctor profile code matches the appointment doctorId and your role is set to doctor.');
+          setError('Access denied. Ensure you are logged in as a doctor.');
         } else {
-          setError('Failed to load appointments. Please try again.');
+          setError('Failed to load schedule.');
         }
       }
     );
-    return () => { try { unsub(); } catch {} };
-  }, [doctorKey, error]);
+    return () => { try { unsub(); } catch { } };
+  }, [session?.uid, error]);
 
   // Sorting & Grouping
   const sections = useMemo(() => {
@@ -146,7 +133,7 @@ export default function DoctorSchedule() {
   const renderAppt = ({ item }: { item: ApptItem }) => {
     const pd = item.patientDetails || {};
     const name = pd.fullName || pd.name || (pd.firstName || pd.lastName ? `${pd.firstName} ${pd.lastName}` : 'Unknown Patient');
-    
+
     // Calculate status based on date if pending
     let status = (item.status || 'pending');
     if (status.toLowerCase() === 'pending') {
@@ -154,7 +141,7 @@ export default function DoctorSchedule() {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const apptDay = new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate());
-      
+
       if (apptDay < today) {
         status = 'completed';
       }
@@ -164,7 +151,7 @@ export default function DoctorSchedule() {
     const scanInfo = typeof item.scanType === 'object' ? (item.scanType as any).name : item.scanType;
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.card}
         activeOpacity={0.9}
         onPress={() => router.push(`/patients/${item.patientId || pd.id}`)}
@@ -191,7 +178,7 @@ export default function DoctorSchedule() {
             </View>
             <View>
               <Text style={styles.patientName}>{name}</Text>
-              <Text style={styles.patientId}>ID: {pd.id?.substring(0,6).toUpperCase() || 'N/A'}</Text>
+              <Text style={styles.patientId}>ID: {pd.id?.substring(0, 6).toUpperCase() || 'N/A'}</Text>
             </View>
           </View>
 
@@ -203,7 +190,7 @@ export default function DoctorSchedule() {
               </View>
             )}
             {pd.phone && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.infoItem}
                 onPress={() => Linking.openURL(`tel:${pd.phone}`)}
               >
@@ -216,15 +203,15 @@ export default function DoctorSchedule() {
 
         {/* Footer: Quick Actions */}
         <View style={styles.cardFooter}>
-          <TouchableOpacity 
-            style={styles.footerAction} 
+          <TouchableOpacity
+            style={styles.footerAction}
             onPress={() => router.push({ pathname: '/appointments/[id]', params: { id: item.id } })}
           >
             <Text style={styles.actionText}>View Details</Text>
             <Feather name="chevron-right" size={16} color={COLORS.primary} />
           </TouchableOpacity>
-          
-          
+
+
         </View>
       </TouchableOpacity>
     );
@@ -251,8 +238,8 @@ export default function DoctorSchedule() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-      
-      
+
+
 
       {/* Content */}
       {loading ? (
@@ -283,8 +270,8 @@ export default function DoctorSchedule() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-               <Feather name="calendar" size={48} color={COLORS.textSec} />
-               <Text style={styles.emptyText}>No upcoming appointments.</Text>
+              <Feather name="calendar" size={48} color={COLORS.textSec} />
+              <Text style={styles.emptyText}>No upcoming appointments.</Text>
             </View>
           }
         />
@@ -296,7 +283,7 @@ export default function DoctorSchedule() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
+
   // Header
   header: {
     flexDirection: 'row',
@@ -320,7 +307,7 @@ const styles = StyleSheet.create({
 
   // List
   listContent: { paddingHorizontal: 20, paddingBottom: 40 },
-  
+
   // Sections
   section: { marginBottom: 24 },
   sectionHeader: {
@@ -368,7 +355,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statusText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  
+
   divider: { height: 1, backgroundColor: COLORS.border },
 
   cardBody: { padding: 16 },

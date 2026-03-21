@@ -1,6 +1,6 @@
 import { db, collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from '../utils/firebaseConfig';
 import type { Appointment } from '../types/appointment';
-import { scheduleAppointmentReminders, sendDoctorAssignedNotification, sendPatientAssignedNotification } from './notifications';
+import { scheduleAppointmentReminders, sendDoctorAssignedNotification, sendPatientAssignedNotification, sendAppointmentRescheduledNotification } from './notifications';
 import moment from 'moment';
 
 // Use a lazy accessor for the appointments collection so we don't call
@@ -112,15 +112,15 @@ export function subscribeToAppointments(
   userEmail?: string | null
 ) {
   const field = role === 'patient' ? 'patientId' : 'doctorId';
-  let unsubMain: () => void = () => {};
-  let unsubEmail: () => void = () => {};
-  
+  let unsubMain: () => void = () => { };
+  let unsubEmail: () => void = () => { };
+
   // Store docs from both queries
   let mainDocs: any[] = [];
   let emailDocs: any[] = [];
 
   // Helper to process notifications
-  const processNotifications = (changes: any[]) => {
+  const processNotifications = (changes: any[], oldDocs: any[] = []) => {
     changes.forEach(change => {
       const data = change.doc.data();
       const apptId = change.doc.id;
@@ -139,7 +139,7 @@ export function subscribeToAppointments(
           startAt = data.startAt.toDate();
         }
       }
-      
+
       if (!startAt) return;
 
       // Debug log to verify parsing
@@ -151,8 +151,8 @@ export function subscribeToAppointments(
         // Or if it's a future appointment that we haven't scheduled reminders for yet
         // For simplicity, we schedule reminders for ALL future appointments (idempotent)
         if (startAt > new Date()) {
-           const otherParty = role === 'patient' ? data.doctorName : data.patientDetails?.fullName || 'Patient';
-           scheduleAppointmentReminders(apptId, startAt, otherParty, role);
+          const otherParty = role === 'patient' ? data.doctorName : data.patientDetails?.fullName || 'Patient';
+          scheduleAppointmentReminders(apptId, startAt, otherParty, role);
         }
 
         // Specific Notification: Admin booked for patient
@@ -166,16 +166,16 @@ export function subscribeToAppointments(
         const eventKey = `added_assigned_${apptId}`;
 
         if (role === 'patient' && isRecent && data.doctorName && !processedNotificationEvents.has(eventKey)) {
-           processedNotificationEvents.add(eventKey);
-           sendDoctorAssignedNotification(data.doctorName, startAt, apptId);
+          processedNotificationEvents.add(eventKey);
+          sendDoctorAssignedNotification(data.doctorName, startAt, apptId);
         }
 
         // Specific Notification: Doctor receives new patient
         const docEventKey = `added_patient_${apptId}`;
         if (role === 'doctor' && isRecent && !processedNotificationEvents.has(docEventKey)) {
-           processedNotificationEvents.add(docEventKey);
-           const patientName = data.patientDetails?.fullName || 'New Patient';
-           sendPatientAssignedNotification(patientName, startAt, apptId);
+          processedNotificationEvents.add(docEventKey);
+          const patientName = data.patientDetails?.fullName || 'New Patient';
+          sendPatientAssignedNotification(patientName, startAt, apptId);
         }
       }
 
@@ -195,28 +195,79 @@ export function subscribeToAppointments(
         const modEventKey = `mod_assigned_${apptId}_${updatedAt.getTime()}`;
 
         if (role === 'patient' && isRecentUpdate && data.doctorName && data.status !== 'cancelled' && !processedNotificationEvents.has(modEventKey)) {
-           // We can't easily know if it was *just* assigned without prev state, 
-           // but sending a "Doctor Assigned" notification when the doc is updated is acceptable 
-           // if we debounce or check specific fields. 
-           // For now, we assume a modification with a doctor name implies assignment or update.
-           // Ideally, we'd check if the previous state had no doctor.
-           // Let's rely on the UI/Service layer to trigger this, OR just send it.
-           // Actually, the requirement says: "When the app fetches a doctor has been assigned... send notification"
-           // This implies a transition from No Doctor -> Doctor.
-           // Since we don't have prev state here, we will just schedule reminders which is safe.
-           // For the specific "Doctor Assigned" alert, we might need to be more careful.
-           // Let's try to infer it: if status is 'pending' -> 'upcoming' maybe?
-           
-           processedNotificationEvents.add(modEventKey);
-           
-           // Re-schedule reminders in case time changed
-           if (startAt > new Date()) {
-             scheduleAppointmentReminders(apptId, startAt, data.doctorName, role);
-           }
-           
-           // If we really want to catch the "Just Assigned" event, we need to store local state.
-           // But for this task, ensuring reminders are set is the priority.
-           // The "Admin Booked" case is covered by 'added' + isRecent.
+          // We can't easily know if it was *just* assigned without prev state, 
+          // but sending a "Doctor Assigned" notification when the doc is updated is acceptable 
+          // if we debounce or check specific fields. 
+          // For now, we assume a modification with a doctor name implies assignment or update.
+          // Ideally, we'd check if the previous state had no doctor.
+          // Let's rely on the UI/Service layer to trigger this, OR just send it.
+          // Actually, the requirement says: "When the app fetches a doctor has been assigned... send notification"
+          // This implies a transition from No Doctor -> Doctor.
+          // Since we don't have prev state here, we will just schedule reminders which is safe.
+          // For the specific "Doctor Assigned" alert, we might need to be more careful.
+          // Let's try to infer it: if status is 'pending' -> 'upcoming' maybe?
+
+          processedNotificationEvents.add(modEventKey);
+
+          // Re-schedule reminders in case time changed
+          if (startAt > new Date()) {
+            scheduleAppointmentReminders(apptId, startAt, data.doctorName, role);
+          }
+
+          // If we really want to catch the "Just Assigned" event, we need to store local state.
+          // But for this task, ensuring reminders are set is the priority.
+          // The "Admin Booked" case is covered by 'added' + isRecent.
+        }
+
+        // --- CHECK 2: DATE CHANGED / RESCHEDULED ---
+        // Find old doc to compare
+        // We need to pass oldDocs to check for changes
+        if (role === 'patient' && isRecentUpdate && startAt && data.status !== 'cancelled') {
+          const oldDoc = oldDocs.find(d => d.id === apptId);
+          let oldStartAt: Date | null = null;
+
+          if (oldDoc) {
+            const oldData = oldDoc.data();
+            if (oldData.startAt) {
+              if (typeof oldData.startAt === 'string') {
+                const m = moment(oldData.startAt, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ', moment.ISO_8601]);
+                if (m.isValid()) oldStartAt = m.toDate();
+              } else if (oldData.startAt.toDate) {
+                oldStartAt = oldData.startAt.toDate();
+              }
+            }
+          }
+
+          // Detect Change:
+          // 1. Old had NO date, New HAS date (Scheduling)
+          // 2. Old had date, New has DIFFERENT date (Rescheduling)
+          const isNewDate = !oldStartAt && startAt;
+          // compare times
+          const isChangedDate = oldStartAt && startAt && oldStartAt.getTime() !== startAt.getTime();
+
+          // Dedupe key for rescheduling
+          const reschedKey = `resched_${apptId}_${updatedAt.getTime()}`;
+
+          if ((isNewDate || isChangedDate) && !processedNotificationEvents.has(reschedKey)) {
+            processedNotificationEvents.add(reschedKey);
+            sendAppointmentRescheduledNotification(startAt, apptId);
+          }
+        }
+      }
+
+      // 3. Auto-Deny Past Pending Appointments
+      // We check on 'added' (initial load) and 'modified' to catch expired items.
+      if (data.status === 'pending') {
+        const now = new Date();
+        // If startAt is in the past
+        if (startAt < now) {
+          // Only the doctor should trigger this write to avoid double writes if patient is also online
+          // (Though firestore rules might block patient from setting 'denied', doctor definitely can).
+          if (role === 'doctor') {
+            // console.log(`[Auto-Deny] Denying expired appointment ${apptId}`);
+            // Fire and forget
+            updateAppointmentStatus(apptId, 'denied' as any).catch(e => console.warn("Auto-deny failed", e));
+          }
         }
       }
     });
@@ -252,14 +303,15 @@ export function subscribeToAppointments(
   // 1. Main Query (by ID)
   // console.log(`[subscribeToAppointments] Subscribing for ${role} with ID: ${userId}`);
   const qMain = query(appointmentsCol(), where(field, '==', userId));
-  
+
   try {
     unsubMain = onSnapshot(
       qMain,
       (snapshot: any) => {
         // console.log(`[subscribeToAppointments] Main Snapshot. Docs: ${snapshot.docs.length}`);
+        // PROCESS BEFORE UPDATING mainDocs to allow comparison
+        processNotifications(snapshot.docChanges(), mainDocs);
         mainDocs = snapshot.docs;
-        processNotifications(snapshot.docChanges());
         updateCombined();
       },
       (err: any) => {
@@ -281,13 +333,14 @@ export function subscribeToAppointments(
         qEmail,
         (snapshot: any) => {
           // console.log(`[subscribeToAppointments] Email Snapshot. Docs: ${snapshot.docs.length}`);
+          // PROCESS BEFORE UPDATING emailDocs
+          processNotifications(snapshot.docChanges(), emailDocs);
           emailDocs = snapshot.docs;
-          processNotifications(snapshot.docChanges());
           updateCombined();
         },
         (err: any) => {
-           // Ignore permission errors for email query if rules are strict
-           console.warn('subscribeToAppointments error (email)', err);
+          // Ignore permission errors for email query if rules are strict
+          console.warn('subscribeToAppointments error (email)', err);
         }
       );
     } catch (err) {

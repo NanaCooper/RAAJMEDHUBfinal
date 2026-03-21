@@ -50,20 +50,20 @@ export default function BookingConfirmationModal() {
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   // Parse details from params once to avoid re-renders from param object identity change
-  const { date, time, appointmentData, scanType } = useMemo(() => {
+  const { date, appointmentData, scanType, branch } = useMemo(() => {
     try {
       const data = JSON.parse((params.appointmentData as string) || '{}');
       console.log("--- [booking-confirmation.tsx] Params parsed: ", JSON.stringify(params, null, 2));
       return {
         date: params.date as string,
-        time: params.time as string,
         appointmentData: data,
-        scanType: data?.scanType?.name || 'Consultation',
+        scanType: data?.scanType?.name || (Array.isArray(data?.scanTypes) ? data.scanTypes.map((s: any) => s.name).join(', ') : 'Consultation'),
+        branch: data?.branch || 'MediCare Central Clinic',
       };
     } catch (e) {
       console.error("--- [booking-confirmation.tsx] Failed to parse appointment data ---", e);
       Alert.alert("Error", "Could not load appointment details.", [{ text: "OK", onPress: () => router.back() }]);
-      return { date: '', time: '', appointmentData: null, scanType: 'Error' };
+      return { date: '', appointmentData: null, scanType: 'Error', branch: '' };
     }
   }, [params, router]);
 
@@ -112,11 +112,11 @@ export default function BookingConfirmationModal() {
       console.log("--- [booking-confirmation.tsx] Attempting to call createAppointment... ---");
       const result = await createAppointment(appointmentToSave as any);
       console.log("[LOG] handleConfirm: Successfully created appointment. Firestore response:", result);
-      
+
       // Send local notification
       await sendAppointmentNotification(
         "Booking Successful",
-        "Congratulations, a doctor will be assigned to you shortly",
+        "Your appointment request has been submitted. Wait for confirmation.",
         result.id || ''
       );
 
@@ -134,17 +134,6 @@ export default function BookingConfirmationModal() {
     } catch (error) {
       console.error("--- [booking-confirmation.tsx] Booking Confirmation FAILED ---");
       console.error("[LOG] handleConfirm: An error occurred during createAppointment:", error);
-      
-      // Log additional details if the error object has them
-      if (error && typeof error === 'object' && (error as any).message) {
-        console.error("[LOG] handleConfirm: Error message:", (error as any).message);
-      }
-      if (error && typeof error === 'object' && (error as any).code) {
-        console.error("[LOG] handleConfirm: Error code:", (error as any).code);
-      }
-      if (error && typeof error === 'object') {
-        console.error("[LOG] handleConfirm: Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-      }
 
       setIsLoading(false);
       Alert.alert(
@@ -185,15 +174,11 @@ export default function BookingConfirmationModal() {
     return (
       <>
         <Text style={styles.title}>Confirm Your Appointment</Text>
-        
+
         <View style={styles.detailsContainer}>
           <DetailRow icon="clipboard" label="Service" value={scanType} />
           <View style={styles.divider} />
-          <DetailRow icon="calendar" label="Date" value={moment(date).format("dddd, MMMM D, YYYY")} />
-          <View style={styles.divider} />
-          <DetailRow icon="clock" label="Time" value={moment(time, "HH:mm").format("h:mm A")} />
-          <View style={styles.divider} />
-          <DetailRow icon="map-pin" label="Location" value="MediCare Central Clinic" />
+          <DetailRow icon="map-pin" label="Location" value={branch} />
         </View>
 
         <View style={styles.actions}>
@@ -227,23 +212,23 @@ export default function BookingConfirmationModal() {
       </View>
       <Text style={styles.successTitle}>Booking Confirmed!</Text>
       <Text style={styles.successMsg}>
-        Your appointment for a {scanType} on {moment(date).format("MMM D")} at {moment(time, "HH:mm").format("h:mm A")} is set.
+        Your appointment for a {scanType} has been requested.
       </Text>
-      <TouchableOpacity style={[styles.primaryBtn, {marginTop: 16}]} onPress={handleFinish}>
+      <TouchableOpacity style={[styles.primaryBtn, { marginTop: 16 }]} onPress={handleFinish}>
         <Text style={styles.primaryBtnText}>Done</Text>
       </TouchableOpacity>
     </View>
   );
 
   return (
-    <SafeAreaView 
-      style={styles.wrapper} 
+    <SafeAreaView
+      style={styles.wrapper}
       edges={['bottom']}
     >
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleEdit} />
 
-      <Animated.View 
-        style={[styles.card, { transform: [{ scale: scaleAnim }] }]} 
+      <Animated.View
+        style={[styles.card, { transform: [{ scale: scaleAnim }] }]}
       >
         {isConfirmed ? renderSuccess() : renderConfirmation()}
       </Animated.View>

@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import moment from 'moment';
 import { updateAppointmentStatus } from '../../services/appointments';
+import { fetchProcedurePrice } from '../../services/procedures';
 
 // --- Theme ---
 const COLORS = {
@@ -31,6 +32,21 @@ const AppointmentDetailScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const appointment = JSON.parse(params.appointment as string);
+
+  const [procedurePrice, setProcedurePrice] = useState<string | null>(null);
+  const [pricesLoading, setPricesLoading] = useState(true);
+
+  useEffect(() => {
+    const scanName = appointment.scanType?.name || '';
+    if (!scanName) { setPricesLoading(false); return; }
+    fetchProcedurePrice(scanName)
+      .then((result) => {
+        // Guard: only accept string values — never render an object as a React child
+        setProcedurePrice(typeof result === 'string' ? result : null);
+      })
+      .catch(() => {})
+      .finally(() => setPricesLoading(false));
+  }, []);
 
   const handleCancel = async () => {
     Alert.alert(
@@ -82,10 +98,12 @@ const AppointmentDetailScreen = () => {
     );
   };
 
+  const isCapeCoast = (appointment.branch || '').toLowerCase().includes('cape coast');
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.push('/(patient)/appointments?tab=upcoming')} style={styles.backButton}>
           <Feather name="chevron-left" size={24} color={COLORS.textMain} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Appointment Details</Text>
@@ -98,9 +116,14 @@ const AppointmentDetailScreen = () => {
             <Text style={styles.cardTitle}>{appointment.scanType?.name || 'Consultation'}</Text>
             {renderStatusBadge()}
           </View>
-          <Text style={styles.cardSubtitle}>
-            {appointment.doctor && appointment.doctor !== 'null' && appointment.doctor !== 'undefined' ? `with Dr. ${appointment.doctor}` : 'Doctor to be assigned soon'}
-          </Text>
+          
+          {isCapeCoast && (
+            <Text style={styles.cardSubtitle}>
+              {appointment.doctor && appointment.doctor !== 'null' && appointment.doctor !== 'undefined' && appointment.doctor !== 'Assigned soon'
+                ? `with Dr. ${appointment.doctor}` 
+                : 'Doctor to be assigned soon'}
+            </Text>
+          )}
 
           <View style={styles.divider} />
 
@@ -115,8 +138,38 @@ const AppointmentDetailScreen = () => {
           <View style={styles.detailRow}>
             <Feather name="clock" size={20} color={COLORS.primary} />
             <View style={styles.detailTextContainer}>
-              <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{moment(appointment.time, "HH:mm").format("h:mm A")}</Text>
+              {(() => {
+                // A real appointment time exists when startAt is set OR when status
+                // is confirmed/approved/scheduled and a non-empty time string is present.
+                const hasScheduledTime =
+                  !!appointment.startAt ||
+                  (['confirmed', 'approved', 'scheduled', 'completed'].includes(appointment.status) && !!appointment.time);
+
+                const label = hasScheduledTime ? 'Appointment Time' : 'Time Requested';
+
+                let timeDisplay = 'Not yet scheduled';
+                if (hasScheduledTime) {
+                  if (appointment.startAt) {
+                    const d = appointment.startAt.toDate ? appointment.startAt.toDate() : new Date(appointment.startAt);
+                    timeDisplay = moment(d).format('h:mm A [on] ddd, MMM D');
+                  } else if (appointment.time) {
+                    timeDisplay = moment(appointment.time, 'HH:mm').format('h:mm A');
+                  }
+                } else {
+                  // Show when the request was submitted
+                  if (appointment.createdAt) {
+                    const d = appointment.createdAt.toDate ? appointment.createdAt.toDate() : new Date(appointment.createdAt);
+                    timeDisplay = moment(d).format('h:mm A [on] ddd, MMM D');
+                  }
+                }
+
+                return (
+                  <>
+                    <Text style={styles.detailLabel}>{label}</Text>
+                    <Text style={styles.detailValue}>{timeDisplay}</Text>
+                  </>
+                );
+              })()}
             </View>
           </View>
 
@@ -124,9 +177,27 @@ const AppointmentDetailScreen = () => {
             <Feather name="map-pin" size={20} color={COLORS.primary} />
             <View style={styles.detailTextContainer}>
               <Text style={styles.detailLabel}>Location</Text>
-              <Text style={styles.detailValue}>MediCare Central Clinic</Text>
+              <Text style={styles.detailValue}>{appointment.branch || 'MediCare Central Clinic'}</Text>
             </View>
           </View>
+
+          {/* Live procedure price from Firestore */}
+          <>
+            <View style={styles.divider} />
+            <View style={[styles.detailRow, { marginBottom: 0 }]}>
+              <Feather name="credit-card" size={20} color={COLORS.primary} />
+              <View style={styles.detailTextContainer}>
+                <Text style={styles.detailLabel}>Procedure Cost</Text>
+                {pricesLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginTop: 2 }} />
+                ) : (
+                  <Text style={[styles.detailValue, { color: COLORS.success, fontWeight: '800' }]}>
+                    {procedurePrice || 'Contact clinic for pricing'}
+                  </Text>
+                )}
+              </View>
+            </View>
+          </>
         </View>
 
         {appointment.status === 'upcoming' && (

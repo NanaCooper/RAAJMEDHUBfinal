@@ -15,26 +15,40 @@ export async function getDoctor(doctorId: string) {
       return doctorCache[idStr];
     }
 
-    const ref = doc(db, 'users', idStr);
-    const snap = await getDoc(ref);
-    
-    if (!snap.exists()) {
-      return null;
+    // 1. Try /doctors/{id} first — readable by all signed-in users per rules
+    const doctorRef = doc(db, 'doctors', idStr);
+    const doctorSnap = await getDoc(doctorRef);
+    if (doctorSnap.exists()) {
+      const data = { id: doctorSnap.id, ...(doctorSnap.data() as any) };
+      doctorCache[idStr] = data;
+      return data;
     }
 
-    const doctorData = { id: snap.id, ...(snap.data() as any) };
-    doctorCache[idStr] = doctorData; // Cache the result
+    // 2. Fall back to /users/{id} — only works if patient has permission
+    //    (e.g. the target user's role is 'doctor', which the rule allows)
+    const userRef = doc(db, 'users', idStr);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) return null;
+
+    const doctorData = { id: userSnap.id, ...(userSnap.data() as any) };
+    doctorCache[idStr] = doctorData;
     return doctorData;
 
   } catch (err: any) {
-    // Suppress permission errors completely to avoid console noise
-    if (err?.code === 'permission-denied' || err?.message?.includes('Missing or insufficient permissions')) {
+    // Silently swallow permission errors — not a code bug, just a rules boundary
+    if (
+      err?.code === 'permission-denied' ||
+      err?.code === 'firestore/permission-denied' ||
+      err?.message?.includes('permission') ||
+      err?.message?.includes('Missing or insufficient')
+    ) {
       return null;
     }
     console.warn('getDoctor error', err);
     return null;
   }
 }
+
 
 export async function listDoctors() {
   try {

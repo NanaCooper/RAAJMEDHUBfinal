@@ -31,9 +31,10 @@ const COLORS = {
 
 const MENU_ITEMS = [
   { label: "Dashboard", route: "/(doctor)/", icon: "grid" },
+  { label: "Appointments", route: "/(doctor)/appointments", icon: "clipboard" },
   { label: "Schedule", route: "/(doctor)/schedule", icon: "calendar" },
-  { label: "Patient Queue", route: "/(doctor)/queue", icon: "users" },
   { label: "My Patients", route: "/(doctor)/patients", icon: "file-text" },
+  { label: "Reports", route: "/(doctor)/reports", icon: "folder" },
   { label: "Profile", route: "/(doctor)/profile", icon: "user" },
   { label: "Settings", route: "/(doctor)/settings", icon: "settings" },
 ];
@@ -50,7 +51,7 @@ function CustomDrawerContent(props: any) {
 
   const handleLogout = async () => {
     props.navigation.closeDrawer();
-    try { await signOut(); } catch (e) {}
+    try { await signOut(); } catch (e) { }
     router.replace('/login');
   };
 
@@ -61,9 +62,13 @@ function CustomDrawerContent(props: any) {
         <View style={styles.avatarContainer}>
           <Text style={styles.avatarText}>{(user?.fullName || user?.name || "D").charAt(0)}</Text>
         </View>
-        <View>
-          <Text style={styles.docName}>Dr. {user?.fullName || user?.name || "Doctor"}</Text>
-          <Text style={styles.docSpecialty}>{user?.specialties?.[0] || "General Practitioner"}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.docName} numberOfLines={2}>
+            Dr. {user?.fullName || user?.name || "Doctor"}
+          </Text>
+          <Text style={styles.docSpecialty} numberOfLines={1}>
+            {user?.specialties?.[0] || "General Practitioner"}
+          </Text>
         </View>
       </View>
 
@@ -80,10 +85,10 @@ function CustomDrawerContent(props: any) {
               onPress={() => handleNavigation(item.route)}
               activeOpacity={0.7}
             >
-              <Feather 
-                name={item.icon as any} 
-                size={20} 
-                color={isActive ? COLORS.primary : COLORS.textSec} 
+              <Feather
+                name={item.icon as any}
+                size={20}
+                color={isActive ? COLORS.primary : COLORS.textSec}
               />
               <Text style={[styles.drawerLabel, isActive && styles.drawerLabelActive]}>
                 {item.label}
@@ -100,7 +105,7 @@ function CustomDrawerContent(props: any) {
           <Feather name="log-out" size={20} color={COLORS.danger} />
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
-        
+
       </View>
     </SafeAreaView>
   );
@@ -142,7 +147,7 @@ export default function DoctorLayout() {
 
           const currentIds = new Set<string>();
           appointments.forEach(a => { if (a.id) currentIds.add(a.id); });
-          
+
           // 1. Schedule reminders for all future appointments (only once per session)
           appointments.forEach(appt => {
             if (appt.id && appt.startAt && appt.status !== 'cancelled' && appt.status !== 'completed') {
@@ -158,9 +163,9 @@ export default function DoctorLayout() {
               }
 
               if (!isNaN(start.getTime()) && start > new Date()) {
-                 console.log(`[DoctorLayout] Scheduling reminders for ${appt.id} at ${start.toISOString()}`);
-                 scheduleAppointmentReminders(appt.id, start);
-                 scheduledAppointmentIds.current.add(appt.id);
+                console.log(`[DoctorLayout] Scheduling reminders for ${appt.id} at ${start.toISOString()}`);
+                scheduleAppointmentReminders(appt.id, start);
+                scheduledAppointmentIds.current.add(appt.id);
               }
             }
           });
@@ -174,8 +179,8 @@ export default function DoctorLayout() {
                 let dateStr = '';
                 const sa = appt.startAt as any;
                 if (sa) {
-                    const d = sa.toDate ? sa.toDate() : new Date(sa);
-                    if (!isNaN(d.getTime())) dateStr = ` on ${d.toLocaleDateString()} at ${d.toLocaleTimeString()}`;
+                  const d = sa.toDate ? sa.toDate() : new Date(sa);
+                  if (!isNaN(d.getTime())) dateStr = ` on ${d.toLocaleDateString()} at ${d.toLocaleTimeString()}`;
                 }
 
                 sendAppointmentNotification(
@@ -212,25 +217,27 @@ export default function DoctorLayout() {
           drawerStyle: { width: "75%", backgroundColor: COLORS.surface },
           drawerType: "front",
           headerShown: true,
-          headerStyle: { 
-            backgroundColor: COLORS.surface, 
-            elevation: 0, 
+          headerStyle: {
+            backgroundColor: COLORS.surface,
+            elevation: 0,
             shadowOpacity: 0,
             borderBottomWidth: 1,
             borderBottomColor: COLORS.border
           },
           headerTintColor: COLORS.textMain,
           headerTitleStyle: { fontWeight: "700", fontSize: 18 },
-          
+
         }}
       >
         <Drawer.Screen name="index" options={{ title: "Dashboard" }} />
         <Drawer.Screen name="profile" options={{ title: "Doctor Profile" }} />
         <Drawer.Screen name="schedule" options={{ title: "My Schedule" }} />
-        <Drawer.Screen name="queue" options={{ title: "Waiting Queue" }} />
+
         <Drawer.Screen name="patients" options={{ title: "Patient List" }} />
+        <Drawer.Screen name="reports" options={{ title: "Patient Reports" }} />
         <Drawer.Screen name="availability" options={{ title: "Availability Settings" }} />
         <Drawer.Screen name="settings" options={{ title: "Settings" }} />
+        <Drawer.Screen name="appointments" options={{ title: "Appointments" }} />
       </Drawer>
     </>
   );
@@ -238,7 +245,7 @@ export default function DoctorLayout() {
 
 const styles = StyleSheet.create({
   drawerContainer: { flex: 1, backgroundColor: COLORS.surface },
-  
+
   // Header
   drawerHeader: {
     paddingHorizontal: 24,

@@ -10,10 +10,9 @@ service cloud.firestore {
     // Safely get the user's role, returning an empty string if not found.
     function getUserRole() {
       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      if (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'role' in userDoc.data) {
-        return userDoc.data.role;
-      }
-      return '';
+      return (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'role' in userDoc.data)
+        ? userDoc.data.role
+        : '';
     }
     
     function isAdmin() {
@@ -50,14 +49,14 @@ service cloud.firestore {
     // User profiles - users can read their own profile. Admins have full control.
     // Clients may create their own user doc but MUST NOT include `role`. Admins may create with role.
     match /users/{userId} {
-      // Read: owner, admin, or any signed-in user when the target user is a doctor (allow doctor profiles to be browsed)
-      // Also allow doctors to read any user's profile.
+      // Read: owner, admin, doctor, OR any signed-in user reading a doc where role == 'doctor'
+      // (allows patient-side calls like getDoctor to fall back to /users/ for doctor profiles)
       allow read: if isSignedIn() && (
         isOwner(userId) || 
         isAdmin() ||
         isDoctor() ||
-        // Allow signed-in users to read public doctor profiles
-        ('role' in resource.data && resource.data.role == 'doctor')
+        // Any signed-in user may read public doctor profiles
+        (resource.data.role == 'doctor')
       );
 
       // Create: owner may create their doc but must not include `role`. Admins may create with role.
@@ -90,7 +89,7 @@ service cloud.firestore {
     match /appointments/{appointmentId} {
       allow create: if isSignedIn() && (
         isAdmin() ||
-        (isPatient() && request.resource.data.patientId == request.auth.uid && (!('doctorId' in request.resource.data) || request.resource.data.doctorId == null)) ||
+        (isPatient() && request.resource.data.patientId == request.auth.uid && (!('doctorId' in request.resource.data) || request.resource.data.doctorId == null) && 'branch' in request.resource.data) ||
         (isDoctor() && request.resource.data.doctorId == request.auth.uid)
       );
       allow read: if isSignedIn() && (
@@ -113,6 +112,23 @@ service cloud.firestore {
       allow read: if isSignedIn(); // All signed-in users can read doctor profiles
       allow create: if isSignedIn() && request.auth.uid == doctorId;
       allow update: if isSignedIn() && request.auth.uid == doctorId;
+      allow delete: if isAdmin();
+    }
+
+    // Procedures / pricing catalogue - readable by all signed-in users, writable by admins only
+    match /procedures/{procedureId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Scan reports - patients can read their own, admins/doctors can create and update
+    match /reports/{reportId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.patientId ||
+        isAdmin() ||
+        isDoctor()
+      );
+      allow create, update: if isSignedIn() && (isAdmin() || isDoctor());
       allow delete: if isAdmin();
     }
 

@@ -51,12 +51,12 @@ export async function initializeNotifications() {
     // Request permissions first
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
+
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
+
     if (finalStatus !== 'granted') {
       console.log('Notification permissions not granted!');
       return false;
@@ -64,7 +64,7 @@ export async function initializeNotifications() {
 
     // Load notification preferences
     await getNotificationPreferences();
-    
+
     // Set up notification channel for Android
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
@@ -236,7 +236,7 @@ export async function incrementBadgeCount(): Promise<void> {
     const current = await getBadgeCount();
     const newCount = current + 1;
     await AsyncStorage.setItem(BADGE_COUNT_KEY, newCount.toString());
-    
+
     // Also update the app icon badge
     await Notifications.setBadgeCountAsync(newCount);
   } catch (error) {
@@ -251,7 +251,7 @@ export async function decrementBadgeCount(): Promise<void> {
   try {
     const current = Math.max(0, await getBadgeCount() - 1);
     await AsyncStorage.setItem(BADGE_COUNT_KEY, current.toString());
-    
+
     // Also update the app icon badge
     await Notifications.setBadgeCountAsync(current);
   } catch (error) {
@@ -323,7 +323,7 @@ export function setupNotificationResponseListener(
     const data = response.notification.request.content.data as Record<string, any>;
     const conversationId = data.conversationId as string;
     const messageId = data.messageId as string;
-    
+
     onNotificationResponse(conversationId, messageId, data);
   });
 
@@ -338,7 +338,7 @@ export async function handleConversationOpened(conversationId: string): Promise<
   try {
     // Decrement badge count
     await decrementBadgeCount();
-    
+
     // Could add more cleanup logic here if needed
   } catch (error) {
     console.error('Failed to handle conversation opened:', error);
@@ -425,17 +425,44 @@ export async function sendDoctorAssignedNotification(
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Doctor Assigned',
-        body: `Dr. ${doctorName} has been assigned to you on ${date.toLocaleDateString()}.`,
+        title: 'Appointment Approved',
+        body: 'Wait for confirmation from RAAJ Medhub',
         sound: prefs.soundEnabled ? 'default' : undefined,
         data: { type: 'doctor_assigned', appointmentId },
       },
       trigger: null,
     });
-    
+
     if (prefs.badgeEnabled) await incrementBadgeCount();
   } catch (error) {
     console.error('Failed to send doctor assigned notification:', error);
+  }
+}
+
+/**
+ * Send a notification that an appointment has been rescheduled/approved with a date
+ */
+export async function sendAppointmentRescheduledNotification(
+  date: Date,
+  appointmentId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Appointment Approved',
+        body: `Your appointment has been approved, you have an appointment on ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'appointment_rescheduled', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send appointment rescheduled notification:', error);
   }
 }
 
@@ -499,7 +526,7 @@ export async function scheduleAppointmentReminders(
       const scheduleUnique = async (triggerDate: Date, type: '1day' | '2hour', title: string, body: string) => {
         const storageKey = `reminder_${appointmentId}_${type}`;
         const triggerTime = triggerDate.getTime();
-        
+
         // 1. Check existing
         const storedData = await AsyncStorage.getItem(storageKey);
         if (storedData) {
@@ -528,7 +555,7 @@ export async function scheduleAppointmentReminders(
             },
             trigger: { type: 'date', date: triggerDate } as any,
           });
-          
+
           // 3. Save new ID and Time
           await AsyncStorage.setItem(storageKey, JSON.stringify({ id: newId, time: triggerTime }));
           console.log(`[NotificationService] Scheduled ${type} reminder for: ${triggerDate.toISOString()} (Appt: ${startAt.toISOString()})`);
@@ -538,9 +565,9 @@ export async function scheduleAppointmentReminders(
       // Schedule 1 day before reminder
       if (oneDayBefore > now) {
         await scheduleUnique(
-          oneDayBefore, 
-          '1day', 
-          'Upcoming Appointment Reminder', 
+          oneDayBefore,
+          '1day',
+          'Upcoming Appointment Reminder',
           `You have an appointment tomorrow at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${partyLabel}.`
         );
       }
@@ -548,9 +575,9 @@ export async function scheduleAppointmentReminders(
       // Schedule 2 hours before reminder
       if (twoHoursBefore > now) {
         await scheduleUnique(
-          twoHoursBefore, 
-          '2hour', 
-          'Appointment Starting Soon', 
+          twoHoursBefore,
+          '2hour',
+          'Appointment Starting Soon',
           `Your appointment is in 2 hours at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please be ready.`
         );
       }

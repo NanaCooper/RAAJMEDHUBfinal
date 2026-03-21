@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -50,7 +50,7 @@ export default function PatientDashboard(): React.ReactElement {
     labResults: 0,
   });
 
-  const [doctors, setDoctors] = useState<any>({});
+  const doctorsRef = useRef<any>({});
 
   // --- Data Loading Logic (Kept Original) ---
   useEffect(() => {
@@ -58,97 +58,117 @@ export default function PatientDashboard(): React.ReactElement {
 
     const unsubAppointments = subscribeToAppointments(session.uid, 'patient', async (appts: Appointment[]) => {
       console.log(`[Dashboard] Received ${appts.length} appointments`);
-      const now = new Date();
-      const startOfMonth = moment().startOf('month').toDate();
+      const startOfDay = moment().startOf('day').toDate();
 
       const getDate = (a: any) => {
         try {
           if (a.startAt) {
-             if (typeof a.startAt === 'string') {
-                 const m = moment(a.startAt);
-                 if (m.isValid()) return m.toDate();
-                 console.warn(`[Dashboard] Invalid startAt string: ${a.startAt}`);
-             }
-             if (typeof a.startAt.toDate === 'function') return a.startAt.toDate();
+            if (a.startAt.toDate) return a.startAt.toDate();
+            if (typeof a.startAt === 'string') {
+              const m = moment(a.startAt);
+              if (m.isValid()) return m.toDate();
+            }
           }
           if (a.date) {
-              const m = moment(a.date + (a.time ? ' ' + a.time : ''));
-              if (m.isValid()) return m.toDate();
+            const m = moment(a.date + (a.time ? ' ' + a.time : ''), 'YYYY-MM-DD HH:mm');
+            if (m.isValid()) return m.toDate();
+            // Fallback for date string only
+            const mDate = moment(a.date, 'YYYY-MM-DD');
+            if (mDate.isValid()) return mDate.toDate();
           }
         } catch (e) {
           console.warn("Invalid date for appt", a.id);
         }
-        return new Date(0);
+        return new Date(0); // Epoch for invalid
       };
 
+      // Filter and Sort: Closest Future/Today first
       const upcomingAppts = appts
         .filter(a => {
-            const d = getDate(a);
-            const isFuture = d > now;
-            if (!isFuture) console.log(`[Dashboard] Appt ${a.id} is not future. Date: ${d}, Now: ${now}`);
-            return isFuture;
+          const d = getDate(a);
+          // Include today's appointments
+          return d >= startOfDay && a.status !== 'pending' && a.status !== 'requested';
         })
-        .sort((a, b) => (getDate(a) > getDate(b) ? 1 : -1));
+        .sort((a, b) => {
+          const dateA = getDate(a).getTime();
+          const dateB = getDate(b).getTime();
+          return dateA - dateB; // Ascending: Earliest date first
+        });
 
       console.log(`[Dashboard] Upcoming appointments count: ${upcomingAppts.length}`);
 
       // Helper to map appointments
       const mapUpcoming = (list: any[], docMap: any = {}) => {
         return list.slice(0, 5).map((a: any) => {
-            let doctorName = docMap[a.doctorId]?.fullName || a.doctorName;
-            if (doctorName === 'null' || doctorName === 'undefined') doctorName = null;
+          let doctorName = docMap[a.doctorId]?.fullName || a.doctorName;
+          if (doctorName === 'null' || doctorName === 'undefined') doctorName = "Assigned soon";
 
-            let date = "";
-            let time = "";
-            const d = getDate(a);
-            if (!isNaN(d.getTime()) && d.getTime() !== 0) {
-                date = d.toISOString();
-                // Fix: Use moment to format time consistently
-                time = moment(d).format('h:mm A'); 
-            } else {
-                date = a.date || "";
-                time = a.time || "";
-            }
+          // Date & Time Logic
+          let date = "";
+          let time = "";
+          const d = getDate(a);
 
-            return {
+          if (!isNaN(d.getTime()) && d.getTime() !== 0) {
+            date = d.toISOString();
+            // Only format time if it exists
+            if (a.time) time = moment(a.time, 'HH:mm').format('h:mm A');
+            else if (moment(d).isValid()) time = moment(d).format('h:mm A');
+          } else {
+            date = a.date || "";
+            if (a.time) time = a.time;
+          }
+
+          // STRICT TIME VISIBILITY: Only show time if approved/upcoming/confirmed
+          const isApproved = a.status === 'upcoming' || a.status === 'confirmed' || a.status === 'approved';
+          if (!isApproved) time = ""; // Hide time if not approved
+
+          // Handle Scan Type
+          let scanName = 'Scan';
+          if (a.specificScan) {
+            scanName = a.specificScan;
+          } else if (a.scanType) {
+            scanName = a.scanType.name || a.scanType;
+            if (scanName === 'General') scanName = 'Scan';
+          } else if (Array.isArray(a.scanTypes) && a.scanTypes.length > 0) {
+            scanName = a.scanTypes.map((s: any) => s.name).filter(Boolean).join(', ');
+          }
+
+          return {
             id: a.id,
             date,
-            time,
+            time, // Will be empty string if not approved
             doctorId: a.doctorId,
-            doctor: doctorName || "Dr. to be assigned",
-            location: docMap[a.doctorId]?.specialization || a.location || "RAAJ MEDHUB Clinic",
+            doctor: doctorName,
+            status: a.status, // Pass status
+            location: a.branch || a.location || "RAAJ MEDHUB Clinic",
+            branch: a.branch || "",
+            scanType: scanName,
             phone: docMap[a.doctorId]?.contact,
-            };
+          };
         });
       };
 
       // 1. Immediate Render (Optimistic)
-      // Use existing 'doctors' state for immediate display
-      setUpcoming(mapUpcoming(upcomingAppts, doctors));
+      setUpcoming(mapUpcoming(upcomingAppts, doctorsRef.current));
 
-      // 2. Fetch missing doctors
-      const doctorIds = [...new Set(upcomingAppts.map(a => a.doctorId).filter(id => id && !doctors[id]))];
+      // 2. Fetch missing doctors (skip already fetched or failed)
+      const doctorIds = [...new Set(upcomingAppts.map(a => a.doctorId).filter(id => id && !(id in doctorsRef.current)))];
       if (doctorIds.length > 0) {
-        const fetchedDoctors = await Promise.all(doctorIds.map(id => getDoctor(id!)));
-        const newDoctors: any = {};
+        // Mark as fetching to prevent duplicate fetches on future subscription updates
+        doctorIds.forEach(id => { doctorsRef.current[id] = null; });
+
+        const fetchedDoctors = await Promise.all(doctorIds.map(id => getDoctor(id!).catch(() => null)));
         fetchedDoctors.forEach(doc => {
-          if (doc) newDoctors[doc.id] = doc;
+          if (doc) doctorsRef.current[doc.id] = doc;
         });
-        
-        // Update local doctors state
-        setDoctors((prev: any) => {
-            const updated = { ...prev, ...newDoctors };
-            // 3. Final Render with new doctors
-            setUpcoming(mapUpcoming(upcomingAppts, updated));
-            return updated;
-        });
-      } else {
-          // If no new doctors, just ensure we are using the latest list
-          setUpcoming(mapUpcoming(upcomingAppts, doctors));
+
+        // 3. Final Render with fetched doctors
+        setUpcoming(mapUpcoming(upcomingAppts, doctorsRef.current));
       }
 
       const appointmentsThisMonth = appts.filter(a => {
         const apptDate = getDate(a);
+        const startOfMonth = moment().startOf('month').toDate();
         return apptDate && apptDate >= startOfMonth;
       }).length;
 
@@ -158,7 +178,7 @@ export default function PatientDashboard(): React.ReactElement {
     return () => {
       unsubAppointments();
     };
-  }, [session?.uid, doctors]);
+  }, [session?.uid]);
 
   // --- Helper for Date Formatting ---
   const getDayDate = (dateStr: string) => {
@@ -186,7 +206,7 @@ export default function PatientDashboard(): React.ReactElement {
       </View>
 
       <View style={styles.headerRight}>
-        
+
         <TouchableOpacity
           style={styles.profileBtn}
           onPress={() => router.push("/(patient)/profile")}
@@ -204,6 +224,8 @@ export default function PatientDashboard(): React.ReactElement {
     if (upcoming.length === 0) return null;
     const item = upcoming[0];
     const { day, month } = getDayDate(item.date);
+
+    const isCapeCoast = (item.location || '').toLowerCase().includes('cape coast');
 
     const handleCall = () => {
       if (item.phone) {
@@ -224,20 +246,34 @@ export default function PatientDashboard(): React.ReactElement {
               <Text style={styles.heroDay}>{day}</Text>
               <Text style={styles.heroMonth}>{month}</Text>
             </View>
-            <TouchableOpacity 
-              style={{ flex: 1, marginLeft: 12 }} 
+            <TouchableOpacity
+              style={{ flex: 1, marginLeft: 12 }}
               onPress={() => {
-                if (item.doctorId) {
+                if (item.doctorId && isCapeCoast) {
                   router.push({ pathname: "/(patient)/doctor-details", params: { id: item.doctorId } });
                 }
               }}
+              disabled={!isCapeCoast}
             >
-              <Text style={styles.heroDoctor}>{item.doctor}</Text>
+              <Text style={styles.heroDoctor}>{item.scanType}</Text>
               <Text style={styles.heroSpecialty}>{item.location}</Text>
+
+              {/* Conditional Doctor Display */}
+              {isCapeCoast && item.doctor && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+                  <Feather name="user" size={12} color="rgba(255,255,255,0.7)" />
+                  <Text style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: '500' }}>
+                    {item.doctor}
+                  </Text>
+                </View>
+              )}
+
             </TouchableOpacity>
-            <TouchableOpacity style={styles.heroIconBox} onPress={handleCall}>
-              <Feather name="phone" size={20} color="white" />
-            </TouchableOpacity>
+            {isCapeCoast && (
+              <TouchableOpacity style={styles.heroIconBox} onPress={handleCall}>
+                <Feather name="phone" size={20} color="white" />
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.divider} />
@@ -245,7 +281,7 @@ export default function PatientDashboard(): React.ReactElement {
           <View style={styles.heroBottom}>
             <View style={styles.rowCenter}>
               <Feather name="clock" size={14} color="#CBD5E1" />
-              <Text style={styles.heroMetaText}>{item.time}</Text>
+              <Text style={styles.heroMetaText}>{item.time || 'TBD'}</Text>
             </View>
             <View style={[styles.rowCenter, { marginLeft: 16 }]}>
               <Feather name="map-pin" size={14} color="#CBD5E1" />
@@ -267,10 +303,10 @@ export default function PatientDashboard(): React.ReactElement {
           route: "/(patient)/appointments",
         },
         {
-          label: "My Doctors",
-          icon: "users",
+          label: "Find Locations",
+          icon: "map-pin",
           color: COLORS.success,
-          route: "/(patient)/doctors",
+          route: "/(patient)/branches",
         },
         {
           label: "Profile",
@@ -298,7 +334,7 @@ export default function PatientDashboard(): React.ReactElement {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-      
+
       {renderHeader()}
 
       <ScrollView
@@ -314,7 +350,7 @@ export default function PatientDashboard(): React.ReactElement {
           {renderQuickActions()}
         </View>
 
-        
+
 
 
       </ScrollView>
@@ -331,7 +367,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING,
     paddingBottom: 40,
   },
-  
+
   // --- Header ---
   header: {
     flexDirection: "row",
@@ -598,3 +634,5 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
 });
+
+

@@ -15,7 +15,20 @@ export interface Appointment {
   endAt?: Timestamp | string;
   status?: AppointmentStatus;
   notes?: string;
+  branch?: 'Koforidua' | 'Takoradi' | 'Cape Coast';
   scanType?: ScanType;
+  patientDetails?: {
+    firstName: string;
+    middleName?: string;
+    lastName: string;
+    phone: string;
+    dob: string;
+    sex?: string;
+    weight?: string;
+    weightUnit?: string;
+    age?: number;
+    [key: string]: any;
+  };
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
 }

@@ -31,6 +31,7 @@ type FormValues = {
   weight?: string; // numeric as string
   weightUnit?: 'kg' | 'lb';
   notes?: string;
+  branch: 'Koforidua' | 'Takoradi' | 'Cape Coast';
 };
 
 export default function BookingScreen() {
@@ -57,12 +58,10 @@ export default function BookingScreen() {
     return () => { mounted = false; };
   }, [doctorId]);
 
-  const [selectedDate, setSelectedDate] = useState<string>(moment().format('YYYY-MM-DD'));
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showDobPicker, setShowDobPicker] = useState(false);
 
   const { control, handleSubmit, watch, setValue } = useForm<FormValues>({
-    defaultValues: { phone: '', lastName: '', firstName: '', middleName: '', dob: undefined, sex: 'male', weightUnit: 'kg', weight: '', notes: '' },
+    defaultValues: { phone: '', lastName: '', firstName: '', middleName: '', dob: undefined, sex: 'male', weightUnit: 'kg', weight: '', notes: '', branch: undefined },
   });
 
   const dob = watch('dob');
@@ -82,8 +81,14 @@ export default function BookingScreen() {
         if (snap.exists()) {
           const data = snap.data();
           // Auto-fill form with profile data
-          setValue('firstName', data.fullName?.split(' ')[0] || '');
-          setValue('lastName', data.fullName?.split(' ').slice(1).join(' ') || '');
+          if (data.firstName) setValue('firstName', data.firstName);
+          else setValue('firstName', data.fullName?.split(' ')[0] || '');
+
+          if (data.lastName) setValue('lastName', data.lastName);
+          else setValue('lastName', data.fullName?.split(' ').slice(1).join(' ') || '');
+
+          if (data.middleName) setValue('middleName', data.middleName);
+
           setValue('dob', data.dob || '');
           setValue('phone', data.contact || data.phone || '');
         }
@@ -96,25 +101,10 @@ export default function BookingScreen() {
     loadProfile();
   }, [session?.uid, setValue]);
 
-  // Mock availability per-date (could be fetched from services/appointments)
-  const mockSlotsForDate = (date: string) => {
-    // simple deterministic mock: change slots based on day
-    const day = moment(date).day();
-    if (day === 0 || day === 6) return ['10:00 AM', '11:00 AM', '01:00 PM'];
-    return ['09:00 AM', '10:00 AM', '11:30 AM', '02:00 PM', '03:30 PM'];
-  };
-
-  const slots = mockSlotsForDate(selectedDate);
-
   const onConfirm = (values: FormValues) => {
-    if (!selectedSlot) {
-      Alert.alert('Select time', 'Please select a time slot before confirming.');
-      return;
-    }
-
     // basic validation
-    if (!values.phone || !values.lastName || !values.firstName || !values.dob) {
-      Alert.alert('Missing fields', 'Please complete required personal details (Phone, Last name, First name, DOB).');
+    if (!values.phone || !values.lastName || !values.firstName || !values.dob || !values.branch) {
+      Alert.alert('Missing fields', 'Please complete required personal details (Phone, Last name, First name, DOB, Branch).');
       return;
     }
 
@@ -123,17 +113,17 @@ export default function BookingScreen() {
       return;
     }
 
-    const startAt = moment(`${selectedDate} ${selectedSlot}`, 'YYYY-MM-DD hh:mm A').toISOString();
-
     const appointmentData = {
       patientId: session.uid,
       doctorId,
-      startAt,
+      startAt: null, // Pending scheduling
       status: 'pending',
       notes: values.notes,
+      branch: values.branch,
       scanType: { name: 'Consultation', id: 'consultation' },
       patientDetails: {
         firstName: values.firstName,
+        middleName: values.middleName,
         lastName: values.lastName,
         phone: values.phone,
         dob: values.dob,
@@ -146,7 +136,7 @@ export default function BookingScreen() {
 
     console.log('Confirm booking payload:', appointmentData);
     // open booking-confirmation modal and pass details
-    const q = `?date=${encodeURIComponent(selectedDate)}&time=${encodeURIComponent(selectedSlot || '')}&appointmentData=${encodeURIComponent(JSON.stringify(appointmentData))}`;
+    const q = `?appointmentData=${encodeURIComponent(JSON.stringify(appointmentData))}`;
     router.push((`/(modals)/booking-confirmation${q}`) as any);
   };
 
@@ -167,37 +157,36 @@ export default function BookingScreen() {
         <Text style={styles.sub}>{doctor.specialty}</Text>
       </View>
 
-      <View style={styles.calendarWrap}>
-        <Text style={styles.sectionTitle}>Select Date</Text>
-        <Calendar
-          onDayPress={(d) => {
-            setSelectedDate(d.dateString);
-            setSelectedSlot(null);
-          }}
-          markedDates={{ [selectedDate]: { selected: true, selectedColor: '#0b6efd' } }}
-          disableAllTouchEventsForDisabledDays
-        />
-      </View>
-
       <View style={styles.form}>
-        <Text style={styles.sectionTitle}>Available Time Slots — {moment(selectedDate).format('ddd, DD MMM')}</Text>
-        <FlatList
-          data={slots}
-          keyExtractor={(s) => s}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingVertical: 8 }}
-          renderItem={({ item }) => {
-            const selected = item === selectedSlot;
-            return (
-              <TouchableOpacity onPress={() => setSelectedSlot(item)} style={[styles.slot, selected && styles.slotSelected]}>
-                <Text style={[styles.slotText, selected && { color: '#fff' }]}>{item}</Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
+        <Text style={styles.sectionTitle}>Patient Details</Text>
 
-        <Text style={[styles.sectionTitle, { marginTop: 12 }]}>Patient Details</Text>
+        <Controller
+          control={control}
+          name="branch"
+          rules={{ required: 'Please select a branch' }}
+          render={({ field: { onChange, value } }) => (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={styles.label}>Branch <Text style={{ color: 'red' }}>*</Text></Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                {['Koforidua', 'Takoradi', 'Cape Coast'].map((branch) => (
+                  <TouchableOpacity
+                    key={branch}
+                    onPress={() => onChange(branch)}
+                    style={[
+                      styles.branchOption,
+                      value === branch && styles.branchOptionSelected
+                    ]}
+                  >
+                    <Text style={[
+                      styles.branchText,
+                      value === branch && styles.branchTextSelected
+                    ]}>{branch}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+        />
 
         <Controller
           control={control}
@@ -262,11 +251,11 @@ export default function BookingScreen() {
               </View>
 
               <View style={styles.calendarContainer}>
-                <Calendar 
-                  onDayPress={(d) => { 
+                <Calendar
+                  onDayPress={(d) => {
                     setValue('dob', d.dateString);
-                    setShowDobPicker(false); 
-                  }} 
+                    setShowDobPicker(false);
+                  }}
                   maxDate={moment().format('YYYY-MM-DD')}
                   minDate={moment().subtract(120, 'years').format('YYYY-MM-DD')}
                   theme={{
@@ -288,8 +277,8 @@ export default function BookingScreen() {
               </View>
 
               <View style={styles.dobModalFooter}>
-                <TouchableOpacity 
-                  onPress={() => setShowDobPicker(false)} 
+                <TouchableOpacity
+                  onPress={() => setShowDobPicker(false)}
                   style={styles.dobModalDismissBtn}
                 >
                   <Text style={styles.dobModalDismissText}>Cancel</Text>
@@ -378,14 +367,19 @@ const styles = StyleSheet.create({
   unitBtn: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#eee', marginLeft: 6 },
   unitBtnActive: { backgroundColor: '#0b6efd', borderColor: '#0b6efd' },
 
-  dobModalOverlay: { 
-    flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.5)', 
+  branchOption: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#eee', backgroundColor: '#fff' },
+  branchOptionSelected: { backgroundColor: '#0b6efd', borderColor: '#0b6efd' },
+  branchText: { color: '#333', fontWeight: '600' },
+  branchTextSelected: { color: '#fff' },
+
+  dobModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  dobModalContent: { 
-    backgroundColor: '#fff', 
-    borderTopLeftRadius: 20, 
+  dobModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 24,
     maxHeight: '90%',

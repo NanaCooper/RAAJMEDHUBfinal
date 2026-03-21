@@ -8,6 +8,12 @@
     "scheme": "com.cooperlistic.medicare",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "updates": {
+      "url": "https://u.expo.dev/f1571ba6-d691-416d-ad8c-5d029e9dfb2d"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "medicare.ios.com",
@@ -39,7 +45,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.cooperlistic.MediCare"
+      "package": "medicare.android.com",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
@@ -67,7 +74,26 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png"
+        }
+      ],
+      "@react-native-firebase/app",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "useAndroidX": true,
+            "enableProguardInReleaseBuilds": true,
+            "extraMavenRepos": [
+              "../../node_modules/@notifee/react-native/android/libs"
+            ]
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,12 +10,14 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
-import { doc, setDoc, db } from "../../utils/firebaseConfig";
+import { doc, setDoc, db, auth } from "../../utils/firebaseConfig"; // Direct auth import for provider check
 import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
+import { linkPhoneWithPassword } from "../../utils/authHelpers";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -41,7 +43,7 @@ const SHADOW = {
   elevation: 4,
 };
 
-// Helper Component for Input Fields - Moved outside and memoized
+// Helper Component for Input Fields
 const InputField = React.memo(({
   label,
   icon,
@@ -50,7 +52,10 @@ const InputField = React.memo(({
   placeholder,
   keyboardType = "default" as any,
   editable = true,
-  hint = ""
+  hint = "",
+  isPassword = false,
+  secureTextEntry,
+  onToggleSecureEntry,
 }: any) => (
   <View style={styles.inputGroup}>
     <Text style={styles.label}>{label}</Text>
@@ -69,9 +74,16 @@ const InputField = React.memo(({
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         editable={editable}
+        secureTextEntry={isPassword && secureTextEntry}
         autoCapitalize={label === "Full Name" ? "words" : "none"}
       />
-      {!editable && <Feather name="lock" size={16} color={COLORS.textSec} />}
+      {isPassword ? (
+        <Pressable onPress={onToggleSecureEntry} style={styles.eyeIcon}>
+          <Feather name={secureTextEntry ? "eye-off" : "eye"} size={20} color={COLORS.textSec} />
+        </Pressable>
+      ) : (
+        !editable && <Feather name="lock" size={16} color={COLORS.textSec} />
+      )}
     </View>
     {hint ? <Text style={styles.hintText}>{hint}</Text> : null}
   </View>
@@ -80,68 +92,119 @@ const InputField = React.memo(({
 export default function CompleteProfileScreen() {
   const router = useRouter();
   const { session, reloadUser } = useAuth();
-  
-  const [fullName, setFullName] = useState("");
+
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState("");
-  const [contact, setContact] = useState("");
+  const [contact, setContact] = useState(""); // Secondary contact or Phone
+  const [emailInput, setEmailInput] = useState(""); // For phone users to add email
+
+  // Password fields for Phone Users
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [secure, setSecure] = useState(true);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const email = session?.email || "";
+  // Determine if user is Phone Based (no email or internal email)
+  // Logic: verification done, user exists. 
+  // If session.email has '@medicare.internal', it is phone based.
+  const isPhoneUser = !session?.email || session.email.endsWith('@medicare.internal');
+
+  useEffect(() => {
+    // Pre-fill known data
+    if (session?.phoneNumber) {
+      setContact(session.phoneNumber);
+    }
+    if (!isPhoneUser && session?.email) {
+      setEmailInput(session.email);
+    }
+  }, [session, isPhoneUser]);
 
   const validate = () => {
-    if (!fullName.trim()) return "Please enter your full name.";
+    if (!firstName.trim()) return "Please enter your first name.";
+    if (!lastName.trim()) return "Please enter your last name.";
     if (!dob.trim()) return "Please enter your date of birth.";
-    if (!contact.trim()) return "Please enter a contact number.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) return "Date of birth must be in YYYY-MM-DD format.";
+
+    if (isPhoneUser) {
+      if (!password) return "Please set a password.";
+      if (password.length < 6) return "Password must be at least 6 characters.";
+      if (password !== confirm) return "Passwords do not match.";
+      // Optional: Require email for phone users? Let's say optional or required.
+      // If required: 
+      // if (!emailInput || !/^\S+@\S+\.\S+$/.test(emailInput)) return "Please enter a valid email.";
+    } else {
+      if (!contact.trim()) return "Please enter a contact number.";
+    }
+
     return null;
   };
 
   const handleSubmit = async () => {
     setError(null);
     const v = validate();
-    if (v) {
-      setError(v);
-      return;
-    }
+    if (v) { setError(v); return; }
+
     setLoading(true);
-    console.log("--- [complete-profile.tsx] Attempting to save profile... ---");
     try {
-      await setDoc(doc(db, "users", session?.uid || ""), {
-        fullName: fullName.trim(),
+      // 1. If Phone User, link password
+      if (isPhoneUser) {
+        // We use the phone number as the "email" identifier for linking in our helper
+        const phoneParam = session?.phoneNumber || contact;
+        // Logic check: Link helper uses phone + internal domain. 
+        // Ensure we pass the raw phone from session if possible.
+
+        const linkResult = await linkPhoneWithPassword(phoneParam || "", password);
+        if (!linkResult.success) {
+          throw new Error(linkResult.message || "Failed to set password.");
+        }
+      }
+
+      // 2. Save Profile
+      const fullName = [firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(" ");
+
+      const updateData: any = {
+        firstName: firstName.trim(),
+        middleName: middleName.trim(),
+        lastName: lastName.trim(),
+        fullName,
         dob: dob.trim(),
-        contact: contact.trim(),
-        email,
+        sex: 'Unknown', // Todo: Add sex selection
+        authMethod: isPhoneUser ? 'phone' : 'email',
         profileComplete: true,
-      }, { merge: true });
-      console.log("--- [complete-profile.tsx] Profile saved successfully! ---");
-      
-      // Reload the user data to trigger the protected route hook
+        updatedAt: new Date().toISOString()
+      };
+
+      if (isPhoneUser) {
+        updateData.phone = session?.phoneNumber;
+        updateData.email = emailInput.trim() || null; // Optional email
+        updateData.phoneVerified = true;
+      } else {
+        updateData.email = session?.email;
+        updateData.contact = contact.trim();
+        updateData.emailVerified = true;
+      }
+
+      await setDoc(doc(db, "users", session?.uid || ""), updateData, { merge: true });
+
       await reloadUser();
-      
-      console.log("--- [complete-profile.tsx] User reloaded. Navigation will be handled by AuthProvider. ---");
+      router.replace("/user-type-selection");
+
     } catch (err: any) {
-      console.error('--- [complete-profile.tsx] Complete profile save error ---', err);
-      if (err && typeof err === 'object' && (err as any).message) {
-        console.error("[LOG] Error message:", (err as any).message);
-      }
-      if (err && typeof err === 'object' && (err as any).code) {
-        console.error("[LOG] Error code:", (err as any).code);
-      }
-      if (err && typeof err === 'object') {
-        console.error("[LOG] Full error object:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
-      }
-      setError("Failed to save profile. Please try again.");
+      console.error('Profile save error:', err);
+      setError(err.message || "Failed to save profile.");
     } finally {
       setLoading(false);
-      console.log("--- [complete-profile.tsx] handleSubmit finished. ---");
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-      
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.flex}
@@ -161,18 +224,6 @@ export default function CompleteProfileScreen() {
             <Text style={styles.subtitle}>Let's get to know you better</Text>
           </View>
 
-          {/* --- Avatar Placeholder --- */}
-          <View style={styles.avatarSection}>
-            <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>
-                {(fullName || (email).charAt(0) || 'U').charAt(0).toUpperCase()}
-              </Text>
-              <View style={styles.editBadge}>
-                <Feather name="camera" size={14} color="#FFF" />
-              </View>
-            </View>
-          </View>
-
           {/* --- Form Card --- */}
           <View style={styles.card}>
             {error && (
@@ -182,19 +233,76 @@ export default function CompleteProfileScreen() {
               </View>
             )}
 
-            <InputField
-              label="Email Address"
-              icon="mail"
-              value={email}
-              editable={false}
-            />
+            {isPhoneUser ? (
+              <>
+                <Text style={styles.sectionHeader}>Set Password</Text>
+                <Text style={styles.sectionSub}>You will use this to sign in later.</Text>
+                <InputField
+                  label="Password"
+                  icon="lock"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Min. 6 characters"
+                  isPassword
+                  secureTextEntry={secure}
+                  onToggleSecureEntry={() => setSecure(!secure)}
+                />
+                <InputField
+                  label="Confirm Password"
+                  icon="lock"
+                  value={confirm}
+                  onChangeText={setConfirm}
+                  placeholder="Repeat password"
+                  isPassword
+                  secureTextEntry={secure}
+                  onToggleSecureEntry={() => setSecure(!secure)}
+                />
+                <View style={styles.divider} />
+                <InputField
+                  label="Email Address (Optional)"
+                  icon="mail"
+                  value={emailInput}
+                  onChangeText={setEmailInput}
+                  placeholder="For notifications"
+                  keyboardType="email-address"
+                />
+              </>
+            ) : (
+              <InputField
+                label="Email Address"
+                icon="mail"
+                value={emailInput}
+                editable={false}
+              />
+            )}
+
+            <View style={styles.row}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <InputField
+                  label="First Name"
+                  icon="user"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="John"
+                />
+              </View>
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <InputField
+                  label="Last Name"
+                  icon="user"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Doe"
+                />
+              </View>
+            </View>
 
             <InputField
-              label="Full Name"
+              label="Middle Name (Optional)"
               icon="user"
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Dr. John Doe"
+              value={middleName}
+              onChangeText={setMiddleName}
+              placeholder="Kwame"
             />
 
             <InputField
@@ -207,14 +315,16 @@ export default function CompleteProfileScreen() {
               hint="Format: YYYY-MM-DD"
             />
 
-            <InputField
-              label="Contact Number"
-              icon="phone"
-              value={contact}
-              onChangeText={setContact}
-              placeholder="+1 (555) 000-0000"
-              keyboardType="phone-pad"
-            />
+            {!isPhoneUser && (
+              <InputField
+                label="Contact Number"
+                icon="phone"
+                value={contact}
+                onChangeText={setContact}
+                placeholder="+1 (555) 000-0000"
+                keyboardType="phone-pad"
+              />
+            )}
 
             <TouchableOpacity
               style={[styles.primaryBtn, loading && styles.btnDisabled]}
@@ -225,7 +335,7 @@ export default function CompleteProfileScreen() {
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <>
-                  <Text style={styles.primaryBtnText}>Continue</Text>
+                  <Text style={styles.primaryBtnText}>Complete Setup</Text>
                   <Feather name="arrow-right" size={20} color="#FFF" />
                 </>
               )}
@@ -252,111 +362,57 @@ const styles = StyleSheet.create({
   // --- Header ---
   header: { alignItems: 'center', marginBottom: 24 },
   progressPill: {
-    backgroundColor: "#E3F2FD",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    marginBottom: 16,
+    backgroundColor: "#E3F2FD", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 16,
   },
   progressText: { color: COLORS.primary, fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
   title: { fontSize: 24, fontWeight: '800', color: COLORS.textMain, marginBottom: 8 },
   subtitle: { fontSize: 16, color: COLORS.textSec },
 
-  // --- Avatar ---
-  avatarSection: { alignItems: 'center', marginBottom: 32 },
-  avatarContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: COLORS.primarySoft, // Light indigo bg
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOW,
-    shadowRadius: 16,
-  },
-  avatarText: { fontSize: 32, fontWeight: '800', color: COLORS.primary },
-  editBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: COLORS.primary,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.bg,
-  },
-
   // --- Card ---
   card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 24,
-    ...SHADOW,
+    backgroundColor: COLORS.surface, borderRadius: 24, padding: 24, ...SHADOW,
   },
+
+  sectionHeader: { fontSize: 16, fontWeight: '700', color: COLORS.textMain, marginBottom: 4 },
+  sectionSub: { fontSize: 13, color: COLORS.textSec, marginBottom: 16 },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 16 },
+  row: { flexDirection: 'row' },
 
   // --- Inputs ---
   inputGroup: { marginBottom: 20 },
   label: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 12,
-    height: 56,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: "transparent",
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.inputBg,
+    borderRadius: 12, height: 56, paddingHorizontal: 16, borderWidth: 1, borderColor: "transparent",
   },
   inputDisabled: {
-    backgroundColor: COLORS.inputDisabled,
-    borderColor: COLORS.border,
-    borderWidth: 1,
+    backgroundColor: COLORS.inputDisabled, borderColor: COLORS.border, borderWidth: 1,
   },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 16, color: COLORS.textMain, height: '100%' },
   inputTextDisabled: { color: COLORS.textSec, fontWeight: '500' },
   hintText: { fontSize: 12, color: COLORS.textSec, marginTop: 6, marginLeft: 4 },
+  eyeIcon: { padding: 8 },
 
   // --- Error ---
   errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF5F5',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.danger,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF5F5',
+    borderRadius: 12, padding: 12, marginBottom: 20, borderLeftWidth: 4, borderLeftColor: COLORS.danger,
   },
   errorText: { color: COLORS.danger, fontSize: 13, marginLeft: 8, flex: 1 },
 
   // --- Buttons ---
   primaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    height: 56,
-    borderRadius: 14,
-    marginTop: 8,
-    gap: 8,
-    ...SHADOW,
-    shadowOpacity: 0.15,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.primary, height: 56, borderRadius: 14, marginTop: 8, gap: 8, ...SHADOW, shadowOpacity: 0.15,
   },
   btnDisabled: { opacity: 0.7, backgroundColor: COLORS.textSec },
   primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 
   // --- Footer ---
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 32,
-    gap: 8,
-    opacity: 0.7,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: 32, gap: 8, opacity: 0.7,
   },
   footerText: { color: COLORS.textSec, fontSize: 12, fontWeight: '500' },
 });

@@ -21,6 +21,7 @@ const COLORS = {
   surface: "#FFFFFF",
   primary: "#4F46E5",   // Indigo 600
   primaryDark: "#312E81",
+  primarySoft: "#EEF2FF", // Indigo 50
   textMain: "#1E293B",  // Slate 800
   textSec: "#64748B",   // Slate 500
   border: "#E2E8F0",
@@ -45,7 +46,7 @@ export default function DoctorDashboard() {
   useEffect(() => {
     if (!session?.uid) return;
     const unsubAppts = subscribeToAppointments(session.uid, 'doctor', (items: any) => setAppointments(items));
-    return () => { try { unsubAppts(); } catch {} };
+    return () => { try { unsubAppts(); } catch { } };
   }, [session?.uid]);
 
   const todaysAppointments = appointments.filter(a => {
@@ -55,7 +56,7 @@ export default function DoctorDashboard() {
     return day === moment().format('YYYY-MM-DD');
   }).length;
 
-  const patientsInQueue = appointments.filter(a => ['pending','waiting','checked-in'].includes((a.status || '').toString())).length;
+  const patientsInQueue = appointments.filter(a => ['pending', 'waiting', 'checked-in'].includes((a.status || '').toString())).length;
 
   const patientsSeenThisWeek = appointments.filter(a => {
     const status = a.status || '';
@@ -94,9 +95,11 @@ export default function DoctorDashboard() {
 
       {/* --- Header Section --- */}
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerTextContainer}>
           <Text style={styles.dateText}>{moment().format("dddd, MMMM Do")}</Text>
-          <Text style={styles.greetingText}>{getGreeting()}, Dr. {user?.fullName || "User"}</Text>
+          <Text style={styles.greetingText} numberOfLines={2}>
+            Dr. {user?.fullName || "User"}
+          </Text>
         </View>
         <TouchableOpacity style={styles.profileBtn} onPress={() => router.push("/(doctor)/profile")}>
           <Text style={styles.profileInitial}>{(user?.fullName || "D").charAt(0)}</Text>
@@ -110,45 +113,63 @@ export default function DoctorDashboard() {
       >
 
         {/* --- Quick Stats Overview --- */}
-        <Text style={styles.sectionTitle}>Overview</Text>
 
-        <View style={styles.statsGrid}>
-          {/* Hero Card: Today */}
+
+        {/* --- Quick Actions --- */}
+
+
+        <View style={styles.actionGrid}>
+          {/* Appointments Button */}
+          {/* Appointments Button */}
           <TouchableOpacity
-            style={[styles.statCard, styles.heroCard]}
-            onPress={() => router.push("/(doctor)/schedule")}
-            activeOpacity={0.9}
+            style={[styles.actionCard, { backgroundColor: COLORS.primarySoft }]}
+            onPress={() => router.push("/(doctor)/appointments")}
+            activeOpacity={0.8}
           >
-            <View style={styles.iconCircleLight}>
+            <View style={[styles.actionIcon, { backgroundColor: COLORS.primary }]}>
               <Feather name="calendar" size={24} color="#FFF" />
             </View>
-            <View>
-              <Text style={styles.heroNumber}>{todaysAppointments}</Text>
-              <Text style={styles.heroLabel}>Appointments Today</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Appointments</Text>
+              <Text style={styles.actionSub}>View upcoming & manage schedule</Text>
             </View>
-            <Feather name="arrow-right" size={20} color="#FFF" style={styles.heroArrow} />
           </TouchableOpacity>
 
-          {/* Secondary Cards Row */}
-          <View style={styles.secondaryStatsRow}>
-            <TouchableOpacity
-              style={styles.secondaryCard}
-              onPress={() => router.push("/(doctor)/queue")}
-            >
-              <View style={[styles.iconBox, { backgroundColor: '#ECFDF5' }]}>
-                <Feather name="users" size={20} color={COLORS.success} />
-              </View>
-              <Text style={styles.secondaryNumber}>{patientsInQueue}</Text>
-              <Text style={styles.secondaryLabel}>Waiting Queue</Text>
-            </TouchableOpacity>
-
-            <View style={styles.secondaryCard}>
-              <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
-                <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.primary} />
-              </View>
-              <Text style={styles.secondaryNumber}>{patientsSeenThisWeek}</Text>
-              <Text style={styles.secondaryLabel}>Seen This Week</Text>
+          {/* Patients Button */}
+          <TouchableOpacity
+            style={[styles.actionCard, { backgroundColor: '#ECFDF5' }]} // Emerald Soft
+            onPress={() => router.push("/(doctor)/patients")}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: COLORS.success }]}>
+              <Feather name="users" size={24} color="#FFF" />
             </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>My Patients</Text>
+              <Text style={styles.actionSub}>Assigned patient list & history</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Keeping secondary stats as mini-summary if needed, or removing as per request. 
+            User said "remove the appointment card", implies the big hero one. 
+            I'll keep a small queue summary below appropriately spaced. */}
+
+        <View style={styles.secondaryStatsRow}>
+          <View style={styles.secondaryCard}>
+            <View style={[styles.iconBox, { backgroundColor: '#F1F5F9' }]}>
+              <Feather name="clock" size={20} color={COLORS.textSec} />
+            </View>
+            <Text style={styles.secondaryNumber}>{patientsInQueue}</Text>
+            <Text style={styles.secondaryLabel}>Waiting Queue</Text>
+          </View>
+
+          <View style={styles.secondaryCard}>
+            <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
+              <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.primary} />
+            </View>
+            <Text style={styles.secondaryNumber}>{patientsSeenThisWeek}</Text>
+            <Text style={styles.secondaryLabel}>Seen This Week</Text>
           </View>
         </View>
 
@@ -168,6 +189,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 16,
     backgroundColor: COLORS.bg,
+  },
+  headerTextContainer: {
+    flex: 1,
+    paddingRight: 12,
   },
   dateText: {
     fontSize: 13,
@@ -220,48 +245,38 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // Stats Grid
-  statsGrid: { gap: 16 },
-
-  // Hero Card
-  statCard: {
-    borderRadius: 20,
-    padding: 20,
-    ...SHADOW,
+  // Action Grid
+  actionGrid: {
+    gap: 16,
+    marginBottom: 24,
   },
-  heroCard: {
-    backgroundColor: COLORS.primary,
+  actionCard: {
+    padding: 20,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.3,
+    gap: 16,
+    ...SHADOW,
   },
-  iconCircleLight: {
+  actionIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
   },
-  heroNumber: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFF',
-    lineHeight: 38,
+  actionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textMain,
   },
-  heroLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.9)',
-  },
-  heroArrow: {
-    marginLeft: 'auto',
-    opacity: 0.8,
+  actionSub: {
+    fontSize: 13,
+    color: COLORS.textSec,
+    marginTop: 2,
   },
 
-  // Secondary Stats
+  // Adjusted Secondary
   secondaryStatsRow: {
     flexDirection: 'row',
     gap: 16,

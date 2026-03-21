@@ -4,6 +4,8 @@ import { AuthProvider } from '../hooks/useAuth';
 import * as Font from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { initializeNotifications, setupNotificationResponseListener } from '../services/notifications';
+import * as Updates from 'expo-updates';
+import { Alert } from 'react-native';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -15,10 +17,8 @@ export default function RootLayout() {
   useEffect(() => {
     async function loadFonts() {
       try {
-        // Try to load Inter font if available via expo-font
-        // Note: For production, add Inter to app.json fonts or use a custom font loader
         await Font.loadAsync({
-          // 'Inter': require('../assets/fonts/Inter-Regular.ttf'), // Uncomment if adding custom font
+          // 'Inter': require('../assets/fonts/Inter-Regular.ttf'),
         });
       } catch (e) {
         console.warn('Font loading skipped or failed (using system fonts):', e);
@@ -28,8 +28,39 @@ export default function RootLayout() {
       }
     }
 
+    async function checkForUpdates() {
+      if (__DEV__) return; // Don't check in dev mode
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          Alert.alert(
+            'Update Available',
+            'A new version of the app is ready. Restart now to apply?',
+            [
+              { text: 'Later', style: 'cancel' },
+              {
+                text: 'Restart',
+                onPress: async () => {
+                  try {
+                    await Updates.reloadAsync();
+                  } catch (e) {
+                    console.error('Failed to reload:', e);
+                  }
+                },
+              },
+            ]
+          );
+        }
+      } catch (error) {
+        // Silently fail or log
+        console.log(`Error checking for updates: ${error}`);
+      }
+    }
+
     loadFonts();
-    
+    checkForUpdates();
+
     // Initialize notifications
     initializeNotifications();
 

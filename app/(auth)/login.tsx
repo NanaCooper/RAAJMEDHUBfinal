@@ -11,7 +11,6 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  Image,
 } from "react-native";
 import {
   Feather,
@@ -21,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { GoogleSignInButton } from '../../components/GoogleSignInButton';
+import { signInUniversal } from "../../utils/authHelpers";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -47,39 +47,34 @@ const SHADOW = {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn, isLoading: authLoading } = useAuth();
+  const { isLoading: authLoading } = useAuth(); // We still use isLoading from context if needed
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // Email or Phone
   const [password, setPassword] = useState("");
   const [secure, setSecure] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isValidEmail = (value: string) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-
   const handleSignIn = async () => {
     setError(null);
 
-    if (!email || !password) {
-      setError("Please enter your email and password.");
-      return;
-    }
-
-    if (!isValidEmail(email)) {
-      setError("Please enter a valid email address.");
+    if (!identifier || !password) {
+      setError("Please enter your email/phone and password.");
       return;
     }
 
     setLoading(true);
     try {
-      await signIn(email.trim(), password);
+      const result = await signInUniversal(identifier.trim(), password);
+
+      if (!result.success) {
+        throw new Error(result.message || "Sign in failed.");
+      }
+
+      // Success is handled by onAuthStateChanged in useAuth hook automatically
     } catch (err: any) {
       console.log("Sign in error:", err);
-      const errorMessage = err.message.includes('auth/') 
-        ? err.message.split('auth/')[1].replace(/\([^)]+\)/g, '').replace(/-/g, ' ').trim()
-        : "Sign in failed. Check credentials.";
-      setError(errorMessage);
+      setError(err.message || "Sign in failed. Check credentials.");
     } finally {
       setLoading(false);
     }
@@ -90,14 +85,14 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-      
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent} 
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           {/* --- Brand Header --- */}
@@ -123,19 +118,18 @@ export default function LoginScreen() {
               </View>
             )}
 
-            {/* Email Input */}
+            {/* Email/Phone Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>Email or Phone Number</Text>
               <View style={styles.inputContainer}>
-                <Feather name="mail" size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                <Feather name="user" size={20} color={COLORS.textSec} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="name@example.com"
+                  placeholder="name@example.com or +233..."
                   placeholderTextColor="#ADB5BD"
-                  keyboardType="email-address"
                   autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
+                  value={identifier}
+                  onChangeText={setIdentifier}
                   editable={!overallLoading}
                 />
               </View>
@@ -244,7 +238,7 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   label: { fontSize: 13, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
   forgotLink: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
-  
+
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',

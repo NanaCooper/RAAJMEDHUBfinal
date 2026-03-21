@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { subscribeToAppointments } from '../../services/appointments';
+import { db, doc, getDoc } from '../../utils/firebaseConfig';
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 // --- 🎨 Unified Premium Theme ---
@@ -52,6 +53,21 @@ export default function MyPatients() {
   const { session } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [patientCache, setPatientCache] = useState<Record<string, string>>({});
+
+  const fetchPatientName = async (pid: string) => {
+    if (patientCache[pid]) return; // Already cached
+    try {
+      const snap = await getDoc(doc(db, 'users', pid));
+      if (snap.exists()) {
+        const data = snap.data();
+        const name = `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Patient';
+        setPatientCache(prev => ({ ...prev, [pid]: name }));
+      }
+    } catch (e) {
+      console.warn("Failed to fetch patient name", pid, e);
+    }
+  };
 
   useEffect(() => {
     if (!session?.uid) return;
@@ -62,31 +78,44 @@ export default function MyPatients() {
         if (!pid) return;
         // Logic to keep the latest appointment info for the patient
         if (!map[pid] || (map[pid].startAt || 0) < (it.startAt || 0)) {
-           const firstName = it.patientDetails?.firstName || '';
-           const lastName = it.patientDetails?.lastName || '';
-           const fullName = `${firstName} ${lastName}`.trim() || 'Patient';
+          const firstName = it.patientDetails?.firstName || '';
+          const lastName = it.patientDetails?.lastName || '';
+          // Use cached name if available, otherwise fallback to details or "Patient"
+          let fullName = `${firstName} ${lastName}`.trim();
 
-           let dateStr = '';
-           if (it.startAt) {
-             const d = typeof it.startAt === 'string' ? new Date(it.startAt) : it.startAt.toDate();
-             dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-           }
+          if (!fullName && patientCache[pid]) {
+            fullName = patientCache[pid];
+          } else if (!fullName) {
+            fullName = 'Patient';
+            // Trigger fetch if we don't have a name and haven't cached it (or it's "Patient")
+            // We check cache existence to avoid loop.
+            // But here we rely on the fact that if it's 'Patient', we might want to try fetching.
+            // However, to avoid infinite re-renders or calls, we should only call this if we haven't tried yet.
+            // A better way is to do it in a separate effect or just fire-and-forget here carefully.
+            fetchPatientName(pid);
+          }
 
-           map[pid] = {
-             id: pid,
-             name: fullName,
-             lastVisit: dateStr,
-             nextAppointment: dateStr, // simplified logic
-             conditions: it.patientDetails?.conditions || [],
-             avatarColor: COLORS.primarySoft
+          let dateStr = '';
+          if (it.startAt) {
+            const d = typeof it.startAt === 'string' ? new Date(it.startAt) : it.startAt.toDate();
+            dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          }
+
+          map[pid] = {
+            id: pid,
+            name: fullName,
+            lastVisit: dateStr,
+            nextAppointment: dateStr, // simplified logic
+            conditions: it.patientDetails?.conditions || [],
+            avatarColor: COLORS.primarySoft
           };
         }
       });
       setPatients(Object.values(map));
       setLoading(false);
     });
-    return () => { try { unsub(); } catch {} };
-  }, [session?.uid]);
+    return () => { try { unsub(); } catch { } };
+  }, [session?.uid, patientCache]); // Re-run when cache updates to refresh names
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -115,10 +144,7 @@ export default function MyPatients() {
         </View>
         <View style={styles.infoContainer}>
           <Text style={styles.patientName}>{item.name}</Text>
-          <View style={styles.metaRow}>
-            <Feather name="clock" size={12} color={COLORS.textSec} />
-            <Text style={styles.metaText}>Last Visit: {item.lastVisit || 'N/A'}</Text>
-          </View>
+          {/* Last Visit Removed */}
         </View>
       </View>
 
@@ -130,7 +156,7 @@ export default function MyPatients() {
             </View>
           ))}
           {item.conditions.length > 3 && (
-             <Text style={styles.moreText}>+{item.conditions.length - 3}</Text>
+            <Text style={styles.moreText}>+{item.conditions.length - 3}</Text>
           )}
         </View>
       )}
@@ -142,7 +168,7 @@ export default function MyPatients() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
       {/* Header */}
-      
+
 
       {/* Search */}
       <View style={styles.searchContainer}>
@@ -175,9 +201,9 @@ export default function MyPatients() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-               <MaterialCommunityIcons name="account-group-outline" size={48} color={COLORS.textSec} />
-               <Text style={styles.emptyText}>No patients found</Text>
-               <Text style={styles.emptySub}>Patients will appear here after appointments.</Text>
+              <MaterialCommunityIcons name="account-group-outline" size={48} color={COLORS.textSec} />
+              <Text style={styles.emptyText}>No patients found</Text>
+              <Text style={styles.emptySub}>Patients will appear here after appointments.</Text>
             </View>
           }
         />
@@ -253,8 +279,6 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 20, fontWeight: '700', color: COLORS.primary },
   infoContainer: { flex: 1 },
   patientName: { fontSize: 17, fontWeight: '700', color: COLORS.textMain, marginBottom: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  metaText: { fontSize: 13, color: COLORS.textSec, fontWeight: '500' },
 
   chatBtn: {
     width: 40,

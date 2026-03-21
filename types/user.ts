@@ -3,7 +3,11 @@ export type UserRole = 'patient' | 'doctor' | 'admin';
 export interface AppUser {
   id: string;
   email: string;
-  name?: string;
+  name?: string; // Deprecated, use fullName
+  fullName?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
   role: UserRole;
   avatarUrl?: string | null;
   bio?: string | null;
