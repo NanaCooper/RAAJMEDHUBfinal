@@ -12,7 +12,16 @@
           "package_name": "medicare.android.com"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "631948568273-ln21s9ig74lqddjqpah9bo1v9v7so28p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "medicare.android.com",
+            "certificate_hash": "52f61c2b6b254d0235d320a8dd56ed79582ba5fa"
+          }
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBJI7QKQ4ytOhgZdMKCGn37mte-aE0rlPU"
