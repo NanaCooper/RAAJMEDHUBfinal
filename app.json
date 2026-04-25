@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "com.cooperlistic.medicare",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "updates": {
       "url": "https://u.expo.dev/f1571ba6-d691-416d-ad8c-5d029e9dfb2d"
     },
@@ -94,7 +94,8 @@
           }
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "./withFirebaseNewArchFix.js"
     ],
     "experiments": {
       "typedRoutes": true,
