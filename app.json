@@ -90,7 +90,7 @@
             ]
           },
           "ios": {
-            "useModularHeaders": true
+            "useFrameworks": "static"
           }
         }
       ],
