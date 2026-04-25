@@ -25,14 +25,11 @@
               "medicare.ios.com",
               "com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm"
             ]
-          },
-          {
-            "CFBundleURLSchemes": [
-              "medicare.ios.com",
-              "com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm"
-            ]
           }
         ],
+        "NSCameraUsageDescription": "MediCare uses your camera to scan medical referrals and upload patient documents.",
+        "NSPhotoLibraryUsageDescription": "MediCare allows you to upload medical referrals and images from your photo library.",
+        "NSMicrophoneUsageDescription": "MediCare uses your microphone for voice notes if required.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -53,7 +50,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "extra": {
-      "googleClientId": "631948568273-1600930e9qornkpk2p57q15agb20bvpc.apps.googleusercontent.com",
+      "googleClientId": "631948568273-9ekasgjfgref8f776ktc5opqf0jiq6jr.apps.googleusercontent.com",
       "router": {},
       "eas": {
         "projectId": "f1571ba6-d691-416d-ad8c-5d029e9dfb2d"
@@ -91,9 +88,13 @@
             "extraMavenRepos": [
               "../../node_modules/@notifee/react-native/android/libs"
             ]
+          },
+          "ios": {
+            "useModularHeaders": true
           }
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,
