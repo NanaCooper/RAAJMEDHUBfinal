@@ -412,6 +412,121 @@ export async function sendAppointmentNotification(
 }
 
 /**
+ * Send a notification immediately when a patient submits a request
+ */
+export async function sendRequestSubmittedNotification(
+  appointmentId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '📋 Request Submitted',
+        body: 'Your request will soon be approved.',
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
+        data: { type: 'request_submitted', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send request submitted notification:', error);
+  }
+}
+
+/**
+ * Send a notification when an appointment has been approved (status → upcoming)
+ */
+export async function sendAppointmentApprovedNotification(
+  appointmentId: string,
+  startAt?: Date
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    const dateStr = startAt
+      ? ` on ${startAt.toLocaleDateString()} at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : '';
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '✅ Appointment Approved',
+        body: `Your appointment has been approved${dateStr}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
+        data: { type: 'appointment_approved', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send appointment approved notification:', error);
+  }
+}
+
+/**
+ * Send a notification to a patient when their report is ready
+ */
+export async function sendReportReadyPatientNotification(
+  reportTitle: string,
+  reportId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '📄 Report Ready',
+        body: `Report on your previous procedure is ready${reportTitle ? `: ${reportTitle}` : ''}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
+        data: { type: 'report_ready_patient', reportId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send report ready patient notification:', error);
+  }
+}
+
+/**
+ * Send a notification to a doctor when a report has been sent to them
+ */
+export async function sendReportSentDoctorNotification(
+  reportTitle: string,
+  reportId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '📋 Report Received',
+        body: `A report has been sent to you${reportTitle ? `: ${reportTitle}` : ''}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
+        data: { type: 'report_sent_doctor', reportId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send report sent doctor notification:', error);
+  }
+}
+
+/**
  * Send a notification that a doctor has been assigned
  */
 export async function sendDoctorAssignedNotification(
@@ -425,8 +540,8 @@ export async function sendDoctorAssignedNotification(
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Appointment Approved',
-        body: 'Wait for confirmation from RAAJ Medhub',
+        title: '✅ Appointment Approved',
+        body: 'Your appointment has been approved.',
         sound: prefs.soundEnabled ? 'default' : undefined,
         data: { type: 'doctor_assigned', appointmentId },
       },

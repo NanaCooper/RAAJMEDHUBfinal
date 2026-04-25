@@ -1,5 +1,5 @@
-import { db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot, addDoc, collection } from '../utils/firebaseConfig';
-import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot, addDoc, collection, deleteDoc } from '../utils/firebaseConfig';
+import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from 'firebase/auth';
 import type { AppUser } from '../types/user';
 
 export async function createUserProfile(user: AppUser) {
@@ -89,4 +89,21 @@ export async function setUserOnlineStatus(userId: string, online: boolean) {
     status: online ? 'online' : 'offline',
     lastActive: serverTimestamp(),
   });
+}
+export async function deleteUserAccount() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No authenticated user found.");
+
+  try {
+    // 1. Delete user data from Firestore
+    const userRef = doc(db, 'users', user.uid);
+    await deleteDoc(userRef);
+
+    // 2. Delete the auth account
+    await deleteUser(user);
+  } catch (error) {
+    console.error("Account deletion error:", error);
+    throw error;
+  }
 }

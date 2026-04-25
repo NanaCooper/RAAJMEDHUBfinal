@@ -1,7 +1,9 @@
 import { db, collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from '../utils/firebaseConfig';
 import type { Appointment } from '../types/appointment';
-import { scheduleAppointmentReminders, sendDoctorAssignedNotification, sendPatientAssignedNotification, sendAppointmentRescheduledNotification } from './notifications';
-import moment from 'moment';
+import { scheduleAppointmentReminders, sendDoctorAssignedNotification, sendPatientAssignedNotification, sendAppointmentRescheduledNotification, sendAppointmentApprovedNotification } from './notifications';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+dayjs.extend(customParseFormat);
 
 // Use a lazy accessor for the appointments collection so we don't call
 // `collection(db, ...)` at module initialization before `db` is ready.
@@ -129,7 +131,7 @@ export function subscribeToAppointments(
       if (data.startAt) {
         if (typeof data.startAt === 'string') {
           // Handle "YYYY-MM-DD HH:mm" and ISO formats
-          const m = moment(data.startAt, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ', moment.ISO_8601]);
+          const m = dayjs(data.startAt, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ']);
           if (m.isValid()) {
             startAt = m.toDate();
           } else {
@@ -230,8 +232,8 @@ export function subscribeToAppointments(
             const oldData = oldDoc.data();
             if (oldData.startAt) {
               if (typeof oldData.startAt === 'string') {
-                const m = moment(oldData.startAt, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ', moment.ISO_8601]);
-                if (m.isValid()) oldStartAt = m.toDate();
+              const m = dayjs(oldData.startAt, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ']);
+              if (m.isValid()) oldStartAt = m.toDate();
               } else if (oldData.startAt.toDate) {
                 oldStartAt = oldData.startAt.toDate();
               }
@@ -251,6 +253,21 @@ export function subscribeToAppointments(
           if ((isNewDate || isChangedDate) && !processedNotificationEvents.has(reschedKey)) {
             processedNotificationEvents.add(reschedKey);
             sendAppointmentRescheduledNotification(startAt, apptId);
+          }
+        }
+
+        // --- CHECK 3: APPOINTMENT APPROVED (status changed to 'upcoming') ---
+        // Detect when admin/staff approves the appointment (status: pending/requested → upcoming)
+        if (role === 'patient' && isRecentUpdate && data.status === 'upcoming') {
+          const oldDoc = oldDocs.find((d: any) => d.id === apptId);
+          const oldStatus = oldDoc?.data()?.status;
+          // Only notify if it was previously awaiting approval
+          const wasAwaitingApproval = !oldStatus || ['pending', 'requested'].includes(oldStatus);
+          const approvalKey = `approved_${apptId}_${updatedAt.getTime()}`;
+
+          if (wasAwaitingApproval && !processedNotificationEvents.has(approvalKey)) {
+            processedNotificationEvents.add(approvalKey);
+            sendAppointmentApprovedNotification(apptId, startAt || undefined);
           }
         }
       }

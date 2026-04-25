@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { fetchMinPricesPerCategory, ProcedureMinPrices } from '../../services/procedures';
 import { Calendar } from 'react-native-calendars';
-import moment from 'moment-timezone';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { useRouter } from 'expo-router';
 import * as yup from 'yup';

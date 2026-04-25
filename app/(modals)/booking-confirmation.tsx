@@ -12,9 +12,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from "expo-router";
-import moment from "moment-timezone";
+import dayjs from "dayjs";
 import { createAppointment } from "../../services/appointments";
-import { sendAppointmentNotification, scheduleAppointmentReminders } from "../../services/notifications";
+import { sendRequestSubmittedNotification, scheduleAppointmentReminders } from "../../services/notifications";
 import { Feather } from "@expo/vector-icons";
 
 // --- Theme ---
@@ -105,7 +105,7 @@ export default function BookingConfirmationModal() {
       // The startAt is now an ISO string, so we can parse it directly
       const appointmentToSave = {
         ...appointmentData,
-        startAt: moment(appointmentData.startAt).toDate(),
+        startAt: dayjs(appointmentData.startAt).toDate(),
       };
       console.log("[LOG] handleConfirm: Final object being sent to createAppointment:", JSON.stringify(appointmentToSave, null, 2));
 
@@ -113,12 +113,8 @@ export default function BookingConfirmationModal() {
       const result = await createAppointment(appointmentToSave as any);
       console.log("[LOG] handleConfirm: Successfully created appointment. Firestore response:", result);
 
-      // Send local notification
-      await sendAppointmentNotification(
-        "Booking Successful",
-        "Your appointment request has been submitted. Wait for confirmation.",
-        result.id || ''
-      );
+      // Send "request submitted" notification immediately
+      await sendRequestSubmittedNotification(result.id || '');
 
       // Schedule reminders
       if (result.id && appointmentToSave.startAt) {

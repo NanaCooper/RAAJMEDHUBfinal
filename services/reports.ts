@@ -9,7 +9,12 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  onSnapshot,
 } from '../utils/firebaseConfig';
+import { 
+  sendReportReadyPatientNotification, 
+  sendReportSentDoctorNotification 
+} from './notifications';
 
 export interface Report {
   id?: string;
@@ -19,6 +24,7 @@ export interface Report {
   title: string;
   /** Category key matching the booking scan type: Ultrasound | X-Ray | MRI | CT Scan | Mammogram | Other */
   category: string;
+  doctorId?: string;
   doctorName?: string;
   branch?: string;
   /** 'ready' once the radiologist has uploaded the result, 'processing' otherwise */
@@ -91,7 +97,7 @@ export async function getPatientReports(patientId: string): Promise<Report[]> {
         const q2 = query(collection(db, COL), where('patientId', '==', patientId));
         const snap2 = await getDocs(q2);
         snap2.docs.forEach((d: any) => results.push(normaliseReport(d.id, d.data())));
-      } catch (_e) { /* ignore */ }
+      } catch { /* ignore */ }
     }
   }
 
@@ -135,7 +141,7 @@ export async function getDoctorReports(doctorName: string, doctorId: string): Pr
   try {
     const q = query(
       collection(db, COL),
-      where('doctorName', '==', doctorName)
+      where('doctorId', '==', doctorId)
       // Can't orderBy yet without a composite index, handled manually below
     );
     const snap = await getDocs(q);
@@ -192,3 +198,167 @@ export async function updateReport(reportId: string, patch: Partial<Report>): Pr
     updatedAt: serverTimestamp(),
   });
 }
+
+// Track already-notified reports in this session to avoid duplicate alerts
+const notifiedReportIds = new Set<string>();
+
+/**
+ * Subscribe to real-time report notifications for a patient.
+ * Fires "Report on your previous procedure is ready" when a report is shared.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToPatientReportNotifications(
+  patientId: string,
+  onNewReport?: (report: Report) => void
+): () => void {
+  const handleChanges = (snapshot: any) => {
+    snapshot.docChanges().forEach((change: any) => {
+      if (change.type === 'added' || change.type === 'modified') {
+        const data = change.doc.data();
+        const id = change.doc.id;
+
+        // Notify when report is shared with patient (has URL + sharedWithPatient flag)
+        if (data.reportUrl && data.sharedWithPatient && !notifiedReportIds.has(`patient_${id}`)) {
+          const updatedAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(0);
+          const isRecent = (Date.now() - updatedAt.getTime()) < 120000; // 2 min
+          if (isRecent || change.type === 'modified') {
+            notifiedReportIds.add(`patient_${id}`);
+            const title = data.reportName || data.title || data.scanType?.name || 'Medical Report';
+            sendReportReadyPatientNotification(title, id);
+            if (onNewReport) {
+              onNewReport(normaliseReport(id, data));
+            }
+          }
+        }
+      }
+    });
+  };
+
+  let unsubMain: () => void = () => {};
+  let unsubReports: () => void = () => {};
+
+  try {
+    // Listen on appointments collection (web portal stores reports here)
+    const apptQ = query(
+      collection(db, 'appointments'),
+      where('patientId', '==', patientId)
+    );
+    unsubMain = onSnapshot(apptQ, handleChanges, (err: any) =>
+      console.warn('[ReportNotif] Patient appointments subscription error:', err)
+    );
+  } catch (err) {
+    console.warn('[ReportNotif] Could not subscribe to patient appointments:', err);
+  }
+
+  try {
+    // Also listen on dedicated reports collection
+    const reportsQ = query(collection(db, COL), where('patientId', '==', patientId));
+    unsubReports = onSnapshot(
+      reportsQ,
+      (snapshot: any) => {
+        snapshot.docChanges().forEach((change: any) => {
+          if (change.type === 'added' || change.type === 'modified') {
+            const data = change.doc.data();
+            const id = change.doc.id;
+            const status = data.status || (data.sharedWithPatient ? 'ready' : 'processing');
+            if (status === 'ready' && (data.fileUrl || data.reportUrl) && !notifiedReportIds.has(`patient_reports_${id}`)) {
+              const updatedAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(0);
+              const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
+              if (isRecent || change.type === 'modified') {
+                notifiedReportIds.add(`patient_reports_${id}`);
+                const title = data.title || data.scanType || 'Medical Report';
+                sendReportReadyPatientNotification(title, id);
+                if (onNewReport) onNewReport(normaliseReport(id, data));
+              }
+            }
+          }
+        });
+      },
+      (err: any) => console.warn('[ReportNotif] Patient reports subscription error:', err)
+    );
+  } catch (err) {
+    console.warn('[ReportNotif] Could not subscribe to patient reports:', err);
+  }
+
+  return () => {
+    try { unsubMain(); } catch { /* ignore */ }
+    try { unsubReports(); } catch { /* ignore */ }
+  };
+}
+
+/**
+ * Subscribe to real-time report notifications for a doctor.
+ * Fires "A report has been sent to you" when a new report is available.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToDoctorReportNotifications(
+  doctorId: string,
+  doctorName: string,
+  onNewReport?: (report: Report) => void
+): () => void {
+  let unsubMain: () => void = () => {};
+  let unsubReports: () => void = () => {};
+
+  const handleApptChanges = (snapshot: any) => {
+    snapshot.docChanges().forEach((change: any) => {
+      if (change.type === 'added' || change.type === 'modified') {
+        const data = change.doc.data();
+        const id = change.doc.id;
+        if (data.reportUrl && data.sharedWithPatient && !notifiedReportIds.has(`doctor_appt_${id}`)) {
+          const updatedAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(0);
+          const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
+          if (isRecent || change.type === 'modified') {
+            notifiedReportIds.add(`doctor_appt_${id}`);
+            const title = data.reportName || data.title || data.scanType?.name || 'Medical Report';
+            sendReportSentDoctorNotification(title, id);
+            if (onNewReport) onNewReport(reportFromAppointment(id, data));
+          }
+        }
+      }
+    });
+  };
+
+  try {
+    const apptQ = query(collection(db, 'appointments'), where('doctorId', '==', doctorId));
+    unsubMain = onSnapshot(apptQ, handleApptChanges, (err: any) =>
+      console.warn('[ReportNotif] Doctor appointments subscription error:', err)
+    );
+  } catch (err) {
+    console.warn('[ReportNotif] Could not subscribe to doctor appointments:', err);
+  }
+
+  try {
+    const reportsQ = query(collection(db, COL), where('doctorId', '==', doctorId));
+    unsubReports = onSnapshot(
+      reportsQ,
+      (snapshot: any) => {
+        snapshot.docChanges().forEach((change: any) => {
+          if (change.type === 'added' || change.type === 'modified') {
+            const data = change.doc.data();
+            const id = change.doc.id;
+            const status = data.status || (data.sharedWithPatient ? 'ready' : 'processing');
+            if (status === 'ready' && (data.fileUrl || data.reportUrl) && !notifiedReportIds.has(`doctor_reports_${id}`)) {
+              const updatedAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(0);
+              const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
+              if (isRecent || change.type === 'modified') {
+                notifiedReportIds.add(`doctor_reports_${id}`);
+                const title = data.title || 'Medical Report';
+                sendReportSentDoctorNotification(title, id);
+                if (onNewReport) onNewReport(normaliseReport(id, data));
+              }
+            }
+          }
+        });
+      },
+      (err: any) => console.warn('[ReportNotif] Doctor reports subscription error:', err)
+    );
+  } catch (err) {
+    console.warn('[ReportNotif] Could not subscribe to doctor reports:', err);
+  }
+
+  return () => {
+    try { unsubMain(); } catch { /* ignore */ }
+    try { unsubReports(); } catch { /* ignore */ }
+  };
+}
+

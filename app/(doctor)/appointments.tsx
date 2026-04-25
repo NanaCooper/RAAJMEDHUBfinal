@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Animated, Image, ScrollView, Modal } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Modal, ScrollView } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import moment from 'moment-timezone';
+import dayjs from 'dayjs';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,6 +11,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { subscribeToAppointments } from '../../services/appointments';
 import ScaleButton from '../../components/ui/ScaleButton';
 import BookingForm from '../../components/appointment/BookingForm';
+
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isSameOrBefore);
 
 // --- THEME ENGINE ---
 const COLORS = {
@@ -92,8 +97,8 @@ export default function Appointments() {
 
         return {
           id: a.id,
-          date: rawDate ? moment(rawDate).format('YYYY-MM-DD') : (a.date || null), // Allow null for TBD
-          time: rawDate ? moment(rawDate).format('HH:mm') : (a.time || ''),
+          date: rawDate ? dayjs(rawDate).format('YYYY-MM-DD') : (a.date || null), // Allow null for TBD
+          time: rawDate ? dayjs(rawDate).format('HH:mm') : (a.time || ''),
           doctor: a.doctorName || 'Assigned soon',
           patientName: a.patientDetails ? `${a.patientDetails.firstName} ${a.patientDetails.lastName}` : (a.patientName || 'Guest Patient'), // Try a.patientName too as simple fallback
           status: a.status || 'upcoming',
@@ -129,14 +134,15 @@ export default function Appointments() {
 
   const renderAppointmentCard = ({ item }: { item: any }) => {
     const isPast = item.status === 'completed' || item.status === 'cancelled';
-    const statusConfig = {
+    const statusMap: Record<string, { color: string; bg: string; icon: string }> = {
       upcoming: { color: COLORS.primary, bg: COLORS.primarySoft, icon: 'calendar' },
       pending: { color: COLORS.warning, bg: COLORS.warningSoft, icon: 'clock' },
       completed: { color: COLORS.success, bg: COLORS.successSoft, icon: 'check-circle' },
       cancelled: { color: COLORS.error, bg: COLORS.errorSoft, icon: 'x-circle' },
-    }[item.status] || { color: COLORS.textSub, bg: COLORS.border, icon: 'info' };
+    };
+    const statusConfig = statusMap[item.status] || { color: COLORS.textSub, bg: COLORS.border, icon: 'info' };
 
-    const hasDate = item.date && moment(item.date).isValid();
+    const hasDate = item.date && dayjs(item.date).isValid();
 
     return (
       <ScaleButton
@@ -153,10 +159,10 @@ export default function Appointments() {
 
         <View style={[styles.cardDateBox, { backgroundColor: statusConfig.bg }]}>
           <Text style={[styles.cardDay, { color: statusConfig.color, fontSize: hasDate ? 20 : 16 }]}>
-            {hasDate ? moment(item.date).format('DD') : 'TBD'}
+            {hasDate ? dayjs(item.date).format('DD') : 'TBD'}
           </Text>
           <Text style={[styles.cardMonth, { color: statusConfig.color }]}>
-            {hasDate ? moment(item.date).format('MMM') : 'DATE'}
+            {hasDate ? dayjs(item.date).format('MMM') : 'DATE'}
           </Text>
         </View>
 
@@ -177,7 +183,7 @@ export default function Appointments() {
           <View style={styles.cardMeta}>
             <View style={styles.metaItem}>
               <Feather name="clock" size={14} color={COLORS.textSub} />
-              <Text style={styles.cardMetaText}>{hasDate ? moment(item.date + ' ' + item.time).format('h:mm A') : 'Time TBD'}</Text>
+              <Text style={styles.cardMetaText}>{hasDate ? dayjs(item.date + ' ' + item.time).format('h:mm A') : 'Time TBD'}</Text>
             </View>
             {item.branch && (
               <View style={styles.metaItem}>
@@ -255,7 +261,7 @@ export default function Appointments() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.methodTitle}>Smart Scan</Text>
-                    <Text style={styles.methodSub}>Upload your doctor's referral letter for automatic detail extraction</Text>
+                    <Text style={styles.methodSub}>Upload your doctor&apos;s referral letter for automatic detail extraction</Text>
                     <View style={styles.aiPill}>
                       <Feather name="zap" size={12} color={COLORS.primary} />
                       <Text style={styles.aiPillText}>AI Analysis</Text>
@@ -296,9 +302,9 @@ export default function Appointments() {
           <FlatList
             data={appointments.filter(a => {
               if (activeTab === 'upcoming') {
-                return !a.date || moment(a.date).isSameOrAfter(moment(), 'day');
+                return !a.date || dayjs(a.date).isSameOrAfter(dayjs(), 'day');
               }
-              return a.date && moment(a.date).isBefore(moment(), 'day');
+              return a.date && dayjs(a.date).isBefore(dayjs(), 'day');
             })}
             keyExtractor={i => i.id}
             renderItem={renderAppointmentCard}
@@ -349,8 +355,8 @@ export default function Appointments() {
                     <View style={styles.gridItem}>
                       <Text style={styles.detailLabel}>DATE</Text>
                       <Text style={styles.detailValue}>
-                        {(selectedAppointment.date && moment(selectedAppointment.date).isValid())
-                          ? moment(selectedAppointment.date).format('MMM DD, YYYY')
+                        {(selectedAppointment.date && dayjs(selectedAppointment.date).isValid())
+                          ? dayjs(selectedAppointment.date).format('MMM DD, YYYY')
                           : 'Pending Scheduling'}
                       </Text>
                     </View>
@@ -448,7 +454,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     borderRadius: 14,
     backgroundColor: '#FFF',
     borderWidth: 1.5,
@@ -460,7 +466,7 @@ const styles = StyleSheet.create({
     ...SHADOW,
   },
   tabText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.textSub
   },
@@ -508,7 +514,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.textMain,
     flex: 1,
@@ -548,7 +554,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   cardMetaText: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSub,
     fontWeight: '500'
   },

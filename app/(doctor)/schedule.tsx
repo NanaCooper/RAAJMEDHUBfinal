@@ -2,7 +2,10 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import moment from 'moment-timezone';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+dayjs.extend(relativeTime);
 import { useAuth } from '../../hooks/useAuth';
 import { subscribeToAppointments } from '../../services/appointments';
 import { getUserProfile } from '../../services/users';
@@ -106,7 +109,7 @@ export default function DoctorSchedule() {
     const map: Record<string, ApptItem[]> = {};
     sorted.forEach((a) => {
       const d = a.startAt?.toDate ? a.startAt.toDate() : new Date(a.startAt || Date.now());
-      const key = moment(d).format('YYYY-MM-DD');
+      const key = dayjs(d).format('YYYY-MM-DD');
       if (!map[key]) map[key] = [];
       map[key].push(a);
     });
@@ -117,7 +120,7 @@ export default function DoctorSchedule() {
   const formatTime = (startAt: any) => {
     if (!startAt) return '--:--';
     const d = startAt?.toDate ? startAt.toDate() : new Date(startAt);
-    return moment(d).format('h:mm A');
+    return dayjs(d).format('h:mm A');
   };
 
   const getStatusColor = (status: string) => {
@@ -219,8 +222,8 @@ export default function DoctorSchedule() {
 
   const renderSection = ({ item }: { item: [string, ApptItem[]] }) => {
     const [dateStr, appts] = item;
-    const niceDate = moment(dateStr).format('dddd, MMM Do');
-    const isToday = dateStr === moment().format('YYYY-MM-DD');
+    const niceDate = dayjs(dateStr).format('dddd, MMM D');
+    const isToday = dateStr === dayjs().format('YYYY-MM-DD');
 
     return (
       <View style={styles.section}>
@@ -228,7 +231,7 @@ export default function DoctorSchedule() {
           <Text style={[styles.sectionTitle, isToday && styles.todayTitle]}>
             {isToday ? 'Today' : niceDate}
           </Text>
-          {!isToday && <Text style={styles.sectionSub}>{moment(dateStr).fromNow()}</Text>}
+          {!isToday && <Text style={styles.sectionSub}>{dayjs(dateStr).fromNow()}</Text>}
         </View>
         {appts.map(a => <View key={a.id}>{renderAppt({ item: a })}</View>)}
       </View>

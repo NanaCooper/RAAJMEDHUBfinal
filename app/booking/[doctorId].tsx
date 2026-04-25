@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { useForm, Controller } from 'react-hook-form';
 import { getDoctor } from '../../services/doctors';
 import { useAuth } from '../../hooks/useAuth';
@@ -65,7 +65,7 @@ export default function BookingScreen() {
   });
 
   const dob = watch('dob');
-  const age = dob ? moment().diff(moment(dob), 'years') : undefined;
+  const age = dob ? dayjs().diff(dayjs(dob), 'years') : undefined;
 
   // Load user profile and auto-fill form
   useEffect(() => {
@@ -228,7 +228,7 @@ export default function BookingScreen() {
             <>
               <TouchableOpacity onPress={() => setShowDobPicker(true)} style={[styles.input, { backgroundColor: '#f0f7ff', borderColor: '#0b6efd', justifyContent: 'center', paddingVertical: 12 }]}>
                 <Text style={{ fontSize: 16, color: value ? '#333' : '#999' }}>
-                  {value ? moment(value).format('MMMM DD, YYYY') : 'Select date of birth'}
+                  {value ? dayjs(value).format('MMMM DD, YYYY') : 'Select date of birth'}
                 </Text>
               </TouchableOpacity>
               {age !== undefined && value ? (
@@ -256,8 +256,8 @@ export default function BookingScreen() {
                     setValue('dob', d.dateString);
                     setShowDobPicker(false);
                   }}
-                  maxDate={moment().format('YYYY-MM-DD')}
-                  minDate={moment().subtract(120, 'years').format('YYYY-MM-DD')}
+                  maxDate={dayjs().format('YYYY-MM-DD')}
+                  minDate={dayjs().subtract(120, 'years').format('YYYY-MM-DD')}
                   theme={{
                     backgroundColor: '#fff',
                     calendarBackground: '#fff',

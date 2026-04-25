@@ -16,7 +16,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
-import { appInstance } from "../../utils/firebaseConfig";
 import { isEmail, validatePhoneNumber, signUpWithEmail } from "../../utils/authHelpers";
 import { getRemainingCooldown } from "../../utils/rateLimiter";
 
@@ -79,6 +78,9 @@ const InputField = React.memo(({
     </View>
   </View>
 ));
+
+InputField.displayName = "InputField";
+
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -299,18 +301,20 @@ export default function RegisterScreen() {
             )}
 
             {/* Terms Checkbox */}
-            <TouchableOpacity
-              style={styles.termsRow}
-              onPress={() => setAgreeTerms(!agreeTerms)}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.checkbox, agreeTerms && styles.checkboxChecked]}>
+            <View style={styles.termsRow}>
+              <TouchableOpacity
+                style={[styles.checkbox, agreeTerms && styles.checkboxChecked]}
+                onPress={() => setAgreeTerms(!agreeTerms)}
+                activeOpacity={0.8}
+              >
                 {agreeTerms && <Feather name="check" size={14} color="#FFF" />}
-              </View>
+              </TouchableOpacity>
               <Text style={styles.termsText}>
-                I agree to the <Text style={styles.link}>Terms</Text> and <Text style={styles.link}>Privacy Policy</Text>.
+                I agree to the{" "}
+                <Text style={styles.link} onPress={() => router.push('/(modals)/terms')}>Terms</Text> and{" "}
+                <Text style={styles.link} onPress={() => router.push('/(modals)/terms')}>Privacy Policy</Text>.
               </Text>
-            </TouchableOpacity>
+            </View>
 
             {/* Actions */}
             <TouchableOpacity

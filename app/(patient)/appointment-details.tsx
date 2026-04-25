@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+
+dayjs.extend(customParseFormat);
 import { updateAppointmentStatus } from '../../services/appointments';
-import { fetchProcedurePrice } from '../../services/procedures';
 
 // --- Theme ---
 const COLORS = {
@@ -33,20 +35,24 @@ const AppointmentDetailScreen = () => {
   const params = useLocalSearchParams();
   const appointment = JSON.parse(params.appointment as string);
 
-  const [procedurePrice, setProcedurePrice] = useState<string | null>(null);
-  const [pricesLoading, setPricesLoading] = useState(true);
+  // Read the price directly from the appointment document — no extra Firestore query needed
+  const procedurePrice: string | null =
+    appointment.priceGHS ||
+    (appointment.price != null ? `GHS ${Number(appointment.price).toLocaleString('en-GH', { minimumFractionDigits: 2 })}` : null);
 
-  useEffect(() => {
-    const scanName = appointment.scanType?.name || '';
-    if (!scanName) { setPricesLoading(false); return; }
-    fetchProcedurePrice(scanName)
-      .then((result) => {
-        // Guard: only accept string values — never render an object as a React child
-        setProcedurePrice(typeof result === 'string' ? result : null);
-      })
-      .catch(() => {})
-      .finally(() => setPricesLoading(false));
-  }, []);
+  // Resolve the scan title from either format:
+  // - Admin-created: scanType is a string or {name: string}
+  // - Patient-submitted: scanTypes is an array of {id, name, ...} objects
+  const getScanTitle = (): string => {
+    if (appointment.scanType) {
+      if (typeof appointment.scanType === 'string') return appointment.scanType;
+      if (typeof appointment.scanType === 'object' && appointment.scanType.name) return appointment.scanType.name;
+    }
+    if (Array.isArray(appointment.scanTypes) && appointment.scanTypes.length > 0) {
+      return appointment.scanTypes.map((s: any) => s.name || s).join(', ');
+    }
+    return 'Consultation';
+  };
 
   const handleCancel = async () => {
     Alert.alert(
@@ -113,7 +119,7 @@ const AppointmentDetailScreen = () => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>{appointment.scanType?.name || 'Consultation'}</Text>
+            <Text style={styles.cardTitle}>{getScanTitle()}</Text>
             {renderStatusBadge()}
           </View>
           
@@ -131,7 +137,7 @@ const AppointmentDetailScreen = () => {
             <Feather name="calendar" size={20} color={COLORS.primary} />
             <View style={styles.detailTextContainer}>
               <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{moment(appointment.date).format("dddd, MMMM D, YYYY")}</Text>
+              <Text style={styles.detailValue}>{dayjs(appointment.date).format("dddd, MMMM D, YYYY")}</Text>
             </View>
           </View>
 
@@ -151,15 +157,15 @@ const AppointmentDetailScreen = () => {
                 if (hasScheduledTime) {
                   if (appointment.startAt) {
                     const d = appointment.startAt.toDate ? appointment.startAt.toDate() : new Date(appointment.startAt);
-                    timeDisplay = moment(d).format('h:mm A [on] ddd, MMM D');
+                    timeDisplay = dayjs(d).format('h:mm A [on] ddd, MMM D');
                   } else if (appointment.time) {
-                    timeDisplay = moment(appointment.time, 'HH:mm').format('h:mm A');
+                    timeDisplay = dayjs(appointment.time, 'HH:mm').format('h:mm A');
                   }
                 } else {
                   // Show when the request was submitted
                   if (appointment.createdAt) {
                     const d = appointment.createdAt.toDate ? appointment.createdAt.toDate() : new Date(appointment.createdAt);
-                    timeDisplay = moment(d).format('h:mm A [on] ddd, MMM D');
+                    timeDisplay = dayjs(d).format('h:mm A [on] ddd, MMM D');
                   }
                 }
 
@@ -181,20 +187,16 @@ const AppointmentDetailScreen = () => {
             </View>
           </View>
 
-          {/* Live procedure price from Firestore */}
+          {/* Price stored on appointment document */}
           <>
             <View style={styles.divider} />
             <View style={[styles.detailRow, { marginBottom: 0 }]}>
               <Feather name="credit-card" size={20} color={COLORS.primary} />
               <View style={styles.detailTextContainer}>
                 <Text style={styles.detailLabel}>Procedure Cost</Text>
-                {pricesLoading ? (
-                  <ActivityIndicator size="small" color={COLORS.primary} style={{ alignSelf: 'flex-start', marginTop: 2 }} />
-                ) : (
-                  <Text style={[styles.detailValue, { color: COLORS.success, fontWeight: '800' }]}>
-                    {procedurePrice || 'Contact clinic for pricing'}
-                  </Text>
-                )}
+                <Text style={[styles.detailValue, { color: COLORS.success, fontWeight: '800' }]}>
+                  {procedurePrice || 'Contact clinic for pricing'}
+                </Text>
               </View>
             </View>
           </>
@@ -251,9 +253,11 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   cardTitle: {
+    flex: 1,
+    marginRight: 12,
     fontSize: 22,
     fontWeight: '800',
     color: COLORS.textMain,
@@ -285,6 +289,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   detailTextContainer: {
+    flex: 1,
     marginLeft: 16,
   },
   detailLabel: {

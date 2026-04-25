@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import moment from 'moment-timezone';
+import dayjs from 'dayjs';
 import ScaleButton from '../../components/ui/ScaleButton';
 import { useAuth } from '../../hooks/useAuth';
 

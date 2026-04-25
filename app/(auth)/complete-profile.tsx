@@ -96,7 +96,7 @@ export default function CompleteProfileScreen() {
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [dob, setDob] = useState("");
+  const [age, setAge] = useState("");
   const [contact, setContact] = useState(""); // Secondary contact or Phone
   const [emailInput, setEmailInput] = useState(""); // For phone users to add email
 
@@ -126,8 +126,9 @@ export default function CompleteProfileScreen() {
   const validate = () => {
     if (!firstName.trim()) return "Please enter your first name.";
     if (!lastName.trim()) return "Please enter your last name.";
-    if (!dob.trim()) return "Please enter your date of birth.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) return "Date of birth must be in YYYY-MM-DD format.";
+    if (!age.trim()) return "Please enter your age.";
+    const ageNum = parseInt(age.trim(), 10);
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 120) return "Please enter a valid age (1-120).";
 
     if (isPhoneUser) {
       if (!password) return "Please set a password.";
@@ -171,7 +172,7 @@ export default function CompleteProfileScreen() {
         middleName: middleName.trim(),
         lastName: lastName.trim(),
         fullName,
-        dob: dob.trim(),
+        age: parseInt(age.trim(), 10),
         sex: 'Unknown', // Todo: Add sex selection
         authMethod: isPhoneUser ? 'phone' : 'email',
         profileComplete: true,
@@ -306,13 +307,12 @@ export default function CompleteProfileScreen() {
             />
 
             <InputField
-              label="Date of Birth"
-              icon="calendar"
-              value={dob}
-              onChangeText={setDob}
-              placeholder="YYYY-MM-DD"
-              keyboardType="numbers-and-punctuation"
-              hint="Format: YYYY-MM-DD"
+              label="Age"
+              icon="user"
+              value={age}
+              onChangeText={setAge}
+              placeholder="e.g. 25"
+              keyboardType="numeric"
             />
 
             {!isPhoneUser && (

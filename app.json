@@ -88,13 +88,11 @@
             "extraMavenRepos": [
               "../../node_modules/@notifee/react-native/android/libs"
             ]
-          },
-          "ios": {
-            "useFrameworks": "static"
           }
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "./withModularHeaders.js"
     ],
     "experiments": {
       "typedRoutes": true,

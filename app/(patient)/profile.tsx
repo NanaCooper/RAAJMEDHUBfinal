@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
-import moment from "moment";
+import dayjs from "dayjs";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -186,7 +186,7 @@ export default function PatientProfile(): React.ReactElement {
     }
   };
 
-  const age = dob ? moment().diff(moment(dob, 'YYYY-MM-DD'), 'years') : undefined;
+  const age = dob ? dayjs().diff(dayjs(dob, 'YYYY-MM-DD'), 'years') : undefined;
 
   if (loadingProfile) {
     return (
@@ -243,7 +243,7 @@ export default function PatientProfile(): React.ReactElement {
           <View style={styles.row}>
              <View style={styles.fieldContainer}>
                <Text style={styles.label}>Date of Birth</Text>
-               <Text style={styles.value}>{dob ? moment(dob).format('MMMM DD, YYYY') : "—"}</Text>
+               <Text style={styles.value}>{dob ? dayjs(dob).format('MMMM DD, YYYY') : "—"}</Text>
              </View>
              {age !== undefined && <View style={styles.pill}><Text style={styles.pillText}>{age} yrs</Text></View>}
           </View>

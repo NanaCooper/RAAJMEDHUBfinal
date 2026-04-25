@@ -6,13 +6,12 @@ import {
   TouchableOpacity,
   StatusBar,
   ScrollView,
-  Image,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
-import moment from "moment-timezone";
+import dayjs from "dayjs";
 import { subscribeToAppointments } from '../../services/appointments';
 
 // --- 🎨 Unified Premium Theme ---
@@ -49,13 +48,6 @@ export default function DoctorDashboard() {
     return () => { try { unsubAppts(); } catch { } };
   }, [session?.uid]);
 
-  const todaysAppointments = appointments.filter(a => {
-    if (!a.startAt) return false;
-    const date = typeof a.startAt === 'string' ? a.startAt.split(' ')[0] : (a.startAt?.toDate ? a.startAt.toDate() : new Date(a.startAt));
-    const day = moment(date).format('YYYY-MM-DD');
-    return day === moment().format('YYYY-MM-DD');
-  }).length;
-
   const patientsInQueue = appointments.filter(a => ['pending', 'waiting', 'checked-in'].includes((a.status || '').toString())).length;
 
   const patientsSeenThisWeek = appointments.filter(a => {
@@ -63,7 +55,7 @@ export default function DoctorDashboard() {
     if (status !== 'completed') return false;
     if (!a.startAt) return false;
     const date = typeof a.startAt === 'string' ? a.startAt.split(' ')[0] : (a.startAt?.toDate ? a.startAt.toDate() : new Date(a.startAt));
-    return moment(date).isAfter(moment().subtract(7, 'days'));
+    return dayjs(date).isAfter(dayjs().subtract(7, 'days'));
   }).length;
 
 
@@ -71,13 +63,6 @@ export default function DoctorDashboard() {
 
 
 
-  // --- Helper: Time of Day Greeting ---
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Welcome";
-    if (hour < 18) return "Welcome";
-    return "Welcome";
-  };
 
   if (!session) {
     return (
@@ -96,7 +81,7 @@ export default function DoctorDashboard() {
       {/* --- Header Section --- */}
       <View style={styles.header}>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.dateText}>{moment().format("dddd, MMMM Do")}</Text>
+          <Text style={styles.dateText}>{dayjs().format("dddd, MMMM DD")}</Text>
           <Text style={styles.greetingText} numberOfLines={2}>
             Dr. {user?.fullName || "User"}
           </Text>

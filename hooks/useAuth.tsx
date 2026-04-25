@@ -2,11 +2,8 @@ import React, { createContext, useState, useContext, useEffect, ReactNode, useCa
 import { Alert } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { db, doc, getDoc, setDoc, getAuthInstance, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithCredential } from '../utils/firebaseConfig';
-import * as WebBrowser from "expo-web-browser";
-import { useAuthRequest } from "expo-auth-session/providers/google";
-import { ANDROID_CLIENT_ID, IOS_CLIENT_ID, WEB_CLIENT_ID } from "../constants/Config";
-
-WebBrowser.maybeCompleteAuthSession();
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { WEB_CLIENT_ID } from "../constants/Config";
 
 type AuthUser = { uid: string; email?: string | null } | null;
 
@@ -140,52 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Google Auth Request Hook - Lifted to AuthProvider to persist across navigation
-  const [request, response, promptAsync] = useAuthRequest({
-    iosClientId: IOS_CLIENT_ID,
-    androidClientId: ANDROID_CLIENT_ID,
-    webClientId: WEB_CLIENT_ID,
-    scopes: ["profile", "email"],
-    // Try single slash format which is sometimes required for custom schemes
-    redirectUri: 'com.cooperlistic.medicare:/oauthredirect',
-  });
-
+  // Configure native Google Sign-In on mount
   useEffect(() => {
-    if (request) {
-      console.log("Generated Redirect URI:", request.redirectUri);
-    }
-  }, [request]);
-
-  // Handle Google Auth Response
-  useEffect(() => {
-    if (response) {
-      console.log("Google Auth Response received:", JSON.stringify(response, null, 2));
-    }
-
-    if (response?.type === "success") {
-      const { id_token } = response.params;
-
-      const credential = GoogleAuthProvider.credential(id_token);
-
-      // Set loading true while we process the sign in
-      setIsLoading(true);
-
-      getAuthInstance().then(auth => {
-        signInWithCredential(auth, credential)
-          .then(async (userCredential: any) => {
-            console.log("Google sign-in successful with Firebase.");
-            // The onAuthStateChanged listener will pick this up and handle the rest
-            // But we can force a reload or check here if needed
-          })
-          .catch((error: any) => {
-            console.error("Firebase sign-in error:", error);
-            setIsLoading(false);
-          });
-      });
-    } else if (response?.type === 'error') {
-      console.error("Google Sign-In Error:", response.error);
-    }
-  }, [response]);
+    GoogleSignin.configure({
+      webClientId: WEB_CLIENT_ID,
+      offlineAccess: true,
+    });
+  }, []);
 
   // We use a lazily-initialized auth instance provided by utils/firebaseConfig.
   // Call getAuthInstance() where needed to ensure the React Native persistence
@@ -210,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
-        const userData = userSnap.data();
+        const userData = userSnap.data() as UserData;
         console.log("Checking suspension for user:", currentUser.uid, userData);
         // Check for suspension
         if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
@@ -219,7 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await signOutUser();
           return;
         }
-        setUser({ uid: currentUser.uid, ...userData });
+        setUser({ uid: currentUser.uid, ...(userData as any) });
       } else {
         // If the user exists in Auth but not Firestore, create a basic profile.
         // This is common for social sign-ins on first login.
@@ -308,7 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const userRef = doc(db, "users", user.uid);
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
-            const userData = userSnap.data();
+            const userData = userSnap.data() as UserData;
             console.log("AuthStateChanged: Checking suspension for user:", user.uid, userData);
             if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
               console.log("AuthStateChanged: User is suspended. Signing out.");
@@ -316,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await signOutUser();
               return;
             }
-            setUser({ uid: user.uid, ...userData });
+            setUser({ uid: user.uid, ...(userData as any) });
           } else {
             const newUser = {
               email: user.email,
@@ -353,18 +311,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserType,
     reloadUser,
     promptGoogleSignIn: async () => {
-      console.log("Prompting Google Sign In...");
-      if (!request) {
-        console.warn("Google Auth Request is not ready yet.");
-        return;
-      }
+      console.log("Google Sign In button pressed");
       try {
-        await promptAsync();
-      } catch (e) {
-        console.error("Failed to prompt Google Sign In:", e);
+        await GoogleSignin.hasPlayServices();
+        
+        // Force account picker by signing out first (standard RN Google Signin pattern)
+        try {
+          await GoogleSignin.signOut();
+        } catch {
+          // Ignore if not signed in
+        }
+
+        const userInfo = await GoogleSignin.signIn();
+        const idToken = userInfo.data?.idToken;
+        if (!idToken) throw new Error('No ID token returned');
+        const credential = GoogleAuthProvider.credential(idToken);
+        setIsLoading(true);
+        const auth = await getAuthInstance();
+        await signInWithCredential(auth, credential);
+        console.log("Google sign-in successful with Firebase.");
+      } catch (error: any) {
+        if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+          console.log('User cancelled the sign-in flow.');
+        } else if (error.code === statusCodes.IN_PROGRESS) {
+          console.log('Sign-in is already in progress.');
+        } else {
+          console.error('Google Sign-In Error:', error);
+          Alert.alert('Sign-In Error', 'Could not sign in with Google. Please try again.');
+        }
+        setIsLoading(false);
       }
     },
-    googleAuthRequest: request,
+    googleAuthRequest: null,
   };
 
   // Render children only when the core auth functions are available.

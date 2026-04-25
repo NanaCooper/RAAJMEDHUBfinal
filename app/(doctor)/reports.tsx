@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
-import { getDoctorReports, Report } from '../../services/reports';
+import { getDoctorReports, subscribeToDoctorReportNotifications, Report } from '../../services/reports';
 
 // --- Global Theme ---
 const COLORS = {
@@ -79,6 +79,16 @@ export default function ReportsScreen() {
   useEffect(() => {
     fetchReports();
   }, [fetchReports]);
+
+  // Real-time report notification subscription for doctor
+  useEffect(() => {
+    if (!session?.uid || !user) return;
+    const doctorName = user?.fullName || user?.name || user?.displayName;
+    const doctorId = user?.doctorCode || session?.uid || user?.uid;
+    if (!doctorName || !doctorId) return;
+    const unsub = subscribeToDoctorReportNotifications(doctorId, doctorName);
+    return () => unsub();
+  }, [session?.uid, user]);
 
   const formatDate = (createdAt: any): string => {
     if (!createdAt) return 'Date Unavailable';

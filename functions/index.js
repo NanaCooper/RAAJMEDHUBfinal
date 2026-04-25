@@ -5,10 +5,9 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // Initialize Firebase Admin
 admin.initializeApp();
 
-// Initialize Gemini AI with the API key
-// IMPORTANT: For production, use Firebase Functions config or environment variables
-// For now, we'll hardcode it (you should move this to config later)
-const GEMINI_API_KEY = 'AIzaSyCLy0vtcrFFORCWYuMYzBNxrrBChjIfRVU';
+// Initialize Gemini AI with the API key from environment/secrets
+// Set this secret with: firebase functions:secrets:set GEMINI_API_KEY
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 /**

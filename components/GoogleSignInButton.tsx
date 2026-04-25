@@ -4,12 +4,11 @@ import { FontAwesome } from "@expo/vector-icons";
 import { useAuth } from "../hooks/useAuth";
 
 export function GoogleSignInButton() {
-  const { promptGoogleSignIn, googleAuthRequest } = useAuth();
+  const { promptGoogleSignIn } = useAuth();
 
   return (
     <TouchableOpacity
-      style={[styles.button, !googleAuthRequest && styles.buttonDisabled]}
-      disabled={!googleAuthRequest}
+      style={styles.button}
       onPress={() => {
         console.log("Google Sign In button pressed");
         promptGoogleSignIn();
@@ -17,9 +16,7 @@ export function GoogleSignInButton() {
       activeOpacity={0.8}
     >
       <FontAwesome name="google" size={20} color="#FFF" style={styles.icon} />
-      <Text style={styles.buttonText}>
-        {!googleAuthRequest ? "Loading..." : "Sign in with Google"}
-      </Text>
+      <Text style={styles.buttonText}>Sign in with Google</Text>
     </TouchableOpacity>
   );
 }

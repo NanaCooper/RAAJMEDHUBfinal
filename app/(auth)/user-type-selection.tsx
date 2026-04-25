@@ -12,23 +12,25 @@ import { useAuth } from "../../hooks/useAuth";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
-  primary: "#0A2463",    // Deep navy
-  secondary: "#00A896",  // Medical teal
-  accent: "#FF6B6B",     // Coral
-  background: "#F8F9FA", // Clean white/gray
-  surface: "#FFFFFF",    // Card surface
-  textMain: "#212529",
-  textSec: "#6C757D",
-  border: "#E9ECEF",
-  selectedBg: "#E6F7F5", // Light teal bg for selection
+  bg: "#F8FAFC",        // Slate 50
+  surface: "#FFFFFF",
+  primary: "#4F46E5",   // Indigo 600
+  primarySoft: "#EEF2FF",
+  textMain: "#1E293B",  // Slate 800
+  textSec: "#64748B",   // Slate 500
+  border: "#E2E8F0",
+  success: "#10B981",   // Emerald
+  danger: "#EF4444",    // Red
+  warning: "#F59E0B",   // Amber
+  selectedBg: "#EEF2FF", // Match primarySoft
 };
 
 const SHADOW = {
-  shadowColor: "#0A2463",
-  shadowOffset: { width: 0, height: 8 },
+  shadowColor: "#64748B",
+  shadowOffset: { width: 0, height: 4 },
   shadowOpacity: 0.08,
-  shadowRadius: 16,
-  elevation: 6,
+  shadowRadius: 12,
+  elevation: 4,
 };
 
 export default function UserTypeSelection() {
@@ -74,7 +76,7 @@ export default function UserTypeSelection() {
           <Feather
             name={iconName}
             size={28}
-            color={isSelected ? COLORS.secondary : COLORS.textSec}
+            color={isSelected ? COLORS.primary : COLORS.textSec}
           />
         </View>
         
@@ -97,13 +99,13 @@ export default function UserTypeSelection() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
       
       <View style={styles.content}>
         {/* Header Section */}
         <View style={styles.header}>
-          <View style={styles.brandIcon}>
-            <MaterialCommunityIcons name="account-group-outline" size={40} color={COLORS.primary} />
+          <View style={styles.progressPill}>
+            <Text style={styles.progressText}>Step 3 of 3</Text>
           </View>
           <Text style={styles.title}>Select Your Role</Text>
           <Text style={styles.subtitle}>
@@ -148,7 +150,7 @@ export default function UserTypeSelection() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.bg,
   },
   content: {
     flex: 1,
@@ -161,14 +163,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 48,
   },
-  brandIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.selectedBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
+  progressPill: {
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  progressText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   title: {
     fontSize: 28,
@@ -200,7 +206,7 @@ const styles = StyleSheet.create({
     ...SHADOW,
   },
   cardSelected: {
-    borderColor: COLORS.secondary,
+    borderColor: COLORS.primary,
     backgroundColor: COLORS.surface, // Keep white surface for contrast
   },
   
@@ -208,13 +214,13 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.bg,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
   iconContainerSelected: {
-    backgroundColor: COLORS.selectedBg,
+    backgroundColor: COLORS.primarySoft,
   },
   
   cardTextContainer: {
@@ -247,13 +253,13 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   radioCircleSelected: {
-    borderColor: COLORS.secondary,
+    borderColor: COLORS.primary,
   },
   radioInner: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.primary,
   },
 
   // --- Footer/Button Styles ---

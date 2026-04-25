@@ -17,7 +17,7 @@ import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
 import { subscribeToAppointments } from "../../services/appointments";
 import type { Appointment } from "../../types/appointment";
 import { getDoctor } from "../../services/doctors";
-import moment from "moment";
+import dayjs from "dayjs";
 
 // --- Theme Constants ---
 const COLORS = {
@@ -58,22 +58,22 @@ export default function PatientDashboard(): React.ReactElement {
 
     const unsubAppointments = subscribeToAppointments(session.uid, 'patient', async (appts: Appointment[]) => {
       console.log(`[Dashboard] Received ${appts.length} appointments`);
-      const startOfDay = moment().startOf('day').toDate();
+      const startOfDay = dayjs().startOf('day').toDate();
 
       const getDate = (a: any) => {
         try {
           if (a.startAt) {
             if (a.startAt.toDate) return a.startAt.toDate();
             if (typeof a.startAt === 'string') {
-              const m = moment(a.startAt);
+              const m = dayjs(a.startAt);
               if (m.isValid()) return m.toDate();
             }
           }
           if (a.date) {
-            const m = moment(a.date + (a.time ? ' ' + a.time : ''), 'YYYY-MM-DD HH:mm');
+            const m = dayjs(a.date + (a.time ? ' ' + a.time : ''), 'YYYY-MM-DD HH:mm');
             if (m.isValid()) return m.toDate();
             // Fallback for date string only
-            const mDate = moment(a.date, 'YYYY-MM-DD');
+            const mDate = dayjs(a.date, 'YYYY-MM-DD');
             if (mDate.isValid()) return mDate.toDate();
           }
         } catch (e) {
@@ -111,8 +111,8 @@ export default function PatientDashboard(): React.ReactElement {
           if (!isNaN(d.getTime()) && d.getTime() !== 0) {
             date = d.toISOString();
             // Only format time if it exists
-            if (a.time) time = moment(a.time, 'HH:mm').format('h:mm A');
-            else if (moment(d).isValid()) time = moment(d).format('h:mm A');
+            if (a.time) time = dayjs(a.time, 'HH:mm').format('h:mm A');
+            else if (dayjs(d).isValid()) time = dayjs(d).format('h:mm A');
           } else {
             date = a.date || "";
             if (a.time) time = a.time;
@@ -168,7 +168,7 @@ export default function PatientDashboard(): React.ReactElement {
 
       const appointmentsThisMonth = appts.filter(a => {
         const apptDate = getDate(a);
-        const startOfMonth = moment().startOf('month').toDate();
+        const startOfMonth = dayjs().startOf('month').toDate();
         return apptDate && apptDate >= startOfMonth;
       }).length;
 

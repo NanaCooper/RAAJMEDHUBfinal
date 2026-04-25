@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, FlatList, SectionList, TouchableOpacity, StatusBar, Animated, Image, Modal, ScrollView, Platform, LayoutAnimation, UIManager } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Animated, Modal, ScrollView, LayoutAnimation } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import moment from 'moment-timezone';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../hooks/useAuth';
 import { subscribeToAppointments } from '../../services/appointments';
-import ScaleButton from '../../components/ui/ScaleButton';
 import BookingForm from '../../components/appointment/BookingForm';
+
+dayjs.extend(customParseFormat);
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isSameOrBefore);
 
 // --- THEME ENGINE ---
 const COLORS = {
@@ -83,26 +89,28 @@ export default function Appointments() {
         // Handle Firestore Timestamp or standard Date/String
         const rawDate = a.startAt && a.startAt.toDate ? a.startAt.toDate() : a.startAt;
 
-        // Handle Scan Type
+        // Handle Scan Type — prefer the actual procedure type over free-text specificScan
         let scanName = 'Scan';
-        if (a.specificScan) {
-          scanName = a.specificScan;
-        } else if (a.scanType) {
-          scanName = a.scanType.name || a.scanType;
+        if (a.scanType) {
+          scanName = (typeof a.scanType === 'string' ? a.scanType : a.scanType.name) || 'Scan';
           if (scanName === 'General') scanName = 'Scan';
         } else if (Array.isArray(a.scanTypes) && a.scanTypes.length > 0) {
           scanName = a.scanTypes.map((s: any) => s.name).filter(Boolean).join(', ');
+        } else if (a.specificScan) {
+          scanName = a.specificScan;
         }
 
           return {
             id: a.id,
-            date: rawDate ? moment(rawDate).format('YYYY-MM-DD') : (a.date || null),
-            time: rawDate ? moment(rawDate).format('HH:mm') : (a.time || ''),
-            doctor: a.doctorName || 'Assigned soon', // Fallback
+            date: rawDate ? dayjs(rawDate).format('YYYY-MM-DD') : (a.date || null),
+            time: rawDate ? dayjs(rawDate).format('HH:mm') : (a.time || ''),
+            doctor: a.doctorName || 'Assigned soon',
             status: a.status || 'upcoming',
             scanType: { name: scanName },
             branch: a.branch,
             createdAt: a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt,
+            priceGHS: a.priceGHS || null,
+            price: a.price ?? null,
           };
       });
       setAppointments(mapped);
@@ -135,8 +143,8 @@ export default function Appointments() {
       if (isPending) return false;
       
       if (!a.date) return true;
-      const mDate = moment(a.date, 'YYYY-MM-DD');
-      return mDate.isValid() && mDate.isSameOrAfter(moment(), 'day');
+      const mDate = dayjs(a.date, 'YYYY-MM-DD');
+      return mDate.isValid() && mDate.isSameOrAfter(dayjs(), 'day');
     });
   }, [appointments, activeTab, upcomingFilter]);
 
@@ -239,10 +247,7 @@ export default function Appointments() {
 
       {/* HEADER */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Appointments</Text>
-          <Text style={styles.headerSub}>Manage your bookings</Text>
-        </View>
+        
       </View>
 
       {/* TAB BAR */}
@@ -253,6 +258,7 @@ export default function Appointments() {
         {activeTab === 'book' ? (
           bookingMethod === 'manual' ? (
             <BookingForm
+              onCancel={() => setBookingMethod(null)}
               extractedData={extractedDataParam || (extractedNotes ? { notes: extractedNotes } : undefined)}
             />
           ) : (
@@ -284,7 +290,7 @@ export default function Appointments() {
                     </View>
                     <Text style={styles.heroTitle}>Upload Referral</Text>
                     <Text style={styles.heroDesc}>
-                      Snap a photo of your doctor's referral letter. Our AI will automatically extract the details for you.
+                      Snap a photo of your doctor&apos;s referral letter. Our AI will automatically extract the details for you.
                     </Text>
                     <View style={styles.heroArrow}>
                       <Text style={styles.heroArrowText}>Upload Now</Text>
@@ -314,7 +320,7 @@ export default function Appointments() {
               <View style={styles.infoBox}>
                 <Feather name="info" size={20} color={COLORS.primaryDark} />
                 <Text style={styles.infoText}>
-                  All appointment requests are reviewed and confirmed by our staff. You'll receive a notification once approved.
+                  All appointment requests are reviewed and confirmed by our staff. You&apos;ll receive a notification once approved.
                 </Text>
               </View>
             </ScrollView>
@@ -364,7 +370,7 @@ export default function Appointments() {
             <FlatList
               ref={listRef}
               data={appointments.filter(a => {
-                const isPastDate = a.date && moment(a.date, 'YYYY-MM-DD').isBefore(moment(), 'day');
+                const isPastDate = a.date && dayjs(a.date, 'YYYY-MM-DD').isBefore(dayjs(), 'day');
                 const isEndedStatus = ['cancelled', 'denied', 'completed'].includes(a.status);
                 return isPastDate || isEndedStatus;
               })}
