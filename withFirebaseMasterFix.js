@@ -18,24 +18,27 @@ const withFirebaseMasterFix = (config) => {
         # 2. Allow non-modular includes (Crucial for Firebase + New Arch)
         config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
         
-        # 3. Fix gRPC module map visibility
+        # 3. Comprehensive Header Search Paths for React and Firebase
         config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
         config.build_settings['HEADER_SEARCH_PATHS'] << '"$(PODS_ROOT)/Headers/Public/React-Core"'
         config.build_settings['HEADER_SEARCH_PATHS'] << '"$(PODS_ROOT)/Headers/Public/Firebase"'
+        config.build_settings['HEADER_SEARCH_PATHS'] << '"$(PODS_CONFIGURATION_BUILD_DIR)/React-Core/React.framework/Headers"'
         
         # 4. Protobuf fix for New Architecture
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'GPB_USE_PROTOBUF_FRAMEWORK_IMPORTS=1'
         
-        # 5. Disable strict modular headers for problematic gRPC targets
-        if target.name.start_with?('gRPC') || target.name.start_with?('BoringSSL')
+        # 5. Fix Swift visibility for React Native modules
+        if target.name.start_with?('RNFB') || target.name.start_with?('gRPC')
           config.build_settings['DEFINES_MODULE'] = 'YES'
+          config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
+          config.build_settings['OTHER_SWIFT_FLAGS'] << '-Xcc -fmodule-map-file="${PODS_ROOT}/Headers/Public/React-Core/React.modulemap"'
         end
       end
     end
 `;
 
-      if (!contents.includes('GPB_USE_PROTOBUF_FRAMEWORK_IMPORTS')) {
+      if (!contents.includes('DEFINES_MODULE')) {
         contents = contents.replace(
           /post_install do \|installer\|/g,
           `post_install do |installer|${masterFix}`
