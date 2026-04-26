@@ -88,7 +88,6 @@
             "extraMavenRepos": [
               "../../node_modules/@notifee/react-native/android/libs"
             ]
-          },
           }
         }
       ],
