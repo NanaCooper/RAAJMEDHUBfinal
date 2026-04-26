@@ -94,7 +94,8 @@
           }
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "./withNonModularIncludes.js"
     ],
     "experiments": {
       "typedRoutes": true,
