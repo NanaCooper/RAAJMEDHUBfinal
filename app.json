@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "com.cooperlistic.medicare",
+    "scheme": "com.cooper.medicare",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "updates": {
@@ -16,14 +16,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "medicare.ios.com",
+      "bundleIdentifier": "com.cooper.medicare",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "medicare.ios.com",
-              "com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm"
+              "com.cooper.medicare",
+              "com.googleusercontent.apps.631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231"
             ]
           }
         ],
@@ -42,7 +42,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "medicare.android.com",
+      "package": "com.cooper.medicare",
       "googleServicesFile": "./google-services.json"
     },
     "web": {
@@ -50,7 +50,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "extra": {
-      "googleClientId": "631948568273-9ekasgjfgref8f776ktc5opqf0jiq6jr.apps.googleusercontent.com",
+      "googleClientId": "631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231.apps.googleusercontent.com",
       "router": {},
       "eas": {
         "projectId": "f1571ba6-d691-416d-ad8c-5d029e9dfb2d"

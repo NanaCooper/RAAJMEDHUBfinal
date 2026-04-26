@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Platform,
   ScrollView,
   Dimensions,
   Linking,
@@ -13,7 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
-import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { subscribeToAppointments } from "../../services/appointments";
 import type { Appointment } from "../../types/appointment";
 import { getDoctor } from "../../services/doctors";
@@ -44,11 +43,6 @@ export default function PatientDashboard(): React.ReactElement {
 
   // State
   const [upcoming, setUpcoming] = useState<any[]>([]);
-  const [stats, setStats] = useState({
-    appointmentsThisMonth: 0,
-    prescriptions: 0,
-    labResults: 0,
-  });
 
   const doctorsRef = useRef<any>({});
 
@@ -76,7 +70,7 @@ export default function PatientDashboard(): React.ReactElement {
             const mDate = dayjs(a.date, 'YYYY-MM-DD');
             if (mDate.isValid()) return mDate.toDate();
           }
-        } catch (e) {
+        } catch {
           console.warn("Invalid date for appt", a.id);
         }
         return new Date(0); // Epoch for invalid
@@ -152,7 +146,7 @@ export default function PatientDashboard(): React.ReactElement {
       setUpcoming(mapUpcoming(upcomingAppts, doctorsRef.current));
 
       // 2. Fetch missing doctors (skip already fetched or failed)
-      const doctorIds = [...new Set(upcomingAppts.map(a => a.doctorId).filter(id => id && !(id in doctorsRef.current)))];
+      const doctorIds = [...new Set(upcomingAppts.map(a => a.doctorId).filter(id => id && !(id in doctorsRef.current)))] as string[];
       if (doctorIds.length > 0) {
         // Mark as fetching to prevent duplicate fetches on future subscription updates
         doctorIds.forEach(id => { doctorsRef.current[id] = null; });
@@ -166,19 +160,12 @@ export default function PatientDashboard(): React.ReactElement {
         setUpcoming(mapUpcoming(upcomingAppts, doctorsRef.current));
       }
 
-      const appointmentsThisMonth = appts.filter(a => {
-        const apptDate = getDate(a);
-        const startOfMonth = dayjs().startOf('month').toDate();
-        return apptDate && apptDate >= startOfMonth;
-      }).length;
-
-      setStats(prev => ({ ...prev, appointmentsThisMonth, prescriptions: 0, labResults: 0 }));
     }, (err) => console.error(err), session.email);
 
     return () => {
       unsubAppointments();
     };
-  }, [session?.uid]);
+  }, [session?.uid, session?.email]);
 
   // --- Helper for Date Formatting ---
   const getDayDate = (dateStr: string) => {

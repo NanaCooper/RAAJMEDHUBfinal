@@ -3,19 +3,19 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm.apps.googleusercontent.com</string>
+	<string>631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.631948568273-4eifj85g1leh7kjqhmkhard0v3i45edm</string>
+	<string>com.googleusercontent.apps.631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231</string>
 	<key>ANDROID_CLIENT_ID</key>
-	<string>631948568273-g5q581s1kbt0c8gibp7v44jk9bvmmrsm.apps.googleusercontent.com</string>
+	<string>631948568273-6q2svliljleo6lj9m5e1lcj0svokqrjk.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
-	<string>AIzaSyBJI7QKQ4ytOhgZdMKCGn37mte-aE0rlPU</string>
+	<string>AIzaSyCxtNz7U40V_12gQmUMuw53Df64W_zOPdI</string>
 	<key>GCM_SENDER_ID</key>
 	<string>631948568273</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>medicare.ios.com</string>
+	<string>com.cooper.medicare</string>
 	<key>PROJECT_ID</key>
 	<string>medicareapp-f0dc0</string>
 	<key>STORAGE_BUCKET</key>
@@ -31,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:631948568273:ios:4f1a1042487ed8c83507f0</string>
+	<string>1:631948568273:ios:bd4dc3e7f1870ae53507f0</string>
 </dict>
 </plist>

@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
+export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'requested';
 
 export interface ScanType {
   id: string;
