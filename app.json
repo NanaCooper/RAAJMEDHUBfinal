@@ -89,13 +89,11 @@
               "../../node_modules/@notifee/react-native/android/libs"
             ]
           },
-          "ios": {
-            "useFrameworks": "static"
           }
         }
       ],
       "@react-native-google-signin/google-signin",
-      "./withNonModularIncludes.js"
+      "./withModularHeaders.js"
     ],
     "experiments": {
       "typedRoutes": true,
