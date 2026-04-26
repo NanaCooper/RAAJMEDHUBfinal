@@ -32,17 +32,16 @@ const withFirebaseMasterFix = (config) => {
         if target.name.start_with?('RNFB') || target.name.start_with?('gRPC')
           config.build_settings['DEFINES_MODULE'] = 'YES'
           config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
-          config.build_settings['OTHER_SWIFT_FLAGS'] << '-Xcc -fmodule-map-file="${PODS_ROOT}/Headers/Public/React-Core/React.modulemap"'
+          config.build_settings['OTHER_SWIFT_FLAGS'] << '-Xcc -fmodule-map-file="\\${PODS_ROOT}/Headers/Public/React-Core/React.modulemap"'
         end
       end
     end
 `;
 
       if (!contents.includes('DEFINES_MODULE')) {
-        // Use single quotes for the replacement to avoid JS interpolation issues
         contents = contents.replace(
           /post_install do \|installer\|/g,
-          'post_install do |installer|' + masterFix
+          `post_install do |installer|${masterFix}`
         );
         fs.writeFileSync(file, contents);
       }
