@@ -39,9 +39,10 @@ const withFirebaseMasterFix = (config) => {
 `;
 
       if (!contents.includes('DEFINES_MODULE')) {
+        // Use single quotes for the replacement to avoid JS interpolation issues
         contents = contents.replace(
           /post_install do \|installer\|/g,
-          `post_install do |installer|${masterFix}`
+          'post_install do |installer|' + masterFix
         );
         fs.writeFileSync(file, contents);
       }
