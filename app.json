@@ -82,6 +82,9 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "useFrameworks": "static"
+          },
           "android": {
             "useAndroidX": true,
             "enableProguardInReleaseBuilds": true,
@@ -92,7 +95,8 @@
         }
       ],
       "@react-native-google-signin/google-signin",
-      "./withModularHeaders.js"
+      "./withRNFirebaseStaticFramework.js",
+      "./withFirebaseModularDeps.js"
     ],
     "experiments": {
       "typedRoutes": true,
