@@ -32,7 +32,8 @@ const withFirebaseMasterFix = (config) => {
         if target.name.start_with?('RNFB') || target.name.start_with?('gRPC')
           config.build_settings['DEFINES_MODULE'] = 'YES'
           config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
-          config.build_settings['OTHER_SWIFT_FLAGS'] << '-Xcc -fmodule-map-file="\\${PODS_ROOT}/Headers/Public/React-Core/React.modulemap"'
+          # USE PARENTHESES INSTEAD OF CURLY BRACES SO JS DOESN'T INTERPOLATE
+          config.build_settings['OTHER_SWIFT_FLAGS'] << '-Xcc -fmodule-map-file="$(PODS_ROOT)/Headers/Public/React-Core/React.modulemap"'
         end
       end
     end
