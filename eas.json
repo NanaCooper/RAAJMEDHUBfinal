@@ -34,6 +34,16 @@
       "autoIncrement": true,
       "ios": {
         "image": "sdk-54"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "production-apk": {
+      "channel": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
       }
     }
   },
