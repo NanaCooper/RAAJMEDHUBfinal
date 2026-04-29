@@ -6,6 +6,10 @@ const PODFILE_BLOCK_END = "# END Firebase modular headers";
 function buildPodfileBlock() {
   const pods = [
     'GoogleUtilities',
+    'GoogleDataTransport',
+    'GTMSessionFetcher',
+    'FirebaseCoreInternal',
+    'FirebaseCoreExtension',
     'FirebaseAuthInterop',
     'FirebaseAppCheckInterop',
     'RecaptchaInterop',

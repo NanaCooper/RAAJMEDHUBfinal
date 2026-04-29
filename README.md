@@ -1,5 +1,10 @@
 # Welcome to your Expo app 👋
 
+## Project links
+
+- Contributing guide: see CONTRIBUTING.md
+- Privacy policy (for Google Play): hosted via GitHub Pages under `docs/privacy-policy/` once Pages is enabled
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started

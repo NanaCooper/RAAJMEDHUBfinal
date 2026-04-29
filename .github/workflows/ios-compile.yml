@@ -1,0 +1,74 @@
+name: iOS compile (logs)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-compile:
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    env:
+      IOS_SCHEME: MediCare
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Prebuild iOS (generate ios/)
+        run: npx expo prebuild --platform ios --clean --non-interactive
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      - name: Xcodebuild (simulator, no signing)
+        run: |
+          set -o pipefail
+          WORKSPACE=$(ls -1 ios/*.xcworkspace | head -n 1)
+          echo "Workspace: ${WORKSPACE}"
+          echo "Listing schemes:"; xcodebuild -list -workspace "${WORKSPACE}" | tee xcodebuild-schemes.txt
+
+          # If IOS_SCHEME is wrong, fall back to the first scheme we can find.
+          if ! xcodebuild -list -workspace "${WORKSPACE}" | grep -Fq "${IOS_SCHEME}"; then
+            DETECTED_SCHEME=$(awk 'found && NF {print; exit} /^Schemes:/ {found=1}' xcodebuild-schemes.txt | xargs)
+            if [ -n "${DETECTED_SCHEME}" ]; then
+              echo "IOS_SCHEME '${IOS_SCHEME}' not found; using '${DETECTED_SCHEME}'"
+              IOS_SCHEME="${DETECTED_SCHEME}"
+            fi
+          fi
+
+          xcodebuild \
+            -workspace "${WORKSPACE}" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee xcodebuild.log
+
+      - name: Upload Xcode build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: |
+            xcodebuild.log
+            xcodebuild-schemes.txt
+            ios/Podfile
+            ios/Podfile.lock

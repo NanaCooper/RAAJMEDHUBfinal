@@ -6,18 +6,35 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "image": "sdk-54"
+      }
+    },
+    "simulator": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "image": "sdk-54",
+        "simulator": true
+      }
     },
     "preview": {
       "distribution": "internal",
       "channel": "preview",
+      "ios": {
+        "image": "sdk-54"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
       "channel": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "image": "sdk-54"
+      }
     }
   },
   "submit": {
