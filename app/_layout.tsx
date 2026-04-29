@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { AuthProvider } from '../hooks/useAuth';
+import { enabled as firebaseEnabled, initError as firebaseInitError } from '../utils/firebaseConfig';
 import * as Font from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { initializeNotifications, setupNotificationResponseListener } from '../services/notifications';
 import * as Updates from 'expo-updates';
-import { Alert } from 'react-native';
+import { Alert, View, Text, StyleSheet } from 'react-native';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -89,6 +90,19 @@ export default function RootLayout() {
   }, []);
 
   if (!fontsLoaded) {
+    // If Firebase isn't available, show the error screen immediately.
+    if (!firebaseEnabled) {
+      return (
+        <View style={styles.container}>
+          <Text style={styles.title}>App setup error</Text>
+          <Text style={styles.body}>
+            This build cannot start because Firebase is not configured correctly.
+          </Text>
+          <Text style={styles.details}>{firebaseInitError || 'Unknown Firebase init error.'}</Text>
+        </View>
+      );
+    }
+
     return null;
   }
 
@@ -98,3 +112,28 @@ export default function RootLayout() {
     </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  body: {
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  details: {
+    fontSize: 12,
+    opacity: 0.7,
+    textAlign: 'center',
+  },
+});

@@ -36,22 +36,49 @@ import {
   FIREBASE_STORAGE_BUCKET 
 } from '../constants/Config';
 
-// In React Native, the app is auto-initialized from google-services.json / GoogleService-Info.plist
-const app: any = getApps().length > 0 
-  ? getApp() 
-  : initializeApp({
-      apiKey: FIREBASE_API_KEY as string,
-      appId: FIREBASE_APP_ID as string,
-      projectId: FIREBASE_PROJECT_ID as string,
-      storageBucket: FIREBASE_STORAGE_BUCKET as string,
-    });
+// In React Native, the app is usually auto-initialized from google-services.json / GoogleService-Info.plist.
+// IMPORTANT: Never throw during module import (release builds may show a black screen).
+let app: any = null;
+export let enabled = true;
+export let initError: string | null = null;
+
+function hasEnvFirebaseConfig() {
+  return Boolean(FIREBASE_API_KEY && FIREBASE_APP_ID && FIREBASE_PROJECT_ID);
+}
+
+try {
+  // Prefer the default app created natively.
+  try {
+    app = getApp();
+  } catch (_e) {
+    // If getApp() fails, check if any apps are registered.
+    const apps = getApps();
+    if (apps.length > 0) {
+      app = apps[0];
+    } else if (hasEnvFirebaseConfig()) {
+      // Fall back to JS initialization (mainly for environments that don't bundle native config).
+      app = initializeApp({
+        apiKey: FIREBASE_API_KEY as string,
+        appId: FIREBASE_APP_ID as string,
+        projectId: FIREBASE_PROJECT_ID as string,
+        storageBucket: FIREBASE_STORAGE_BUCKET as string,
+      });
+    } else {
+      enabled = false;
+      initError =
+        'Firebase is not initialized. Ensure android/google-services.json and iOS/GoogleService-Info.plist are included in the build, or configure EXPO_PUBLIC_FIREBASE_* environment variables for EAS builds.';
+    }
+  }
+} catch (e: any) {
+  enabled = false;
+  initError = `Firebase init failed: ${e?.message || String(e)}`;
+}
 
 export const appInstance = app;
-export const db = getFirestore(app);
-export const auth = firebaseGetAuth(app);
-export const functions = getFunctions(app);
-export const storage = getStorage(app);
-export const enabled = true;
+export const db = enabled && app ? getFirestore(app) : (null as any);
+export const auth = enabled && app ? firebaseGetAuth(app) : (null as any);
+export const functions = enabled && app ? getFunctions(app) : (null as any);
+export const storage = enabled && app ? getStorage(app) : (null as any);
 
 // --- Auth Exports ---
 export const onAuthStateChanged = (authInstance: any, observer: any) => firebaseOnAuthStateChanged(authInstance, observer);
