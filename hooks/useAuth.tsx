@@ -139,10 +139,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Configure native Google Sign-In on mount
   useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: WEB_CLIENT_ID,
-      offlineAccess: true,
-    });
+    try {
+      if (!WEB_CLIENT_ID) {
+        console.warn(
+          'Google Sign-In is not configured (missing EXPO_PUBLIC_WEB_CLIENT_ID). Skipping GoogleSignin.configure to avoid startup crash.'
+        );
+        return;
+      }
+
+      GoogleSignin.configure({
+        webClientId: WEB_CLIENT_ID,
+        offlineAccess: true,
+      });
+    } catch (e) {
+      console.warn('Google Sign-In configure failed:', e);
+    }
   }, []);
 
   // We use a lazily-initialized auth instance provided by utils/firebaseConfig.
