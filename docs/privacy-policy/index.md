@@ -54,7 +54,7 @@ We **do not** sell your medical data to third parties. Data is shared only with 
 
 If you have questions or requests related to this Privacy Policy, contact:
 
-- Email: support@cooperhealth.example
+- Email: raajmedhub@gmail.com
 
 ---
 
