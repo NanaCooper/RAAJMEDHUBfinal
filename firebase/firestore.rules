@@ -117,26 +117,8 @@ service cloud.firestore {
 
     // Procedures / pricing catalogue - readable by all signed-in users, writable by admins only
     match /procedures/{procedureId} {
-      // Price catalogue: safe to expose for browsing/search in-app.
-      // Allow reads even when auth is still initializing to avoid permission-denied on app startup.
-      allow read: if true;
+      allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
-    }
-
-    // Referrals (doctor payout tracking)
-    match /referrals/{referralId} {
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        (isDoctor() && resource.data.doctorId == request.auth.uid)
-      );
-
-      allow create: if isSignedIn() && (
-        isAdmin() ||
-        (isDoctor() && request.resource.data.doctorId == request.auth.uid)
-      );
-
-      // Keep edits restricted; payouts should be append-only from client.
-      allow update, delete: if isAdmin();
     }
 
     // Scan reports - patients can read their own, admins/doctors can create and update
