@@ -5,6 +5,40 @@
 - Contributing guide: see CONTRIBUTING.md
 - Privacy policy (for Google Play): hosted via GitHub Pages under `docs/privacy-policy/` once Pages is enabled
 
+## For collaborators (clone & run)
+
+```bash
+git clone https://github.com/NanaCooper/RAAJMEDHUBfinal.git
+cd RAAJMEDHUBfinal
+npm install
+```
+
+Optional environment variables:
+
+- Copy `.env.example` to `.env` and fill in values if needed.
+- Most Firebase config is provided via native files (`google-services.json` / `GoogleService-Info.plist`).
+
+Start Metro:
+
+```bash
+npx expo start
+```
+
+## iOS build help (macOS)
+
+If you are helping debug iOS builds, please share the full logs from one of these:
+
+- GitHub Actions workflow in `.github/workflows/ios-compile.yml`
+- Local compile:
+
+```bash
+npm install
+npx expo prebuild -p ios --clean
+cd ios
+pod install
+cd ..
+```
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
