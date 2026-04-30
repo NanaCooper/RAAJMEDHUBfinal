@@ -77,7 +77,7 @@ function useProtectedRoute(session: AuthUser | null | undefined, isLoading: bool
       // Check for false or undefined (if field is missing)
       // 1. Redirect to profile completion if needed.
       // Check for false or undefined (if field is missing)
-      if (!user.profileComplete) {
+      if (user.profileComplete === false) {
         // Check last segment to avoid group name issues
         const lastSegment = segments[segments.length - 1];
         const isAtCompleteProfile = lastSegment === 'complete-profile';

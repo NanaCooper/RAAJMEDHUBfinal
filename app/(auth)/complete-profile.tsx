@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
-import { doc, setDoc, db, auth } from "../../utils/firebaseConfig"; // Direct auth import for provider check
+import { doc, setDoc, db } from "../../utils/firebaseConfig";
 import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
 import { linkPhoneWithPassword } from "../../utils/authHelpers";
@@ -89,9 +89,12 @@ const InputField = React.memo(({
   </View>
 ));
 
+InputField.displayName = "InputField";
+
 export default function CompleteProfileScreen() {
   const router = useRouter();
-  const { session, reloadUser } = useAuth();
+  const { session, reloadUser, signOut } = useAuth();
+  const authSession = session as any;
 
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -108,6 +111,22 @@ export default function CompleteProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handleBackToSignIn = async () => {
+    if (loading) return;
+
+    setError(null);
+    try {
+      setLoading(true);
+      await signOut();
+      router.replace("/login");
+    } catch (err: any) {
+      console.error("Back to sign in failed:", err);
+      setError(err?.message || "Unable to return to sign in right now.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Determine if user is Phone Based (no email or internal email)
   // Logic: verification done, user exists. 
   // If session.email has '@medicare.internal', it is phone based.
@@ -115,13 +134,13 @@ export default function CompleteProfileScreen() {
 
   useEffect(() => {
     // Pre-fill known data
-    if (session?.phoneNumber) {
-      setContact(session.phoneNumber);
+    if (authSession?.phoneNumber) {
+      setContact(authSession.phoneNumber);
     }
     if (!isPhoneUser && session?.email) {
       setEmailInput(session.email);
     }
-  }, [session, isPhoneUser]);
+  }, [authSession, session, isPhoneUser]);
 
   const validate = () => {
     if (!firstName.trim()) return "Please enter your first name.";
@@ -154,7 +173,7 @@ export default function CompleteProfileScreen() {
       // 1. If Phone User, link password
       if (isPhoneUser) {
         // We use the phone number as the "email" identifier for linking in our helper
-        const phoneParam = session?.phoneNumber || contact;
+        const phoneParam = authSession?.phoneNumber || contact;
         // Logic check: Link helper uses phone + internal domain. 
         // Ensure we pass the raw phone from session if possible.
 
@@ -180,7 +199,7 @@ export default function CompleteProfileScreen() {
       };
 
       if (isPhoneUser) {
-        updateData.phone = session?.phoneNumber;
+        updateData.phone = authSession?.phoneNumber;
         updateData.email = emailInput.trim() || null; // Optional email
         updateData.phoneVerified = true;
       } else {
@@ -218,11 +237,19 @@ export default function CompleteProfileScreen() {
         >
           {/* --- Header --- */}
           <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backLink}
+              onPress={handleBackToSignIn}
+              disabled={loading}
+            >
+              <Feather name="arrow-left" size={16} color={COLORS.primary} />
+              <Text style={styles.backLinkText}>Back to Sign In</Text>
+            </TouchableOpacity>
             <View style={styles.progressPill}>
               <Text style={styles.progressText}>Step 2 of 3</Text>
             </View>
             <Text style={styles.title}>Complete Profile</Text>
-            <Text style={styles.subtitle}>Let's get to know you better</Text>
+            <Text style={styles.subtitle}>Let&apos;s get to know you better</Text>
           </View>
 
           {/* --- Form Card --- */}
@@ -361,6 +388,15 @@ const styles = StyleSheet.create({
 
   // --- Header ---
   header: { alignItems: 'center', marginBottom: 24 },
+  backLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginBottom: 18,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  backLinkText: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },
   progressPill: {
     backgroundColor: "#E3F2FD", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginBottom: 16,
   },
