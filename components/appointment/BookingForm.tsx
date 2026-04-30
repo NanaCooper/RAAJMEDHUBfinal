@@ -11,8 +11,9 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
+    FlatList,
 } from "react-native";
-import { fetchMinPricesPerCategory, ProcedureMinPrices } from '../../services/procedures';
+import { fetchMinPricesPerCategory, listAllProcedures, ProcedureItem, ProcedureMinPrices } from '../../services/procedures';
 import { Calendar } from 'react-native-calendars';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { useRouter } from 'expo-router';
@@ -124,8 +125,17 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     const [showSexPicker, setShowSexPicker] = useState(false);
     const [previewScan, setPreviewScan] = useState<any>(null); // For showing description/price
 
+    // Procedures (doctor-only)
+    const [procedureOptions, setProcedureOptions] = useState<ProcedureItem[]>([]);
+    const [procedureLoading, setProcedureLoading] = useState(false);
+    const [showProcedurePicker, setShowProcedurePicker] = useState(false);
+    const [procedureQuery, setProcedureQuery] = useState('');
+    const [selectedProcedure, setSelectedProcedure] = useState<ProcedureItem | null>(null);
+
     // Fetch live minimum prices from Firestore
     useEffect(() => {
+        // Avoid Firestore reads before auth is ready.
+        if (!session?.uid) return;
         let active = true;
         setPricesLoading(true);
         fetchMinPricesPerCategory()
@@ -133,7 +143,41 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             .catch(() => { /* silently fall back to hardcoded prices */ })
             .finally(() => { if (active) setPricesLoading(false); });
         return () => { active = false; };
-    }, []);
+    }, [session?.uid]);
+
+    // Prefill procedure (when extracted) by best-effort name match
+    useEffect(() => {
+        if (!isDoctorBooking) return;
+        if (!session?.uid) return;
+        const extractedProcedureName = (extractedData as any)?.procedure || (extractedData as any)?.specificProcedure || (extractedData as any)?.specificScan;
+        if (!extractedProcedureName || selectedProcedure) return;
+
+        let active = true;
+        setProcedureLoading(true);
+        listAllProcedures()
+            .then((items) => {
+                if (!active) return;
+                setProcedureOptions(items);
+                const needle = extractedProcedureName.toString().toLowerCase().trim();
+                const match = items.find((p) => p.name.toLowerCase().trim() === needle) ||
+                    items.find((p) => p.name.toLowerCase().includes(needle) || needle.includes(p.name.toLowerCase()));
+                if (match) setSelectedProcedure(match);
+            })
+            .finally(() => { if (active) setProcedureLoading(false); });
+        return () => { active = false; };
+    }, [isDoctorBooking, extractedData, selectedProcedure, session?.uid]);
+
+    const filteredProcedureOptions = useMemo(() => {
+        const q = procedureQuery.trim().toLowerCase();
+        if (!q) return procedureOptions;
+        const words = q.split(/\s+/).filter(Boolean);
+        return procedureOptions
+            .filter((p) => {
+                const hay = `${p.name} ${p.category || ''}`.toLowerCase();
+                return words.every((w) => hay.includes(w));
+            })
+            .slice(0, 200);
+    }, [procedureOptions, procedureQuery]);
 
     /** Returns a formatted price range string e.g. "GHS 200 – 950" or "GHS 200".
      *  Always returns a plain string — safe to use directly as a React child. */
@@ -206,12 +250,23 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
         setPreviewScan(null);
     };
 
+    const deriveScanTypesForDoctor = (procedure: ProcedureItem | null) => {
+        const label = procedure?.category || 'Procedure';
+        return [{ id: 'procedure', name: label }];
+    };
+
     const onConfirm: SubmitHandler<any> = async (values) => {
-        if (selectedScans.length === 0) {
+        if (!isDoctorBooking && selectedScans.length === 0) {
             return Alert.alert("Incomplete", "Please select at least one scan type.");
         }
 
-        const selectedScanObjects = scanTypesConfig.filter(s => selectedScans.includes(s.id));
+        if (isDoctorBooking && !selectedProcedure) {
+            return Alert.alert("Incomplete", "Please select a procedure.");
+        }
+
+        const selectedScanObjects = isDoctorBooking
+            ? deriveScanTypesForDoctor(selectedProcedure)
+            : scanTypesConfig.filter(s => selectedScans.includes(s.id));
         const isForOther = !isDoctorBooking && bookingFor === 'other';
 
         const appointmentData = {
@@ -243,6 +298,10 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             },
             referral: isDoctorBooking ? `Dr. ${user?.fullName || user?.firstName || 'Doctor'}` : values.referral,
             specificScan: values.specificScan,
+            specificProcedure: isDoctorBooking ? (selectedProcedure?.name || '') : undefined,
+            procedureId: isDoctorBooking ? (selectedProcedure?.id || '') : undefined,
+            procedurePriceGhs: isDoctorBooking ? (selectedProcedure?.price ?? null) : undefined,
+            procedureCategory: isDoctorBooking ? (selectedProcedure?.category || null) : undefined,
             notes: values.notes,
             isAiBooking: !!extractedData,
             createdByRole: isDoctorBooking ? 'doctor' : 'patient'
@@ -366,38 +425,40 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
 
 
 
-                {/* Scan Types */}
-                <View style={styles.sectionNoCard}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                        <Text style={[styles.sectionTitle, { marginBottom: 0, marginLeft: 4 }]}>Examination Type</Text>
-                        <Text style={{ fontSize: 12, color: COLORS.textSub, marginLeft: 8 }}>(Tap for info)</Text>
-                    </View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 10 }}>
-                        {scanTypesConfig.map(scan => {
-                            const isSelected = selectedScans.includes(scan.id);
-                            return (
-                                <ScaleButton key={scan.id} style={[styles.scanCard, isSelected && styles.scanCardSelected]} onPress={() => setPreviewScan(scan)}>
-                                    <View style={[styles.scanIcon, isSelected && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                                        <Feather name={scan.icon as any} size={20} color={isSelected ? '#FFF' : COLORS.primary} />
-                                    </View>
-                                    <Text style={[styles.scanName, isSelected && { color: '#FFF' }]}>{scan.name}</Text>
-                                    {pricesLoading ? (
-                                        <ActivityIndicator size="small" color={isSelected ? 'rgba(255,255,255,0.7)' : COLORS.primary} style={{ marginTop: 4 }} />
-                                    ) : (
-                                        <Text style={[styles.scanStartingFrom, isSelected && { color: 'rgba(255,255,255,0.85)' }]}>
-                                            {getPriceText(scan)}
-                                        </Text>
-                                    )}
-                                    {isSelected && (
-                                        <View style={{ position: 'absolute', top: 10, right: 10 }}>
-                                            <Feather name="check-circle" size={16} color="#FFF" />
+                {/* Scan Types (Patients only) */}
+                {!isDoctorBooking && (
+                    <View style={styles.sectionNoCard}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                            <Text style={[styles.sectionTitle, { marginBottom: 0, marginLeft: 4 }]}>Examination Type</Text>
+                            <Text style={{ fontSize: 12, color: COLORS.textSub, marginLeft: 8 }}>(Tap for info)</Text>
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 10 }}>
+                            {scanTypesConfig.map(scan => {
+                                const isSelected = selectedScans.includes(scan.id);
+                                return (
+                                    <ScaleButton key={scan.id} style={[styles.scanCard, isSelected && styles.scanCardSelected]} onPress={() => setPreviewScan(scan)}>
+                                        <View style={[styles.scanIcon, isSelected && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                                            <Feather name={scan.icon as any} size={20} color={isSelected ? '#FFF' : COLORS.primary} />
                                         </View>
-                                    )}
-                                </ScaleButton>
-                            )
-                        })}
-                    </ScrollView>
-                </View>
+                                        <Text style={[styles.scanName, isSelected && { color: '#FFF' }]}>{scan.name}</Text>
+                                        {pricesLoading ? (
+                                            <ActivityIndicator size="small" color={isSelected ? 'rgba(255,255,255,0.7)' : COLORS.primary} style={{ marginTop: 4 }} />
+                                        ) : (
+                                            <Text style={[styles.scanStartingFrom, isSelected && { color: 'rgba(255,255,255,0.85)' }]}>
+                                                {getPriceText(scan)}
+                                            </Text>
+                                        )}
+                                        {isSelected && (
+                                            <View style={{ position: 'absolute', top: 10, right: 10 }}>
+                                                <Feather name="check-circle" size={16} color="#FFF" />
+                                            </View>
+                                        )}
+                                    </ScaleButton>
+                                )
+                            })}
+                        </ScrollView>
+                    </View>
+                )}
 
                 {/* Scan Info Modal */}
                 <Modal visible={!!previewScan} transparent animationType="fade">
@@ -455,6 +516,108 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                 {/* Details */}
                 <View style={styles.sectionCard}>
                     <Text style={styles.sectionTitle}>Details</Text>
+
+                    {/* Procedure (Doctor only) */}
+                    {isDoctorBooking && (
+                        <>
+                            <TouchableOpacity
+                                style={styles.inputField}
+                                onPress={async () => {
+                                    setShowProcedurePicker(true);
+                                    if (procedureOptions.length > 0 || procedureLoading) return;
+                                    setProcedureLoading(true);
+                                    const items = await listAllProcedures();
+                                    setProcedureOptions(items);
+                                    setProcedureLoading(false);
+                                }}
+                            >
+                                <Text style={styles.inputLabel}>Procedure</Text>
+                                <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.inputValue} numberOfLines={1}>
+                                            {selectedProcedure ? selectedProcedure.name : (procedureLoading ? 'Loading procedures…' : 'Select Procedure')}
+                                        </Text>
+                                        {selectedProcedure && (
+                                            <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                                                {selectedProcedure.price != null
+                                                    ? `GHS ${Number(selectedProcedure.price).toLocaleString()}`
+                                                    : 'Price not set'}
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <Feather name="chevron-down" size={18} color={COLORS.textSub} />
+                                </View>
+                            </TouchableOpacity>
+
+                            <Modal visible={showProcedurePicker} transparent animationType="fade">
+                                <View style={styles.modalOverlay}>
+                                    <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+                                        <Text style={styles.modalHeader}>Select Procedure</Text>
+
+                                        <View style={{ backgroundColor: COLORS.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 }}>
+                                            <TextInput
+                                                value={procedureQuery}
+                                                onChangeText={setProcedureQuery}
+                                                placeholder="Search procedures…"
+                                                placeholderTextColor={COLORS.textSub}
+                                                style={{ fontSize: 15, color: COLORS.textMain, fontWeight: '600' }}
+                                                autoCapitalize="none"
+                                                autoCorrect={false}
+                                            />
+                                        </View>
+
+                                        <FlatList
+                                            data={filteredProcedureOptions}
+                                            keyExtractor={(item) => item.id}
+                                            keyboardShouldPersistTaps="handled"
+                                            renderItem={({ item }) => {
+                                                const active = selectedProcedure?.id === item.id;
+                                                return (
+                                                    <TouchableOpacity
+                                                        style={styles.modalItem}
+                                                        onPress={() => {
+                                                            setSelectedProcedure(item);
+                                                            setShowProcedurePicker(false);
+                                                        }}
+                                                    >
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={styles.modalItemText} numberOfLines={1}>{item.name}</Text>
+                                                            <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                                                                {item.price != null
+                                                                    ? `GHS ${Number(item.price).toLocaleString()}`
+                                                                    : 'Price not set'}
+                                                            </Text>
+                                                        </View>
+                                                        {active ? (
+                                                            <Feather name="check" size={18} color={COLORS.primary} />
+                                                        ) : (
+                                                            <Feather name="chevron-right" size={18} color={COLORS.textSub} />
+                                                        )}
+                                                    </TouchableOpacity>
+                                                );
+                                            }}
+                                            ListEmptyComponent={
+                                                <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+                                                    <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textSub }}>
+                                                        {procedureLoading ? 'Loading…' : 'No procedures found'}
+                                                    </Text>
+                                                </View>
+                                            }
+                                        />
+
+                                        <TouchableOpacity
+                                            style={styles.modalClose}
+                                            onPress={() => {
+                                                setShowProcedurePicker(false);
+                                            }}
+                                        >
+                                            <Text style={styles.modalCloseText}>Close</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </Modal>
+                        </>
+                    )}
 
                     {/* Branch */}
                     <TouchableOpacity style={styles.inputField} onPress={() => setShowBranchPicker(true)}>

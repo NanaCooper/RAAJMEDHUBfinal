@@ -32,6 +32,7 @@ const COLORS = {
 const MENU_ITEMS = [
   { label: "Dashboard", route: "/(doctor)/", icon: "grid" },
   { label: "Appointments", route: "/(doctor)/appointments", icon: "clipboard" },
+  { label: "Referrals", route: "/(doctor)/referrals", icon: "dollar-sign" },
   { label: "Schedule", route: "/(doctor)/schedule", icon: "calendar" },
   { label: "My Patients", route: "/(doctor)/patients", icon: "file-text" },
   { label: "Reports", route: "/(doctor)/reports", icon: "folder" },
@@ -232,6 +233,8 @@ export default function DoctorLayout() {
         <Drawer.Screen name="index" options={{ title: "Dashboard" }} />
         <Drawer.Screen name="profile" options={{ title: "Doctor Profile" }} />
         <Drawer.Screen name="schedule" options={{ title: "My Schedule" }} />
+
+        <Drawer.Screen name="referrals" options={{ title: "Referrals" }} />
 
         <Drawer.Screen name="patients" options={{ title: "Patient List" }} />
         <Drawer.Screen name="reports" options={{ title: "Patient Reports" }} />

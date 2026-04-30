@@ -86,13 +86,17 @@ export default function Appointments() {
       const mapped = appts.map((a: any) => {
         const rawDate = a.startAt && a.startAt.toDate ? a.startAt.toDate() : a.startAt;
 
-        // Handle Scan Type
-        let scanName = 'Scan';
-        if (a.scanType) {
-          scanName = a.scanType.name || a.scanType;
-          if (scanName === 'General') scanName = 'Scan';
-        } else if (Array.isArray(a.scanTypes) && a.scanTypes.length > 0) {
-          scanName = a.scanTypes.map((s: any) => s.name).join(', ');
+        // Prefer explicit procedure selected by the doctor
+        let scanName = a.specificProcedure || a.procedureName || a.procedureLabel || '';
+        if (!scanName) {
+          // Fallback to legacy scan type fields
+          scanName = 'Procedure';
+          if (a.scanType) {
+            scanName = a.scanType.name || a.scanType;
+            if (scanName === 'General') scanName = 'Procedure';
+          } else if (Array.isArray(a.scanTypes) && a.scanTypes.length > 0) {
+            scanName = a.scanTypes.map((s: any) => s.name).join(', ');
+          }
         }
 
         return {
@@ -367,7 +371,7 @@ export default function Appointments() {
                   </View>
 
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>SCAN TYPE</Text>
+                    <Text style={styles.detailLabel}>PROCEDURE</Text>
                     <Text style={styles.detailValue}>{selectedAppointment.scanType?.name}</Text>
                   </View>
 

@@ -15,6 +15,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import dayjs from "dayjs";
 import { createAppointment } from "../../services/appointments";
 import { sendRequestSubmittedNotification, scheduleAppointmentReminders } from "../../services/notifications";
+import { createReferral, inferReferralProcedure } from "../../services/referrals";
 import { Feather } from "@expo/vector-icons";
 
 // --- Theme ---
@@ -113,6 +114,78 @@ export default function BookingConfirmationModal() {
       const result = await createAppointment(appointmentToSave as any);
       console.log("[LOG] handleConfirm: Successfully created appointment. Firestore response:", result);
 
+      // --- Doctor Referrals (payout tracking) ---
+      // Only track payouts for doctor-created requests.
+      const isDoctorCreated = appointmentToSave?.createdByRole === 'doctor' || !!appointmentToSave?.doctorId;
+      if (isDoctorCreated && appointmentToSave?.doctorId && result?.id) {
+        try {
+          const patientFirst = appointmentToSave?.patientDetails?.firstName || '';
+          const patientLast = appointmentToSave?.patientDetails?.lastName || '';
+          const patientName = `${patientFirst} ${patientLast}`.trim() || undefined;
+
+          const selectedProcedureName =
+            (appointmentToSave as any)?.specificProcedure ||
+            (appointmentToSave as any)?.procedureName ||
+            '';
+
+          const specificDetails =
+            (appointmentToSave as any)?.specificProcedure ||
+            (appointmentToSave as any)?.specificScan ||
+            (appointmentToSave as any)?.specificScanDetails ||
+            '';
+
+          const scanTypesArr: any[] = Array.isArray((appointmentToSave as any)?.scanTypes)
+            ? (appointmentToSave as any).scanTypes
+            : (appointmentToSave as any)?.scanType
+              ? [(appointmentToSave as any).scanType]
+              : [];
+
+          const candidateTexts: string[] = [];
+          if (selectedProcedureName) {
+            // If the doctor explicitly selected a procedure, use it as the single source of truth.
+            candidateTexts.push(selectedProcedureName);
+          }
+          if (scanTypesArr.length > 0) {
+            scanTypesArr.forEach((s: any) => {
+              const scanName = s?.name || s?.id || '';
+              // Only fall back to scan types when no explicit procedure was selected.
+              if (!selectedProcedureName) candidateTexts.push(`${scanName} ${specificDetails}`.trim());
+            });
+          }
+          if (!selectedProcedureName && specificDetails) candidateTexts.push(specificDetails);
+
+          const matchedKeys = new Set<string>();
+          const createdItems: Array<{ label: string; amountGhs: number }> = [];
+
+          for (const text of candidateTexts) {
+            const match = inferReferralProcedure(text);
+            if (!match) continue;
+            if (matchedKeys.has(match.key)) continue;
+            matchedKeys.add(match.key);
+
+            await createReferral({
+              doctorId: appointmentToSave.doctorId,
+              appointmentId: result.id,
+              patientName,
+              procedureKey: match.key,
+              procedureLabel: match.label,
+              amountGhs: match.amountGhs,
+            } as any);
+
+            createdItems.push({ label: match.label, amountGhs: match.amountGhs });
+          }
+
+          if (createdItems.length > 0) {
+            const total = createdItems.reduce((sum, i) => sum + i.amountGhs, 0);
+            const breakdown = createdItems.map(i => `${i.label}: GHS ${i.amountGhs}`).join('\n');
+            Alert.alert('Referral Payout', `This referral earns you GHS ${total}.\n\n${breakdown}`);
+          }
+        } catch (e) {
+          // Never block booking success because referral tracking failed.
+          console.log('[booking-confirmation] Referral tracking failed', e);
+        }
+      }
+
       // Send "request submitted" notification immediately
       await sendRequestSubmittedNotification(result.id || '');
 
@@ -144,7 +217,8 @@ export default function BookingConfirmationModal() {
     router.back();
     // Navigate to the appointments list after a short delay to allow the modal to close
     setTimeout(() => {
-      router.push('/(patient)/appointments');
+      const createdByRole = (appointmentData as any)?.createdByRole;
+      router.push(createdByRole === 'doctor' ? '/(doctor)/appointments' : '/(patient)/appointments');
     }, 200);
   };
 

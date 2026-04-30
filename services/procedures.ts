@@ -1,5 +1,14 @@
 import { db, collection, getDocs } from '../utils/firebaseConfig';
 
+export interface ProcedureItem {
+  id: string;
+  name: string;
+  price: number | null;
+  category?: string;
+}
+
+let procedureCache: ProcedureItem[] | null = null;
+
 /**
  * Maps our internal scan-card IDs to the category strings stored in Firestore.
  * Adjust these strings to match exactly what is stored in your `procedures`
@@ -72,6 +81,86 @@ export async function fetchMinPricesPerCategory(): Promise<ProcedureMinPrices> {
   }
 
   return prices;
+}
+
+/**
+ * Fetches all procedures from Firestore `procedures` collection for pickers/search.
+ * The data model in Firestore can vary; we normalize to {id, name, price, category}.
+ */
+export async function listAllProcedures(forceRefresh = false): Promise<ProcedureItem[]> {
+  if (!forceRefresh && Array.isArray(procedureCache)) return procedureCache;
+
+  const out: ProcedureItem[] = [];
+
+  const parsePrice = (value: any): number | null => {
+    if (value == null) return null;
+    if (typeof value === 'number') return isFinite(value) && value > 0 ? value : null;
+    if (typeof value === 'string') {
+      const s = value.trim();
+      // Accept strings like "1200", "1,200", "GHS 1,200"
+      const cleaned = s.replace(/[^0-9.]/g, '');
+      if (!cleaned) return null;
+      const n = Number(cleaned);
+      return isFinite(n) && n > 0 ? n : null;
+    }
+    if (typeof value === 'object') {
+      // Common nested formats: { ghs: 50 } or { amount: 50 }
+      const nestedCandidates = [value.ghs, value.amount, value.value, value.price];
+      for (const c of nestedCandidates) {
+        const parsed = parsePrice(c);
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  };
+
+  const pickPrice = (data: any): number | null => {
+    const candidates = [
+      data.price,
+      data.amount,
+      data.cost,
+      data.fee,
+      data.rate,
+      data.priceGhs,
+      data.procedurePrice,
+      data.procedurePriceGhs,
+      data.ghs,
+    ];
+    for (const c of candidates) {
+      const parsed = parsePrice(c);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  };
+
+  try {
+    const proceduresCol = collection(db, 'procedures');
+    const snap = await getDocs(proceduresCol);
+    snap.forEach((docSnap: any) => {
+      const data = docSnap.data();
+      const price = pickPrice(data);
+      const name =
+        (data.name || data.procedureName || data.type || data.specificScan || docSnap.id || '')
+          .toString()
+          .trim();
+      const category = (data.category ?? '').toString().trim() || undefined;
+
+      if (!name) return;
+
+      out.push({
+        id: docSnap.id,
+        name,
+        price,
+        category,
+      });
+    });
+  } catch (err) {
+    console.warn('[procedures] listAllProcedures error:', err);
+  }
+
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  procedureCache = out;
+  return out;
 }
 
 /**
