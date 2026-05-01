@@ -1,7 +1,7 @@
 const { withPodfile } = require('@expo/config-plugins');
 
-const START = '# BEGIN FirebaseAuth Swift header fix';
-const END = '# END FirebaseAuth Swift header fix';
+const START = '# BEGIN RNFirebase iOS Fix';
+const END = '# END RNFirebase iOS Fix';
 
 function findLineStart(contents, index) {
   const prevNewline = contents.lastIndexOf('\n', index);
@@ -17,107 +17,60 @@ function replaceExistingBlock(contents, block) {
   const startIndex = contents.indexOf(START);
   const endIndex = contents.indexOf(END);
   if (startIndex === -1 || endIndex === -1) return null;
-
   const blockStart = findLineStart(contents, startIndex);
   const blockEnd = findLineEnd(contents, endIndex + END.length);
   return `${contents.slice(0, blockStart)}${block}${contents.slice(blockEnd)}`;
 }
 
+// This Ruby block is injected into the post_install hook of the generated Podfile.
+// It fixes header visibility and modular include issues for ALL pods, which is the
+// correct approach when using useFrameworks: static with the New Architecture.
 function buildFixBlock() {
-  return [
+  const lines = [
     `  ${START}`,
-    "  installer.pods_project.targets.each do |target|",
-    "    if target.name.start_with?('RNFB') || target.name.start_with?('SDWebImage')",
-    "      target.build_configurations.each do |config|",
-    "        # RNFirebase + static frameworks can trigger -Wnon-modular-include-in-framework-module (often treated as -Werror).",
-    "        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'",
-    "        # Be defensive: some toolchains still emit the warning as an error even with CLANG_ALLOW_NON_MODULAR... enabled.",
-    "        # Disable the warning and ensure warnings are not escalated to errors for RNFB pods.",
-    "        config.build_settings['CLANG_WARN_NON_MODULAR_INCLUDE_IN_FRAMEWORK_MODULE'] = 'NO'",
-    "        config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'",
-    "        # RNFBFirestore contains Swift sources and needs Clang modules enabled for the Swift importer.",
-    "        # Other RNFB targets are Objective-C/ObjC++ and have historically hit macro parsing issues",
-    "        # (e.g. RCT_EXPORT_*) when treated as fully modular in Expo prebuilds.",
-    "        if target.name == 'RNFBFirestore'",
-    "          config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'",
-    "        elsif target.name == 'SDWebImageWebPCoder'",
-    "          config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'",
-    "          config.build_settings['HEADER_SEARCH_PATHS'] ||= '$(inherited) '",
-    "          config.build_settings['HEADER_SEARCH_PATHS'] << '\"$(PODS_ROOT)/Headers/Public/SDWebImage\" '",
-    "        else",
-    "          config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'",
-    "        end",
-    "      end",
-    "    end",
-    "",
-    "    next unless target.name == 'FirebaseAuth'",
-    "    target.build_configurations.each do |config|",
-    "      # Ensure the generated Swift-to-ObjC header is produced and exported.",
-    "      config.build_settings['DEFINES_MODULE'] = 'YES'",
-    "      config.build_settings['SWIFT_INSTALL_OBJC_HEADER'] = 'YES'",
-    "      config.build_settings['SWIFT_OBJC_INTERFACE_HEADER_NAME'] = 'FirebaseAuth-Swift.h'",
-    "    end",
-    "  end",
-    "",
-    "  # Fix RNFBFirestore modular import errors by importing React bridge types via RNFBAppModule.",
-    "  # This avoids: 'declaration of RCTBridgeModule must be imported from module RNFBApp.RNFBAppModule'",
-    "  firestore_headers = [",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreCommon.h',",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreModule.h',",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreCollectionModule.h',",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreDocumentModule.h',",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreQuery.h',",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreSerialize.h',",
-    "    '../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/RNFBFirestoreTransactionModule.h',",
-    "  ]",
-    "",
-    "  firestore_headers.each do |relative_path|",
-    "    next unless File.exist?(relative_path)",
-    "    contents = File.read(relative_path)",
-    "    updated = contents.gsub('#import <React/RCTBridgeModule.h>', '#import <RNFBApp/RNFBAppModule.h>')",
-    "    File.write(relative_path, updated) if updated != contents",
-    "  end",
-    "",
-    "  # Ensure RNFBFirestore Obj-C sources see RCT_EXTERN / RCT_CONCAT definitions.",
-    "  firestore_sources = Dir.glob('../node_modules/@react-native-firebase/firestore/ios/RNFBFirestore/*.{m,mm}')",
-    "  firestore_sources.each do |relative_path|",
-    "    next unless File.exist?(relative_path)",
-    "    contents = File.read(relative_path)",
-    "    next unless contents.include?('RCT_EXPORT_')",
-    "    next if contents.include?('RCTDefines.h')",
-    "",
-    "    updated = contents",
-    "    if updated.include?('#import <React/RCTUtils.h>')",
-    "      updated = updated.gsub('#import <React/RCTUtils.h>', '#import <React/RCTUtils.h>\n#import <React/RCTDefines.h>')",
-    "    else",
-    "      # Fallback: insert after the first React import if present (avoid regex for Ruby portability).",
-    "      lines = updated.lines",
-    "      insert_at = nil",
-    "      lines.each_with_index do |line, idx|",
-    "        if line.start_with?('#import <React/')",
-    "          insert_at = idx + 1",
-    "          break",
-    "        end",
-    "      end",
-    "      if insert_at",
-    "        lines.insert(insert_at, '#import <React/RCTDefines.h>\\n')",
-    "        updated = lines.join",
-    "      end",
-    "    end",
-    "",
-    "    File.write(relative_path, updated) if updated != contents",
-    "  end",
+    `  installer.pods_project.targets.each do |target|`,
+    `    target.build_configurations.each do |config|`,
+    `      # Allow non-modular headers for ALL pods to prevent "file not found" errors`,
+    `      # when using useFrameworks: static with Firebase and New Architecture.`,
+    `      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'`,
+    `      config.build_settings['CLANG_WARN_NON_MODULAR_INCLUDE_IN_FRAMEWORK_MODULE'] = 'NO'`,
+    `      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'`,
+    ``,
+    `      # Ensure the deployment target is consistent for all pods`,
+    `      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'`,
+    ``,
+    `      # Ensure SDWebImage public headers are visible to pods that depend on it`,
+    `      existing_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'`,
+    `      sdwebimage_path = '"$(PODS_ROOT)/Headers/Public/SDWebImage"'`,
+    `      unless existing_paths.to_s.include?('SDWebImage')`,
+    `        config.build_settings['HEADER_SEARCH_PATHS'] = "#{existing_paths} #{sdwebimage_path}"`,
+    `      end`,
+    ``,
+    `      # Enable Clang modules for pods that require Swift <-> ObjC interop`,
+    `      if ['RNFBFirestore', 'SDWebImageWebPCoder', 'FirebaseAuth'].include?(target.name)`,
+    `        config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'`,
+    `      end`,
+    `    end`,
+    ``,
+    `    # Ensure FirebaseAuth generates and exports its Swift-to-ObjC bridging header`,
+    `    next unless target.name == 'FirebaseAuth'`,
+    `    target.build_configurations.each do |config|`,
+    `      config.build_settings['DEFINES_MODULE'] = 'YES'`,
+    `      config.build_settings['SWIFT_INSTALL_OBJC_HEADER'] = 'YES'`,
+    `      config.build_settings['SWIFT_OBJC_INTERFACE_HEADER_NAME'] = 'FirebaseAuth-Swift.h'`,
+    `    end`,
+    `  end`,
     `  ${END}`,
-    '',
-  ].join('\n');
+    ``,
+  ];
+  return lines.join('\n');
 }
 
 function buildPostInstallWrapper(innerBlock) {
-  return ['\npost_install do |installer|', innerBlock, 'end', ''].join('\n');
+  return `\npost_install do |installer|\n${innerBlock}\nend\n`;
 }
 
 function insertIntoPostInstall(contents, block) {
-  // Insert right after: post_install do |installer|
   const re = /(\n\s*post_install\s+do\s+\|installer\|\s*\n)/;
   if (!re.test(contents)) return null;
   return contents.replace(re, `$1${block}`);
@@ -139,8 +92,7 @@ const withFirebaseAuthSwiftHeaderFix = (config) =>
     if (updated) {
       contents = updated;
     } else {
-      // Some generated Podfiles may not include a post_install block.
-      // In that case, append our own post_install wrapper.
+      // No post_install block found — append our own.
       contents = `${contents}${buildPostInstallWrapper(block)}`;
     }
 

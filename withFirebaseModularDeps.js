@@ -15,6 +15,8 @@ function buildPodfileBlock() {
     'RecaptchaInterop',
     'FirebaseMessagingInterop',
     'FirebaseFirestoreInternal',
+    'SDWebImage',
+    'SDWebImageWebPCoder',
   ];
 
   const lines = [
