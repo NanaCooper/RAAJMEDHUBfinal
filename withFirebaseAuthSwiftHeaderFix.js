@@ -1,58 +1,83 @@
 const { withPodfile } = require('@expo/config-plugins');
 
-const START = '# BEGIN RNFirebase iOS Fix';
-const END = '# END RNFirebase iOS Fix';
+// ─── Sentinel strings ────────────────────────────────────────────────────────
+const PRE_START  = '# BEGIN RNFirebase pre_install fix';
+const PRE_END    = '# END RNFirebase pre_install fix';
+const POST_START = '# BEGIN RNFirebase post_install fix';
+const POST_END   = '# END RNFirebase post_install fix';
 
-function findLineStart(contents, index) {
-  const prevNewline = contents.lastIndexOf('\n', index);
-  return prevNewline === -1 ? 0 : prevNewline + 1;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function lineStart(str, idx) {
+  const n = str.lastIndexOf('\n', idx);
+  return n === -1 ? 0 : n + 1;
+}
+function lineEnd(str, idx) {
+  const n = str.indexOf('\n', idx);
+  return n === -1 ? str.length : n + 1;
+}
+function replaceBlock(contents, startTag, endTag, block) {
+  const si = contents.indexOf(startTag);
+  const ei = contents.indexOf(endTag);
+  if (si === -1 || ei === -1) return null;
+  return (
+    contents.slice(0, lineStart(contents, si)) +
+    block +
+    contents.slice(lineEnd(contents, ei + endTag.length))
+  );
 }
 
-function findLineEnd(contents, index) {
-  const nextNewline = contents.indexOf('\n', index);
-  return nextNewline === -1 ? contents.length : nextNewline + 1;
-}
-
-function replaceExistingBlock(contents, block) {
-  const startIndex = contents.indexOf(START);
-  const endIndex = contents.indexOf(END);
-  if (startIndex === -1 || endIndex === -1) return null;
-  const blockStart = findLineStart(contents, startIndex);
-  const blockEnd = findLineEnd(contents, endIndex + END.length);
-  return `${contents.slice(0, blockStart)}${block}${contents.slice(blockEnd)}`;
-}
-
-// This Ruby block is injected into the post_install hook of the generated Podfile.
-// It fixes header visibility and modular include issues for ALL pods, which is the
-// correct approach when using useFrameworks: static with the New Architecture.
-function buildFixBlock() {
-  const lines = [
-    `  ${START}`,
-    `  installer.pods_project.targets.each do |target|`,
-    `    target.build_configurations.each do |config|`,
-    `      # Allow non-modular headers for ALL pods to prevent "file not found" errors`,
-    `      # when using useFrameworks: static with Firebase and New Architecture.`,
-    `      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'`,
-    `      config.build_settings['CLANG_WARN_NON_MODULAR_INCLUDE_IN_FRAMEWORK_MODULE'] = 'NO'`,
-    `      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'`,
-    ``,
-    `      # Ensure the deployment target is consistent for all pods`,
-    `      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'`,
-    ``,
-    `      # Ensure SDWebImage public headers are visible to pods that depend on it`,
-    `      existing_paths = config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'`,
-    `      sdwebimage_path = '"$(PODS_ROOT)/Headers/Public/SDWebImage"'`,
-    `      unless existing_paths.to_s.include?('SDWebImage')`,
-    `        config.build_settings['HEADER_SEARCH_PATHS'] = "#{existing_paths} #{sdwebimage_path}"`,
-    `      end`,
-    ``,
-    `      # Enable Clang modules for pods that require Swift <-> ObjC interop`,
-    `      if ['RNFBFirestore', 'SDWebImageWebPCoder', 'FirebaseAuth'].include?(target.name)`,
-    `        config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'`,
+// ─── pre_install block ───────────────────────────────────────────────────────
+// Forces ALL RNFB pods to be static libraries so the bridge macros
+// (RCT_EXPORT_MODULE, RCT_EXPORT_METHOD) resolve correctly under
+// useFrameworks: static + New Architecture.
+function buildPreInstallBlock() {
+  return [
+    `${PRE_START}`,
+    `pre_install do |installer|`,
+    `  installer.pod_targets.each do |pod|`,
+    `    if pod.name.start_with?('RNFB')`,
+    `      def pod.build_type`,
+    `        Pod::BuildType.static_library`,
     `      end`,
     `    end`,
+    `  end`,
+    `end`,
+    `${PRE_END}`,
     ``,
-    `    # Ensure FirebaseAuth generates and exports its Swift-to-ObjC bridging header`,
+  ].join('\n');
+}
+
+// ─── post_install block ──────────────────────────────────────────────────────
+// Applies comprehensive build-setting fixes to every pod that needs them.
+function buildPostInstallBlock() {
+  return [
+    `  ${POST_START}`,
+    `  installer.pods_project.targets.each do |target|`,
+    `    target.build_configurations.each do |config|`,
+    `      # 1. Allow non-modular headers globally (SDWebImage, Firebase, etc.)`,
+    `      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'`,
+    `      config.build_settings['CLANG_WARN_NON_MODULAR_INCLUDE_IN_FRAMEWORK_MODULE'] = 'NO'`,
+    `      # 2. Never treat warnings as errors in third-party pods`,
+    `      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'`,
+    `      # 3. Enforce a consistent deployment target across all pods`,
+    `      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'`,
+    `      # 4. Expose SDWebImage public headers to all pods that import them`,
+    `      existing = (config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)').to_s`,
+    `      sdwi = '"$(PODS_ROOT)/Headers/Public/SDWebImage"'`,
+    `      unless existing.include?('SDWebImage')`,
+    `        config.build_settings['HEADER_SEARCH_PATHS'] = "#{existing} #{sdwi}"`,
+    `      end`,
+    `      # 5. Enable Clang modules for pods that need Swift<->ObjC or bridge-macro resolution`,
+    `      needs_modules = target.name.start_with?('RNFB') ||`,
+    `                      ['SDWebImageWebPCoder', 'FirebaseAuth', 'RNWorklets', 'RNReanimated'].include?(target.name)`,
+    `      config.build_settings['CLANG_ENABLE_MODULES'] = needs_modules ? 'YES' : 'NO'`,
+    `      # 6. Add -Wno-implicit-int as a compiler flag safety-net`,
+    `      cflags = (config.build_settings['OTHER_CFLAGS'] || '$(inherited)').to_s`,
+    `      unless cflags.include?('-Wno-implicit-int')`,
+    `        config.build_settings['OTHER_CFLAGS'] = "#{cflags} -Wno-implicit-int -Wno-error=non-modular-include-in-framework-module"`,
+    `      end`,
+    `    end`,
+    `    # 7. Ensure FirebaseAuth exports its Swift-to-ObjC bridging header`,
     `    next unless target.name == 'FirebaseAuth'`,
     `    target.build_configurations.each do |config|`,
     `      config.build_settings['DEFINES_MODULE'] = 'YES'`,
@@ -60,40 +85,51 @@ function buildFixBlock() {
     `      config.build_settings['SWIFT_OBJC_INTERFACE_HEADER_NAME'] = 'FirebaseAuth-Swift.h'`,
     `    end`,
     `  end`,
-    `  ${END}`,
+    `  ${POST_END}`,
     ``,
-  ];
-  return lines.join('\n');
+  ].join('\n');
 }
 
-function buildPostInstallWrapper(innerBlock) {
-  return `\npost_install do |installer|\n${innerBlock}\nend\n`;
+// ─── Injection helpers ───────────────────────────────────────────────────────
+function injectPreInstall(contents, block) {
+  // Insert the pre_install block before the first `target '...' do` line
+  const re = /(\n\s*target\s+['"][^'"]+['"]\s+do\s*\n)/;
+  if (re.test(contents)) {
+    return contents.replace(re, `\n${block}$1`);
+  }
+  // Fallback: prepend
+  return `${block}\n${contents}`;
 }
 
-function insertIntoPostInstall(contents, block) {
+function injectPostInstall(contents, block) {
+  // Insert right after: post_install do |installer|
   const re = /(\n\s*post_install\s+do\s+\|installer\|\s*\n)/;
-  if (!re.test(contents)) return null;
-  return contents.replace(re, `$1${block}`);
+  if (re.test(contents)) return contents.replace(re, `$1${block}`);
+  // No post_install found — append one
+  return `${contents}\npost_install do |installer|\n${block}\nend\n`;
 }
 
+// ─── Plugin ──────────────────────────────────────────────────────────────────
 const withFirebaseAuthSwiftHeaderFix = (config) =>
   withPodfile(config, (config) => {
     let contents = config.modResults.contents;
-    const block = buildFixBlock();
 
-    // If the block already exists, replace it so updates to this plugin take effect.
-    const replaced = replaceExistingBlock(contents, block);
-    if (replaced) {
-      config.modResults.contents = replaced;
-      return config;
+    // ── pre_install ──────────────────────────────────────────────────────────
+    const preBlock = buildPreInstallBlock();
+    const replacedPre = replaceBlock(contents, PRE_START, PRE_END, preBlock);
+    if (replacedPre) {
+      contents = replacedPre;
+    } else {
+      contents = injectPreInstall(contents, preBlock);
     }
 
-    const updated = insertIntoPostInstall(contents, block);
-    if (updated) {
-      contents = updated;
+    // ── post_install ─────────────────────────────────────────────────────────
+    const postBlock = buildPostInstallBlock();
+    const replacedPost = replaceBlock(contents, POST_START, POST_END, postBlock);
+    if (replacedPost) {
+      contents = replacedPost;
     } else {
-      // No post_install block found — append our own.
-      contents = `${contents}${buildPostInstallWrapper(block)}`;
+      contents = injectPostInstall(contents, postBlock);
     }
 
     config.modResults.contents = contents;
