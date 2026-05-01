@@ -27,7 +27,7 @@ function buildFixBlock() {
   return [
     `  ${START}`,
     "  installer.pods_project.targets.each do |target|",
-    "    if target.name.start_with?('RNFB')",
+    "    if target.name.start_with?('RNFB') || target.name.start_with?('SDWebImage')",
     "      target.build_configurations.each do |config|",
     "        # RNFirebase + static frameworks can trigger -Wnon-modular-include-in-framework-module (often treated as -Werror).",
     "        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'",
