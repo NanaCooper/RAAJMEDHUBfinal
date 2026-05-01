@@ -188,7 +188,7 @@ export default function PatientDashboard(): React.ReactElement {
       <View>
         <Text style={styles.greeting}>Welcome back,</Text>
         <Text style={styles.username}>
-          {user?.fullName ? user.fullName.split(" ")[0] : "Patient"}
+          {user?.fullName ? user.fullName.split(" ")[0] : (user?.name ? user.name.split(" ")[0] : "Patient")}
         </Text>
       </View>
 

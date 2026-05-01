@@ -83,7 +83,7 @@ export default function DoctorDashboard() {
         <View style={styles.headerTextContainer}>
           <Text style={styles.dateText}>{dayjs().format("dddd, MMMM DD")}</Text>
           <Text style={styles.greetingText} numberOfLines={2}>
-            Dr. {user?.fullName || "User"}
+            Dr. {user?.fullName || user?.name || "Doctor"}
           </Text>
         </View>
         <TouchableOpacity style={styles.profileBtn} onPress={() => router.push("/(doctor)/profile")}>

@@ -10,26 +10,22 @@ service cloud.firestore {
     // Safely get the user's role, returning an empty string if not found.
     function getUserRole() {
       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 'role' in userDoc.data)
-        ? userDoc.data.role
-        : '';
+      return (userDoc != null && 'data' in userDoc && 'role' in userDoc.data) ? userDoc.data.role : '';
     }
     
     function isAdmin() {
-      return isSignedIn() && getUserRole() == 'admin';
+      return isSignedIn() && getUserRole() in ['admin', 'Admin', 'ADMIN', 'superadmin', 'reception', 'frontdesk'];
     }
     
     function isDoctor() {
-      return isSignedIn() && getUserRole() == 'doctor';
+      return isSignedIn() && getUserRole() in ['doctor', 'Doctor', 'DOCTOR'];
     }
     
     function isPatient() {
-      return isSignedIn() && getUserRole() == 'patient';
+      return isSignedIn() && getUserRole() in ['patient', 'Patient', 'PATIENT'];
     }
     
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
+
     
     function isAppointmentParticipant(appointmentData) {
       return isSignedIn() && (
@@ -49,14 +45,12 @@ service cloud.firestore {
     // User profiles - users can read their own profile. Admins have full control.
     // Clients may create their own user doc but MUST NOT include `role`. Admins may create with role.
     match /users/{userId} {
-      // Read: owner, admin, doctor, OR any signed-in user reading a doc where role == 'doctor'
-      // (allows patient-side calls like getDoctor to fall back to /users/ for doctor profiles)
+      // Read: owner (prioritized to avoid recursion), admin, doctor, or public doctor profile
       allow read: if isSignedIn() && (
-        isOwner(userId) || 
+        request.auth.uid == userId || 
         isAdmin() ||
         isDoctor() ||
-        // Any signed-in user may read public doctor profiles
-        (resource.data.role == 'doctor')
+        (resource.data.role in ['doctor', 'Doctor', 'DOCTOR'])
       );
 
       // Create: owner may create their doc but must not include `role`. Admins may create with role.
@@ -168,6 +162,18 @@ service cloud.firestore {
           isConversationParticipant(get(/databases/$(database)/documents/conversations/$(conversationId)).data);
         allow update, delete: if false; // Messages can't be edited or deleted
       }
+    }
+    // Services (Legacy or shared collection)
+    match /services/{serviceId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Admin notes for communication
+    match /adminNotes/{noteId} {
+      allow read: if isAdmin();
+      allow create: if isDoctor();
+      allow update, delete: if isAdmin();
     }
   }
 }

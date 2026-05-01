@@ -54,12 +54,13 @@ export async function fetchMinPricesPerCategory(): Promise<ProcedureMinPrices> {
   };
 
   try {
-    const proceduresCol = collection(db, 'procedures');
-    const snap = await getDocs(proceduresCol);
+    const proceduresSnap = await getDocs(collection(db, 'procedures'));
+    const servicesSnap = await getDocs(collection(db, 'services'));
 
-    if (snap.empty) return prices;
+    const allDocs = [...proceduresSnap.docs, ...servicesSnap.docs];
+    if (allDocs.length === 0) return prices;
 
-    snap.forEach((docSnap: any) => {
+    allDocs.forEach((docSnap: any) => {
       const data = docSnap.data();
       const rawCategory: string = (data.category ?? '').toLowerCase().trim();
       const price: number = Number(data.price);
@@ -134,9 +135,12 @@ export async function listAllProcedures(forceRefresh = false): Promise<Procedure
   };
 
   try {
-    const proceduresCol = collection(db, 'procedures');
-    const snap = await getDocs(proceduresCol);
-    snap.forEach((docSnap: any) => {
+    const proceduresSnap = await getDocs(collection(db, 'procedures'));
+    const servicesSnap = await getDocs(collection(db, 'services'));
+
+    const allDocs = [...proceduresSnap.docs, ...servicesSnap.docs];
+    
+    allDocs.forEach((docSnap: any) => {
       const data = docSnap.data();
       const price = pickPrice(data);
       const name =
@@ -178,9 +182,11 @@ export async function listAllProcedures(forceRefresh = false): Promise<Procedure
  */
 export async function fetchProcedurePrice(scanName: string): Promise<string | null> {
   try {
-    const proceduresCol = collection(db, 'procedures');
-    const snap = await getDocs(proceduresCol);
-    if (snap.empty) return null;
+    const proceduresSnap = await getDocs(collection(db, 'procedures'));
+    const servicesSnap = await getDocs(collection(db, 'services'));
+    
+    const allDocs = [...proceduresSnap.docs, ...servicesSnap.docs];
+    if (allDocs.length === 0) return null;
 
     const needle = scanName.toLowerCase().trim();
     // Include words of length >= 2 so short but important words like "ct" and "mr" are not dropped
@@ -193,7 +199,7 @@ export async function fetchProcedurePrice(scanName: string): Promise<string | nu
     let bestScore = 0;
     let fallbackPrice: number | null = null; // category-level fallback
 
-    snap.forEach((docSnap: any) => {
+    allDocs.forEach((docSnap: any) => {
       const data = docSnap.data();
       const price = Number(data.price);
       if (isNaN(price) || price <= 0) return;

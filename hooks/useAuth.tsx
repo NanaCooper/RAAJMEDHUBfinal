@@ -188,7 +188,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await signOutUser();
           return;
         }
-        setUser({ uid: currentUser.uid, ...(userData as any) });
+        const finalUserData = {
+          uid: currentUser.uid,
+          ...(userData as any),
+          fullName: userData.fullName || userData.name || currentUser.displayName || "",
+        };
+        setUser(finalUserData);
       } else {
         // If the user exists in Auth but not Firestore, create a basic profile.
         // This is common for social sign-ins on first login.
@@ -285,7 +290,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await signOutUser();
               return;
             }
-            setUser({ uid: user.uid, ...(userData as any) });
+            const finalUserData = {
+              uid: user.uid,
+              ...(userData as any),
+              fullName: userData.fullName || userData.name || user.displayName || "",
+            };
+            setUser(finalUserData);
           } else {
             const newUser = {
               email: user.email,
