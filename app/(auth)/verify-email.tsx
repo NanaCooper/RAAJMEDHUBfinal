@@ -110,6 +110,13 @@ export default function VerifyEmailScreen() {
                     This screen will automatically update once verified.
                 </Text>
 
+                <View style={styles.spamNote}>
+                    <Feather name="info" size={14} color={COLORS.textSec} />
+                    <Text style={styles.spamText}>
+                        Can't find it? Check your <Text style={{fontWeight: '700'}}>Spam</Text> or Junk folder.
+                    </Text>
+                </View>
+
                 {verifying && (
                     <View style={styles.successContainer}>
                         <Feather name="check-circle" size={24} color={COLORS.success} />
@@ -168,5 +175,19 @@ const styles = StyleSheet.create({
     resendText: { color: COLORS.primary, fontWeight: '600' },
 
     backBtn: { padding: 16, alignItems: 'center' },
-    backText: { color: COLORS.textSec, fontWeight: '500' }
+    backText: { color: COLORS.textSec, fontWeight: '500' },
+    spamNote: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#F1F5F9',
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 10,
+        marginBottom: 32,
+    },
+    spamText: {
+        fontSize: 13,
+        color: COLORS.textSec,
+    }
 });
