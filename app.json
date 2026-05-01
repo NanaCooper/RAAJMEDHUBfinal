@@ -93,7 +93,11 @@
           }
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "./withRNFirebaseStaticFramework.js",
+      "./withFirebaseAuthSwiftHeaderFix.js",
+      "./withFirebaseModularDeps.js",
+      "./withFirebaseNewArchFix.js"
     ],
     "experiments": {
       "typedRoutes": true,
