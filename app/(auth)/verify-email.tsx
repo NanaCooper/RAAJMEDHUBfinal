@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -27,7 +27,7 @@ export default function VerifyEmailScreen() {
     const [loading, setLoading] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
     const [verifying, setVerifying] = useState(false);
-    const pollTimer = useRef<NodeJS.Timeout | null>(null);
+    const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
         // Start polling for verification status
@@ -37,6 +37,7 @@ export default function VerifyEmailScreen() {
         checkCooldown();
 
         return () => stopPolling();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const checkCooldown = async () => {
@@ -47,7 +48,7 @@ export default function VerifyEmailScreen() {
     };
 
     useEffect(() => {
-        let interval: NodeJS.Timeout;
+        let interval: ReturnType<typeof setInterval>;
         if (resendCooldown > 0) {
             interval = setInterval(() => {
                 setResendCooldown((prev) => Math.max(0, prev - 1));
@@ -102,7 +103,7 @@ export default function VerifyEmailScreen() {
 
                 <Text style={styles.title}>Verify your email</Text>
                 <Text style={styles.subtitle}>
-                    We've sent a verification email to:
+                    We&apos;ve sent a verification email to:
                 </Text>
                 <Text style={styles.emailText}>{email}</Text>
                 <Text style={styles.instruction}>
@@ -113,7 +114,7 @@ export default function VerifyEmailScreen() {
                 <View style={styles.spamNote}>
                     <Feather name="info" size={14} color={COLORS.textSec} />
                     <Text style={styles.spamText}>
-                        Can't find it? Check your <Text style={{fontWeight: '700'}}>Spam</Text> or Junk folder.
+                        Can&apos;t find it? Check your <Text style={{fontWeight: '700'}}>Spam</Text> or Junk folder.
                     </Text>
                 </View>
 
