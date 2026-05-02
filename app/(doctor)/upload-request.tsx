@@ -181,9 +181,13 @@ export default function UploadRequestForm() {
                     ]);
                 }, 500);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            Alert.alert("Scan Failed", "Please try again with a clearer image.");
+            if (error.message === "GEMINI_API_KEY_MISSING") {
+                Alert.alert("Configuration Error", "AI service is not configured. Please contact support.");
+            } else {
+                Alert.alert("Scan Failed", "Please try again with a clearer image or check your connection.");
+            }
             setUploadedImage(null);
         } finally {
             setTimeout(() => {

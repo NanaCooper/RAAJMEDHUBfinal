@@ -70,9 +70,13 @@ const buildRequestFormPrompt = () =>
 
 // 2. The Extraction Function
 export const extractDetailsFromImage = async (base64Image: string, mimeType: string = "image/jpeg") => {
+    if (!API_KEY) {
+        throw new Error("GEMINI_API_KEY_MISSING");
+    }
+
     try {
         const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const prompt = buildRequestFormPrompt();
         const result = await model.generateContent([
             { text: prompt },
