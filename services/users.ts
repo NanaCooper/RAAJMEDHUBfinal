@@ -90,20 +90,37 @@ export async function setUserOnlineStatus(userId: string, online: boolean) {
     lastActive: serverTimestamp(),
   });
 }
-export async function deleteUserAccount() {
+export async function deleteUserAccount(password?: string) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No authenticated user found.");
 
   try {
-    // 1. Delete user data from Firestore
-    const userRef = doc(db, 'users', user.uid);
-    await deleteDoc(userRef);
+    // Step 1: Re-authenticate if password provided (required for sensitive ops)
+    if (password && user.email) {
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(user, credential);
+    }
 
-    // 2. Delete the auth account
+    const uid = user.uid;
+
+    // Step 2: Delete all Firestore documents for this user
+    const deletions: Promise<void>[] = [
+      deleteDoc(doc(db, 'users', uid)),
+      deleteDoc(doc(db, 'patients', uid)),
+      deleteDoc(doc(db, 'doctors', uid)),
+    ];
+    // Run all deletions in parallel (ignore errors if docs don't exist)
+    await Promise.allSettled(deletions);
+
+    // Step 3: Delete the Firebase Auth account itself
     await deleteUser(user);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Account deletion error:", error);
+    // Surface a human-readable message for the UI
+    if (error.code === 'auth/requires-recent-login') {
+      throw new Error("REQUIRES_REAUTH");
+    }
     throw error;
   }
 }

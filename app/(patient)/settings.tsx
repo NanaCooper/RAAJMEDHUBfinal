@@ -150,24 +150,40 @@ const PatientSettingsScreen = () => {
   };
 
   const handleDeleteAccount = () => {
+    // Step 1: First confirmation
     Alert.alert(
-      "Delete Account", 
-      "This action is permanent and cannot be undone. All your medical records and appointments will be deleted. Are you absolutely sure?", 
+      "Delete Account",
+      "This action is permanent and cannot be undone. All your data and appointments will be deleted. Are you absolutely sure?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete My Account", 
-          style: "destructive", 
-          onPress: async () => {
-            setLoading(true);
-            try {
-              await deleteUserAccount();
-              router.replace('/login');
-            } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to delete account. You may need to sign out and sign in again to perform this sensitive operation.");
-            } finally {
-              setLoading(false);
-            }
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            // Step 2: Ask for password to re-authenticate
+            Alert.prompt(
+              "Confirm Your Password",
+              "For security, please enter your password to permanently delete your account.",
+              async (password) => {
+                if (!password) return;
+                setLoading(true);
+                try {
+                  await deleteUserAccount(password);
+                  router.replace('/login');
+                } catch (error: any) {
+                  if (error.message === 'REQUIRES_REAUTH') {
+                    Alert.alert("Session Expired", "Please sign out and sign back in, then try deleting your account again.");
+                  } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                    Alert.alert("Wrong Password", "The password you entered is incorrect. Please try again.");
+                  } else {
+                    Alert.alert("Error", "Failed to delete account. Please try again.");
+                  }
+                } finally {
+                  setLoading(false);
+                }
+              },
+              "secure-text"
+            );
           }
         },
       ]
