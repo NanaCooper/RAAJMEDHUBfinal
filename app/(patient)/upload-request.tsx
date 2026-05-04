@@ -26,7 +26,7 @@ const COLORS = {
     border: "#E2E8F0",
 };
 
-const { width, height } = Dimensions.get('window');
+// const { width, height } = Dimensions.get('window');
 
 // --- COMPONENTS ---
 
@@ -77,7 +77,7 @@ const ScannerOverlay = ({ isScanning }: { isScanning: boolean }) => {
             translateY.setValue(0);
             opacity.setValue(0);
         }
-    }, [isScanning]);
+    }, [isScanning, opacity, translateY]);
 
     if (!isScanning) return null;
 
@@ -136,7 +136,7 @@ export default function UploadRequestForm() {
                 setUploadedImage(result.assets[0].uri);
                 processImage(result.assets[0].uri);
             }
-        } catch (e) {
+        } catch (_e) {
             Alert.alert("Error", "Capture failed.");
         }
     };
@@ -295,8 +295,8 @@ export default function UploadRequestForm() {
                                 </View>
                                 <Text style={styles.instructionText}>
                                     {patientType === 'me'
-                                        ? "We'll use your profile details for the appointment."
-                                        : "We'll extract the patient's name and details from the form."}
+                                        ? "We&apos;ll use your profile details for the appointment."
+                                        : "We&apos;ll extract the patient&apos;s name and details from the form."}
                                 </Text>
                             </View>
                         </>

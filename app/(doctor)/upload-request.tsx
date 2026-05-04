@@ -26,7 +26,7 @@ const COLORS = {
     border: "#E2E8F0",
 };
 
-const { width, height } = Dimensions.get('window');
+// const { width, height } = Dimensions.get('window');
 
 // --- COMPONENTS ---
 
@@ -77,7 +77,7 @@ const ScannerOverlay = ({ isScanning }: { isScanning: boolean }) => {
             translateY.setValue(0);
             opacity.setValue(0);
         }
-    }, [isScanning]);
+    }, [isScanning, opacity, translateY]);
 
     if (!isScanning) return null;
 
@@ -105,7 +105,7 @@ export default function UploadRequestForm() {
     const [uploadedImage, setUploadedImage] = useState<string | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzingStep, setAnalyzingStep] = useState(0); // 0: Idle, 1: Uploading, 2: OCR, 3: Success
-    const [patientType, setPatientType] = useState<'me' | 'someone'>('someone');
+    // const [patientType, setPatientType] = useState<'me' | 'someone'>('someone');
 
     // Mock Analysis (Replace with real call in production if needed, but we use the service)
     // We will use the proper service import in the actual implementation below
@@ -136,7 +136,7 @@ export default function UploadRequestForm() {
                 setUploadedImage(result.assets[0].uri);
                 processImage(result.assets[0].uri);
             }
-        } catch (e) {
+        } catch (_e) {
             Alert.alert("Error", "Capture failed.");
         }
     };
@@ -250,7 +250,7 @@ export default function UploadRequestForm() {
                                     ))}
                                 </View>
                                 <Text style={styles.instructionText}>
-                                    We'll extract the patient's name and details from the form.
+                                    We&apos;ll extract the patient&apos;s name and details from the form.
                                 </Text>
                             </View>
                         </>
