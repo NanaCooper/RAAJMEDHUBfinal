@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, Image,
-    Alert, ActivityIndicator, Animated, Easing, Dimensions, ScrollView, Platform, Vibration
+    Alert, ActivityIndicator, Animated, Easing, ScrollView, Platform, Vibration
 } from 'react-native';
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
@@ -136,7 +136,7 @@ export default function UploadRequestForm() {
                 setUploadedImage(result.assets[0].uri);
                 processImage(result.assets[0].uri);
             }
-        } catch (_e) {
+        } catch {
             Alert.alert("Error", "Capture failed.");
         }
     };
