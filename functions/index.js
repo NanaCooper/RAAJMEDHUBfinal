@@ -36,7 +36,7 @@ exports.scanRequest = functions.https.onCall(async (data, context) => {
         const { imageBase64 } = data;
 
         // Get the Gemini model
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
         // Create the prompt for medical form extraction
         const prompt = `You are a medical assistant analyzing a doctor's request form or prescription. 

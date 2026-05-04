@@ -2,31 +2,69 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions for common checks
+
+    // --- HELPER FUNCTIONS ---
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Safely get the user's role, returning an empty string if not found.
+    // Safely get the user's role using exists() to prevent crashes for new users
     function getUserRole() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return (userDoc != null && 'data' in userDoc && 'role' in userDoc.data) ? userDoc.data.role : '';
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(path) ? get(path).data.role : '';
     }
-    
-    function isAdmin() {
-      return isSignedIn() && getUserRole() in ['admin', 'Admin', 'ADMIN', 'superadmin', 'reception', 'frontdesk'];
-    }
-    
-    function isDoctor() {
-      return isSignedIn() && getUserRole() in ['doctor', 'Doctor', 'DOCTOR'];
-    }
-    
-    function isPatient() {
-      return isSignedIn() && getUserRole() in ['patient', 'Patient', 'PATIENT'];
-    }
-    
 
-    
+    // Security: Whitelist specific admin emails
+    function isAdminEmail() {
+      return request.auth.token.email != null && request.auth.token.email.lower() in [
+        'embidadzie@gmail.com',
+        'raajctscan@gmail.com',
+        'raajmedhub@gmail.com'
+      ];
+    }
+
+    // Full Admin: Must have an admin role AND be on the email whitelist
+    function isAdmin() {
+      let role = getUserRole();
+      return isSignedIn() && isAdminEmail() && role in [
+        'admin', 'Admin', 'ADMIN', 'administrator',
+        'reception', 'frontdesk', 'superadmin'
+      ];
+    }
+
+    // Role-only check: Used for restricted creation flows (e.g. creating doctors)
+    function isAdminByRole() {
+      let role = getUserRole();
+      return isSignedIn() && role in [
+        'admin', 'Admin', 'ADMIN', 'administrator',
+        'reception', 'frontdesk', 'superadmin',
+        'admin_koforidua', 'admin_takoradi', 'admin_capecoast'
+      ];
+    }
+
+    // Branch Admin: Must have a branch role AND be on the email whitelist
+    function isBranchAdmin() {
+      let role = getUserRole();
+      return isSignedIn() && isAdminEmail() && role in [
+        'admin_koforidua', 'admin_takoradi', 'admin_capecoast'
+      ];
+    }
+
+    function isDoctor() {
+      let role = getUserRole();
+      return isSignedIn() && role in ['doctor', 'Doctor', 'DOCTOR'];
+    }
+
+    function isPatient() {
+      let role = getUserRole();
+      return isSignedIn() && role in ['patient', 'Patient', 'PATIENT'];
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     function isAppointmentParticipant(appointmentData) {
       return isSignedIn() && (
         request.auth.uid == appointmentData.patientId || 
@@ -42,80 +80,91 @@ service cloud.firestore {
       );
     }
 
-    // User profiles - users can read their own profile. Admins have full control.
-    // Clients may create their own user doc but MUST NOT include `role`. Admins may create with role.
+    // Prevent users from escalating their own role after initial setup
+    function isChangingProtectedField() {
+      let protectedFields = ['role', 'department', 'organization', 'adminBranch'];
+      let changed = protectedFields.hasAny(request.resource.data.diff(resource.data).affectedKeys());
+      let noRoleYet = !('role' in resource.data) || resource.data.role == null || resource.data.role == '';
+      return changed && !noRoleYet;
+    }
+
+    function getBranchForRole() {
+      let r = getUserRole();
+      return r == 'admin_koforidua' ? 'Koforidua'
+           : r == 'admin_takoradi'  ? 'Takoradi'
+           : r == 'admin_capecoast' ? 'Cape Coast'
+           : '';
+    }
+
+    function isBranchMatch(appointmentData) {
+      return appointmentData.branch == getBranchForRole();
+    }
+
+    // --- COLLECTION RULES ---
+
     match /users/{userId} {
-      // Read: owner (prioritized to avoid recursion), admin, doctor, or public doctor profile
       allow read: if isSignedIn() && (
         request.auth.uid == userId || 
-        isAdmin() ||
+        isAdmin() || 
+        isBranchAdmin() || 
         isDoctor() ||
         (resource.data.role in ['doctor', 'Doctor', 'DOCTOR'])
       );
 
-      // Create: owner may create their doc but must not include `role`. Admins may create with role.
       allow create: if isSignedIn() && (
         (request.auth.uid == userId && !('role' in request.resource.data))
         || isAdmin()
       );
 
-      // Update: admins can fully update.
-      // Owners can update their own profile, but cannot escalate role.
-      // They may update other fields freely. Additionally, allow the owner to set
-      // the `role` field once if the stored document does not already have a role
-      // (this enables the user-type-selection flow where the user picks their role
-      // immediately after signup). After a role exists, owners cannot change it.
-      allow update: if isAdmin()
-        || (isSignedIn() && request.auth.uid == userId && (
-             // 1) Owner isn't attempting to modify the `role` field at all
-             !('role' in request.resource.data)
-             // OR 2) The stored resource already has a role and the update's role must match (no change)
-             || ('role' in resource.data && request.resource.data.role == resource.data.role)
-             // OR 3) The stored resource has no role yet and owner is setting it now (one-time set)
-             || (!('role' in resource.data) && 'role' in request.resource.data)
-           ));
+      allow update: if isAdmin() || isBranchAdmin()
+        || (isSignedIn() && request.auth.uid == userId && !isChangingProtectedField());
 
-      // Delete: admin only
       allow delete: if isAdmin();
     }
 
-    // Appointments - only participants can read/write
     match /appointments/{appointmentId} {
+      allow get: if isAdmin() || isBranchAdmin() ||
+        (isDoctor() && resource.data.doctorId == request.auth.uid) ||
+        (isSignedIn() && resource.data.patientId == request.auth.uid);
+      allow list: if isAdmin() || isBranchAdmin() || isDoctor() || isPatient();
+      
       allow create: if isSignedIn() && (
         isAdmin() ||
-        (isPatient() && request.resource.data.patientId == request.auth.uid && (!('doctorId' in request.resource.data) || request.resource.data.doctorId == null) && 'branch' in request.resource.data) ||
+        isBranchAdmin() ||
+        (isPatient() && request.resource.data.patientId == request.auth.uid) ||
         (isDoctor() && request.resource.data.doctorId == request.auth.uid)
       );
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        isAppointmentParticipant(resource.data)
-      );
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (isAppointmentParticipant(resource.data) && 
-        isAppointmentParticipant(request.resource.data) &&
-        // Prevent changing patient/doctor IDs
-        request.resource.data.patientId == resource.data.patientId &&
-        request.resource.data.doctorId == resource.data.doctorId)
-      );
-      allow delete: if isSignedIn() && isAppointmentParticipant(resource.data);
-    }
 
-    // Doctors collection - doctors can read their own, patients can read all for browsing
-    match /doctors/{doctorId} {
-      allow read: if isSignedIn(); // All signed-in users can read doctor profiles
-      allow create: if isSignedIn() && request.auth.uid == doctorId;
-      allow update: if isSignedIn() && request.auth.uid == doctorId;
+      allow update: if isAdmin() ||
+        (isBranchAdmin() && isBranchMatch(resource.data)) ||
+        (isSignedIn() &&
+          isAppointmentParticipant(resource.data) &&
+          request.resource.data.patientId == resource.data.patientId &&
+          request.resource.data.doctorId == resource.data.doctorId
+        );
+      
       allow delete: if isAdmin();
     }
 
-    // Procedures / pricing catalogue - readable by all signed-in users, writable by admins only
-    match /procedures/{procedureId} {
+    match /doctors/{doctorId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin() || isBranchAdmin() || isAdminByRole() || (isDoctor() && request.auth.uid == doctorId);
+      allow update: if isAdmin() || isBranchAdmin() || (isDoctor() && request.auth.uid == doctorId);
+      allow delete: if isAdmin();
     }
 
-    // Scan reports - patients can read their own, admins/doctors can create and update
+    match /patients/{patientId} {
+      allow read: if isAdmin() || isBranchAdmin() || isDoctor() || request.auth.uid == patientId;
+      allow create: if isAdmin() || isBranchAdmin() || isDoctor() || (isSignedIn() && patientId == request.auth.uid);
+      allow update: if isAdmin() || isBranchAdmin() || isDoctor() || (isPatient() && patientId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /procedures/{procedureId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /reports/{reportId} {
       allow read: if isSignedIn() && (
         request.auth.uid == resource.data.patientId ||
@@ -126,27 +175,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Doctor availability - only the doctor can write, patients can read
     match /availability/{doctorId}/dates/{dateId} {
       allow create, update, delete: if isSignedIn() && request.auth.uid == doctorId;
       allow read: if isSignedIn();
     }
 
-    // Medical records - strict access control
     match /medicalRecords/{recordId} {
-      allow create: if isDoctor() && 
-        request.resource.data.doctorId == request.auth.uid;
+      allow create: if isDoctor() && request.resource.data.doctorId == request.auth.uid;
       allow read: if isSignedIn() && (
         request.auth.uid == resource.data.patientId || 
         request.auth.uid == resource.data.doctorId ||
-          (isDoctor() && exists(/databases/$(database)/documents/patients/$(resource.data.patientId))
+        (isDoctor() && exists(/databases/$(database)/documents/patients/$(resource.data.patientId))
             && get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.assignedDoctorId == request.auth.uid)
       );
       allow update: if isDoctor() && request.auth.uid == resource.data.doctorId;
-      allow delete: if false; // Medical records should never be deleted
+      allow delete: if false;
     }
 
-    // Messages in conversations
     match /conversations/{conversationId} {
       allow create: if isSignedIn() && (
         request.resource.data.patientId == request.auth.uid ||
@@ -160,19 +205,32 @@ service cloud.firestore {
           request.resource.data.senderId == request.auth.uid;
         allow read: if isSignedIn() && 
           isConversationParticipant(get(/databases/$(database)/documents/conversations/$(conversationId)).data);
-        allow update, delete: if false; // Messages can't be edited or deleted
+        allow update, delete: if false;
       }
     }
-    // Services (Legacy or shared collection)
+
     match /services/{serviceId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Admin notes for communication
     match /adminNotes/{noteId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isBranchAdmin();
       allow create: if isDoctor();
+      allow update, delete: if isAdmin();
+    }
+
+    match /doctorNotes/{noteId} {
+      allow read: if isAdmin() || isBranchAdmin() ||
+        (isDoctor() && (resource.data.doctorId == request.auth.uid || resource.data.senderId == request.auth.uid));
+      allow create: if isDoctor();
+      allow update: if isAdmin() || isBranchAdmin() || (isDoctor() && resource.data.senderId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /activity/{activityId} {
+      allow read: if isAdmin() || isBranchAdmin();
+      allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
   }
