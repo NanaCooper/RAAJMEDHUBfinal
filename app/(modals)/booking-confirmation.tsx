@@ -284,8 +284,8 @@ export default function BookingConfirmationModal() {
       <Text style={styles.successMsg}>
         Your appointment for a {scanType} has been requested.
       </Text>
-      <TouchableOpacity style={[styles.primaryBtn, { marginTop: 16 }]} onPress={handleFinish}>
-        <Text style={styles.primaryBtnText}>Done</Text>
+      <TouchableOpacity style={[styles.primaryBtn, { marginTop: 16, alignSelf: 'stretch' }]} onPress={handleFinish}>
+        <Text style={styles.primaryBtnText}>OK</Text>
       </TouchableOpacity>
     </View>
   );
