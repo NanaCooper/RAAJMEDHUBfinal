@@ -40,23 +40,123 @@ export function inferReferralProcedure(text: string): { key: ReferralProcedureKe
   const t = normalizeText(text);
   if (!t) return null;
 
-  // Non-CT procedures
-  if (t.includes('xray') || t.includes('x-ray') || t.includes('x ray')) return { key: 'xray', ...REFERRAL_FEES_GHS.xray };
+  // 1. Fixed Price Anomalies (Anomalies take precedence)
+  
+  // X-Rays (Any type) -> 15 GHS
+  if (t.includes('xray') || t.includes('x-ray') || t.includes('x ray')) {
+    return { key: 'xray', ...REFERRAL_FEES_GHS.xray };
+  }
+
+  // CT Head, CT Chest, HSG, Mammography, Endoscopy -> 50 GHS
   if (t.includes('hsg')) return { key: 'hsg', ...REFERRAL_FEES_GHS.hsg };
   if (t.includes('mammography') || t.includes('mammogram')) return { key: 'mammography', ...REFERRAL_FEES_GHS.mammography };
   if (t.includes('endoscopy')) return { key: 'endoscopy', ...REFERRAL_FEES_GHS.endoscopy };
-
-  // CT procedures
+  
+  // CT Specifics
   const isCT = t.includes('ct') || t.includes('c t') || t.includes('computed tomography');
-  if (!isCT) return null;
+  
+  if (isCT) {
+    // CT Abdomen, CT Angiography -> 70 GHS
+    if (t.includes('abdomen') || t.includes('abdominal')) return { key: 'ct_abdomen', ...REFERRAL_FEES_GHS.ct_abdomen };
+    if (t.includes('angiography') || t.includes('angio')) return { key: 'ct_angiography', ...REFERRAL_FEES_GHS.ct_angiography };
+    
+    // CT Head, CT Chest -> 50 GHS
+    if (t.includes('head') || t.includes('brain') || t.includes('skull')) return { key: 'ct_head', ...REFERRAL_FEES_GHS.ct_head };
+    if (t.includes('chest') || t.includes('thorax') || t.includes('thoracic')) return { key: 'ct_chest', ...REFERRAL_FEES_GHS.ct_chest };
+  }
 
-  if (t.includes('angiography') || t.includes('angio')) return { key: 'ct_angiography', ...REFERRAL_FEES_GHS.ct_angiography };
-  if (t.includes('abdomen') || t.includes('abdominal')) return { key: 'ct_abdomen', ...REFERRAL_FEES_GHS.ct_abdomen };
-  if (t.includes('chest') || t.includes('thorax') || t.includes('thoracic')) return { key: 'ct_chest', ...REFERRAL_FEES_GHS.ct_chest };
-  if (t.includes('head') || t.includes('brain') || t.includes('skull')) return { key: 'ct_head', ...REFERRAL_FEES_GHS.ct_head };
-
-  // Unknown CT subtype → no payout mapping configured
   return null;
+}
+
+/**
+ * Calculates the total payout for an appointment based on its scan types and details.
+ * Shared between booking confirmation and the referrals screen.
+ */
+export function calculateReferralPayout(appointment: any): { total: number; items: Array<{ label: string; amountGhs: number; key: string }> } {
+  if (!appointment) return { total: 0, items: [] };
+
+  // 1. Gather all possible scan/service sources
+  let scanTypesArr: any[] = [];
+  if (Array.isArray(appointment.services)) {
+    scanTypesArr = appointment.services;
+  } else if (Array.isArray(appointment.scanTypes)) {
+    scanTypesArr = appointment.scanTypes;
+  } else if (appointment.scanType) {
+    scanTypesArr = [appointment.scanType];
+  } else if (appointment.scans && Array.isArray(appointment.scans)) {
+    scanTypesArr = appointment.scans;
+  }
+
+  const specificDetails = appointment.specificProcedure || appointment.specificScan || appointment.specificScanDetails || appointment.notes || '';
+  const procedureName = appointment.procedureName || appointment.serviceName || '';
+  
+  const matchedKeys = new Set<string>();
+  const items: Array<{ label: string; amountGhs: number; key: string }> = [];
+
+  // 2. Process explicit scan/service types
+  for (const s of scanTypesArr) {
+    const scanName = s?.name || s?.id || s?.label || s?.serviceName || 'Procedure';
+    const textToMatch = `${scanName} ${specificDetails} ${procedureName}`.trim();
+    
+    const match = inferReferralProcedure(textToMatch);
+    let amount = 0;
+    let label = scanName;
+    let key = s?.id || scanName || Math.random().toString();
+
+    if (match) {
+      amount = match.amountGhs;
+      label = match.label;
+      key = match.key;
+    } else {
+      // EXTREMELY aggressive price extraction
+      let price = 0;
+      if (s) {
+        price = Number(s.price) || Number(s.Price) || Number(s.priceGhs) || Number(s.amount) || Number(s.cost) || 0;
+      }
+      
+      // If s didn't have it, look at the main appointment object for this item
+      if (price === 0) {
+        price = Number(appointment.procedurePriceGhs) || Number(appointment.price) || Number(appointment.priceGhs) || Number(appointment.totalPrice) || Number(appointment.amount) || 0;
+      }
+      
+      // If price is still 0, try to extract from string
+      if (price === 0 && typeof scanName === 'string') {
+        const found = scanName.match(/\d+/);
+        if (found) price = Number(found[0]);
+      }
+
+      amount = Math.round(price * 0.10);
+      
+      // Prioritize the specific procedure/scan name for the UI label
+      label = appointment.specificProcedure || appointment.specificScan || appointment.specificScanDetails || scanName;
+    }
+
+    if (!matchedKeys.has(key)) {
+      matchedKeys.add(key);
+      items.push({ label, amountGhs: amount, key });
+    }
+  }
+
+  // 3. Fallback: If no items found yet
+  if (items.length === 0) {
+    let mainPrice = Number(appointment.procedurePriceGhs) || Number(appointment.price) || Number(appointment.priceGhs) || Number(appointment.totalPrice) || Number(appointment.amount) || 0;
+    
+    if (mainPrice === 0) {
+      const fallbackText = `${procedureName} ${specificDetails}`.trim();
+      const found = fallbackText.match(/\d+/);
+      if (found) mainPrice = Number(found[0]);
+    }
+
+    if (mainPrice > 0 || procedureName || appointment.specificProcedure) {
+      const amount = Math.round(mainPrice * 0.10);
+      const label = appointment.specificProcedure || appointment.specificScan || procedureName || 'General Procedure';
+      items.push({ label, amountGhs: amount, key: 'general_fallback' });
+    }
+  }
+
+  const total = items.reduce((sum, i) => sum + i.amountGhs, 0);
+  console.log(`[ReferralCalc] Appt: ${appointment.id}, Total Items: ${items.length}, Total Amount: ${total}`);
+  return { total, items };
 }
 
 export async function createReferral(referral: Omit<Referral, 'id' | 'createdAt' | 'updatedAt'>) {

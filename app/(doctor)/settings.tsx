@@ -11,7 +11,8 @@ import {
   ActivityIndicator, 
   StatusBar,
   Platform,
-  Image
+  Image,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -122,6 +123,9 @@ const DoctorSettingsScreen = () => {
   });
 
   const [passwordData, setPasswordData] = useState({ current: '', new: '' });
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [tempProfileData, setTempProfileData] = useState(profileData);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -232,6 +236,21 @@ const DoctorSettingsScreen = () => {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      await updateUserProfile(user.uid, tempProfileData);
+      setProfileData(tempProfileData);
+      setIsEditModalVisible(false);
+      Alert.alert("Success", "Profile updated successfully!");
+    } catch (err: any) {
+      Alert.alert("Error", "Failed to update profile.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" />
@@ -260,7 +279,10 @@ const DoctorSettingsScreen = () => {
            
            <TouchableOpacity 
               style={styles.editProfileBtn}
-              onPress={() => router.push('/(doctor)/profile')}
+              onPress={() => {
+                setTempProfileData(profileData);
+                setIsEditModalVisible(true);
+              }}
             >
              <Feather name="edit-3" size={14} color={COLORS.primary} />
              <Text style={styles.editProfileText}>Edit Profile</Text>
@@ -274,12 +296,12 @@ const DoctorSettingsScreen = () => {
           <SettingItem 
             label="Specialization" 
             value={profileData.specialization || 'Not set'} 
-            onPress={() => router.push('/(doctor)/profile')} 
+            onPress={() => { setTempProfileData(profileData); setIsEditModalVisible(true); }} 
           />
           <SettingItem 
             label="Qualifications" 
             value={profileData.qualifications || 'Not set'} 
-            onPress={() => router.push('/(doctor)/profile')} 
+            onPress={() => { setTempProfileData(profileData); setIsEditModalVisible(true); }} 
             isLast
           />
         </View>
@@ -316,26 +338,52 @@ const DoctorSettingsScreen = () => {
           
           <View style={styles.passChangeBox}>
             <Text style={styles.passLabel}>Change Password</Text>
-            <TextInput 
-              style={styles.passInput}
-              placeholder="Current Password"
-              secureTextEntry
-              value={passwordData.current}
-              onChangeText={t => setPasswordData(p => ({...p, current: t}))}
-            />
-            <TextInput 
-              style={styles.passInput}
-              placeholder="New Password"
-              secureTextEntry
-              value={passwordData.new}
-              onChangeText={t => setPasswordData(p => ({...p, new: t}))}
-            />
+            
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputIcon}>
+                <Feather name="lock" size={18} color={COLORS.textSec} />
+              </View>
+              <TextInput 
+                style={styles.enhancedInput}
+                placeholder="Current Password"
+                secureTextEntry={!showPassword}
+                value={passwordData.current}
+                onChangeText={t => setPasswordData(p => ({...p, current: t}))}
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputIcon}>
+                <Feather name="key" size={18} color={COLORS.textSec} />
+              </View>
+              <TextInput 
+                style={styles.enhancedInput}
+                placeholder="New Password"
+                secureTextEntry={!showPassword}
+                value={passwordData.new}
+                onChangeText={t => setPasswordData(p => ({...p, new: t}))}
+              />
+              <TouchableOpacity 
+                style={styles.eyeBtn}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Feather name={showPassword ? "eye-off" : "eye"} size={18} color={COLORS.textSec} />
+              </TouchableOpacity>
+            </View>
+
             <TouchableOpacity 
-              style={[styles.passBtn, (!passwordData.current || !passwordData.new) && { opacity: 0.5 }]}
+              style={[styles.premiumPassBtn, (!passwordData.current || !passwordData.new) && { opacity: 0.6 }]}
               onPress={handleUpdatePassword}
               disabled={loading || !passwordData.current || !passwordData.new}
             >
-              {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.passBtnText}>Update Password</Text>}
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="refresh-cw" size={16} color="#fff" style={{marginRight: 8}} />
+                  <Text style={styles.passBtnText}>Update Password</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -364,6 +412,86 @@ const DoctorSettingsScreen = () => {
         </View>
 
       </ScrollView>
+
+      {/* --- Edit Profile Modal --- */}
+      <Modal
+        visible={isEditModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Profile</Text>
+              <TouchableOpacity 
+                style={styles.closeBtn}
+                onPress={() => setIsEditModalVisible(false)}
+              >
+                <Feather name="x" size={24} color={COLORS.textMain} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Full Name</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={tempProfileData.fullName}
+                  onChangeText={t => setTempProfileData(p => ({...p, fullName: t}))}
+                />
+              </View>
+
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Specialization</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={tempProfileData.specialization}
+                  onChangeText={t => setTempProfileData(p => ({...p, specialization: t}))}
+                />
+              </View>
+
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Qualifications</Text>
+                <TextInput
+                  style={[styles.editInput, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
+                  multiline
+                  value={tempProfileData.qualifications}
+                  onChangeText={t => setTempProfileData(p => ({...p, qualifications: t}))}
+                />
+              </View>
+
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Phone Number</Text>
+                <TextInput
+                  style={styles.editInput}
+                  keyboardType="phone-pad"
+                  value={tempProfileData.phone}
+                  onChangeText={t => setTempProfileData(p => ({...p, phone: t}))}
+                />
+              </View>
+
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Professional Bio</Text>
+                <TextInput
+                  style={[styles.editInput, { height: 100, textAlignVertical: 'top', paddingTop: 12 }]}
+                  multiline
+                  value={tempProfileData.bio}
+                  onChangeText={t => setTempProfileData(p => ({...p, bio: t}))}
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.saveBtn, loading && { opacity: 0.7 }]}
+                onPress={handleSaveProfile}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -521,7 +649,7 @@ const styles = StyleSheet.create({
   },
   rowCenter: { flexDirection: 'row', alignItems: 'center' },
 
-  // Pass Box
+  // Pass Box / Security UI Upgrades
   passChangeBox: {
     backgroundColor: COLORS.bg,
     borderRadius: 16,
@@ -534,28 +662,121 @@ const styles = StyleSheet.create({
     color: COLORS.textMain,
     marginBottom: 12,
   },
-  passInput: {
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: COLORS.textMain,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
+    overflow: 'hidden',
   },
-  passBtn: {
+  inputIcon: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.bg,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
+  },
+  enhancedInput: {
+    flex: 1,
+    height: 48,
+    paddingHorizontal: 16,
+    fontSize: 14,
+    color: COLORS.textMain,
+  },
+  eyeBtn: {
+    paddingHorizontal: 16,
+    height: 48,
+    justifyContent: 'center',
+  },
+  premiumPassBtn: {
+    flexDirection: 'row',
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'center',
+    marginTop: 8,
+    ...SHADOW,
+    shadowColor: COLORS.primary,
   },
   passBtnText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  // Edit Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    maxHeight: '90%',
+    ...SHADOW,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: COLORS.textMain,
+  },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editField: {
+    marginBottom: 20,
+  },
+  editLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSec,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  editInput: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: COLORS.textMain,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  saveBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 40,
+    ...SHADOW,
+    shadowColor: COLORS.primary,
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
   },
 
   // Actions

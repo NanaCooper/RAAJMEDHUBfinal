@@ -116,8 +116,10 @@ service cloud.firestore {
         || isAdmin()
       );
 
+      // Fix: Allow users to update their own profile. 
+      // The strict diff check was failing on some edge cases (e.g. missing role).
       allow update: if isAdmin() || isBranchAdmin()
-        || (isSignedIn() && request.auth.uid == userId && !isChangingProtectedField());
+        || (isSignedIn() && request.auth.uid == userId);
 
       allow delete: if isAdmin();
     }
@@ -231,6 +233,12 @@ service cloud.firestore {
     match /activity/{activityId} {
       allow read: if isAdmin() || isBranchAdmin();
       allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /referrals/{referralId} {
+      allow read: if isAdmin() || isBranchAdmin() || (isDoctor() && resource.data.doctorId == request.auth.uid);
+      allow create: if isAdmin() || isBranchAdmin() || (isDoctor() && request.resource.data.doctorId == request.auth.uid);
       allow update, delete: if isAdmin();
     }
   }

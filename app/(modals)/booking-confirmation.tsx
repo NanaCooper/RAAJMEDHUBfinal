@@ -9,14 +9,18 @@ import {
   Alert,
   BackHandler,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import dayjs from "dayjs";
 import { createAppointment } from "../../services/appointments";
-import { sendRequestSubmittedNotification, scheduleAppointmentReminders } from "../../services/notifications";
 import { createReferral, inferReferralProcedure } from "../../services/referrals";
-import { Feather } from "@expo/vector-icons";
+import { 
+  sendRequestSubmittedNotification, 
+  scheduleAppointmentReminders 
+} from "../../services/notifications";
+import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 
 // --- Theme ---
 const COLORS = {
@@ -48,6 +52,8 @@ export default function BookingConfirmationModal() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [referralPayout, setReferralPayout] = useState<{ total: number; breakdown: string } | null>(null);
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   // Parse details from params once to avoid re-renders from param object identity change
@@ -115,14 +121,10 @@ export default function BookingConfirmationModal() {
       console.log("[LOG] handleConfirm: Successfully created appointment. Firestore response:", result);
 
       // --- Doctor Referrals (payout tracking) ---
-      // Only track payouts for doctor-created requests.
       const isDoctorCreated = appointmentToSave?.createdByRole === 'doctor' || !!appointmentToSave?.doctorId;
       if (isDoctorCreated && appointmentToSave?.doctorId && result?.id) {
         try {
-          const patientFirst = appointmentToSave?.patientDetails?.firstName || '';
-          const patientLast = appointmentToSave?.patientDetails?.lastName || '';
-          const patientName = `${patientFirst} ${patientLast}`.trim() || undefined;
-
+          const patientName = `${appointmentToSave?.patientDetails?.firstName || ''} ${appointmentToSave?.patientDetails?.lastName || ''}`.trim() || 'Patient';
           const selectedProcedureName =
             (appointmentToSave as any)?.specificProcedure ||
             (appointmentToSave as any)?.procedureName ||
@@ -140,48 +142,69 @@ export default function BookingConfirmationModal() {
               ? [(appointmentToSave as any).scanType]
               : [];
 
-          const candidateTexts: string[] = [];
-          if (selectedProcedureName) {
-            // If the doctor explicitly selected a procedure, use it as the single source of truth.
-            candidateTexts.push(selectedProcedureName);
-          }
-          if (scanTypesArr.length > 0) {
-            scanTypesArr.forEach((s: any) => {
-              const scanName = s?.name || s?.id || '';
-              // Only fall back to scan types when no explicit procedure was selected.
-              if (!selectedProcedureName) candidateTexts.push(`${scanName} ${specificDetails}`.trim());
-            });
-          }
-          if (!selectedProcedureName && specificDetails) candidateTexts.push(specificDetails);
-
           const matchedKeys = new Set<string>();
           const createdItems: Array<{ label: string; amountGhs: number }> = [];
 
-          for (const text of candidateTexts) {
-            const match = inferReferralProcedure(text);
-            if (!match) continue;
-            if (matchedKeys.has(match.key)) continue;
-            matchedKeys.add(match.key);
+          // 1. Process explicit scan types (best for price-based 10% fallback)
+          if (scanTypesArr.length > 0) {
+            for (const s of scanTypesArr) {
+              const scanName = s?.name || s?.id || 'Procedure';
+              const textToMatch = `${scanName} ${specificDetails}`.trim();
+              
+              const match = inferReferralProcedure(textToMatch);
+              let amount = 0;
+              let label = scanName;
+              let key = s?.id || scanName;
 
-            await createReferral({
-              doctorId: appointmentToSave.doctorId,
-              appointmentId: result.id,
-              patientName,
-              procedureKey: match.key,
-              procedureLabel: match.label,
-              amountGhs: match.amountGhs,
-            } as any);
+              if (match) {
+                amount = match.amountGhs;
+                label = match.label;
+                key = match.key;
+              } else {
+                // Fallback to 10% of actual price
+                const price = Number(s?.price) || Number(s?.priceGhs) || 0;
+                amount = Math.round(price * 0.10);
+                label = scanName;
+              }
 
-            createdItems.push({ label: match.label, amountGhs: match.amountGhs });
+              if (amount > 0 && !matchedKeys.has(key)) {
+                matchedKeys.add(key);
+                await createReferral({
+                  doctorId: appointmentToSave.doctorId,
+                  appointmentId: result.id,
+                  patientName,
+                  procedureKey: key,
+                  procedureLabel: label,
+                  amountGhs: amount,
+                } as any);
+                createdItems.push({ label, amountGhs: amount });
+              }
+            }
+          } 
+          
+          // 2. Fallback: If no scan types but we have a specific procedure name
+          if (createdItems.length === 0 && selectedProcedureName) {
+            const match = inferReferralProcedure(selectedProcedureName);
+            if (match) {
+              await createReferral({
+                doctorId: appointmentToSave.doctorId,
+                appointmentId: result.id,
+                patientName,
+                procedureKey: match.key,
+                procedureLabel: match.label,
+                amountGhs: match.amountGhs,
+              } as any);
+              createdItems.push({ label: match.label, amountGhs: match.amountGhs });
+            }
           }
 
           if (createdItems.length > 0) {
             const total = createdItems.reduce((sum, i) => sum + i.amountGhs, 0);
             const breakdown = createdItems.map(i => `${i.label}: GHS ${i.amountGhs}`).join('\n');
-            Alert.alert('Referral Payout', `This referral earns you GHS ${total}.\n\n${breakdown}`);
+            setReferralPayout({ total, breakdown });
+            setShowPayoutModal(true);
           }
         } catch (e) {
-          // Never block booking success because referral tracking failed.
           console.log('[booking-confirmation] Referral tracking failed', e);
         }
       }
@@ -284,7 +307,11 @@ export default function BookingConfirmationModal() {
       <Text style={styles.successMsg}>
         Your appointment for a {scanType} has been requested.
       </Text>
-      <TouchableOpacity style={[styles.primaryBtn, { marginTop: 16, alignSelf: 'stretch' }]} onPress={handleFinish}>
+      <TouchableOpacity 
+        style={[styles.primaryBtn, { marginTop: 24, width: '100%', flex: 0 }]} 
+        onPress={handleFinish}
+        activeOpacity={0.8}
+      >
         <Text style={styles.primaryBtnText}>OK</Text>
       </TouchableOpacity>
     </View>
@@ -302,6 +329,41 @@ export default function BookingConfirmationModal() {
       >
         {isConfirmed ? renderSuccess() : renderConfirmation()}
       </Animated.View>
+      {/* Referral Payout Modal */}
+      <Modal
+        visible={showPayoutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPayoutModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.payoutModalContent}>
+            <View style={styles.payoutIconContainer}>
+              <Ionicons name="gift-outline" size={40} color={COLORS.primary} />
+            </View>
+            
+            <Text style={styles.payoutTitle}>Referral Earnings</Text>
+            <Text style={styles.payoutSub}>This booking has earned you a referral commission.</Text>
+            
+            <View style={styles.payoutAmountBox}>
+              <Text style={styles.payoutAmountLabel}>Total Payout</Text>
+              <Text style={styles.payoutAmountValue}>GHS {referralPayout?.total}</Text>
+            </View>
+
+            <View style={styles.payoutBreakdownBox}>
+              <Text style={styles.breakdownLabel}>Breakdown</Text>
+              <Text style={styles.breakdownText}>{referralPayout?.breakdown}</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.payoutButton}
+              onPress={() => setShowPayoutModal(false)}
+            >
+              <Text style={styles.payoutButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -331,7 +393,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   detailsContainer: {
-    backgroundColor: '#F8FAFC', // slate-50
+    backgroundColor: '#F8FAFC',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -389,9 +451,9 @@ const styles = StyleSheet.create({
     flex: 2,
     flexDirection: 'row',
     gap: 8,
+    backgroundColor: COLORS.primary,
     paddingVertical: 16,
     borderRadius: 16,
-    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOW,
@@ -399,39 +461,127 @@ const styles = StyleSheet.create({
   },
   primaryBtnDisabled: {
     backgroundColor: COLORS.primaryDisabled,
-    shadowColor: 'transparent',
   },
   primaryBtnText: {
-    color: "#fff",
+    color: "#FFF",
     fontWeight: "700",
     fontSize: 16,
   },
   successContainer: {
-    alignItems: "center",
-    paddingVertical: 24,
+    alignItems: 'center',
+    paddingVertical: 8,
   },
   successIconCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: COLORS.successSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: COLORS.success,
+    marginBottom: 20,
   },
   successTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "800",
     color: COLORS.textMain,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   successMsg: {
     fontSize: 15,
     color: COLORS.textSec,
-    textAlign: "center",
+    textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 16,
+  },
+  successText: { color: "#FFF", fontSize: 18, fontWeight: "700" },
+
+  // --- Payout Modal Styles ---
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  payoutModalContent: {
+    backgroundColor: '#FFF',
+    width: '100%',
+    borderRadius: 32,
+    padding: 24,
+    alignItems: 'center',
+    ...SHADOW,
+  },
+  payoutIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  payoutTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.textMain,
+    marginBottom: 8,
+  },
+  payoutSub: {
+    fontSize: 14,
+    color: COLORS.textSub,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  payoutAmountBox: {
+    width: '100%',
+    backgroundColor: COLORS.bg,
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  payoutAmountLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSub,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  payoutAmountValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.primary,
+  },
+  payoutBreakdownBox: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  breakdownLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSub,
+    marginBottom: 8,
+  },
+  breakdownText: {
+    fontSize: 14,
+    color: COLORS.textMain,
+    lineHeight: 20,
+  },
+  payoutButton: {
+    backgroundColor: COLORS.primary,
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    ...SHADOW,
+    shadowColor: COLORS.primary,
+  },
+  payoutButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

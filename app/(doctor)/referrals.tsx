@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 
 import { useAuth } from '../../hooks/useAuth';
-import type { Referral } from '../../types/referral';
-import { subscribeToReferralsByDoctor } from '../../services/referrals';
+import { subscribeToAppointments } from '../../services/appointments';
+import { calculateReferralPayout } from '../../services/referrals';
+import type { Appointment } from '../../types/appointment';
 
 dayjs.extend(isSameOrAfter);
 
@@ -37,11 +39,12 @@ function toDateSafe(value: any): Date | null {
 
 export default function ReferralsScreen() {
   const { session } = useAuth();
-  const [items, setItems] = useState<Referral[]>([]);
+  const [items, setItems] = useState<Appointment[]>([]);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     if (!session?.uid) return;
-    const unsub = subscribeToReferralsByDoctor(session.uid, setItems, (err) => {
+    const unsub = subscribeToAppointments(session.uid, 'doctor', setItems, (err) => {
       console.log('[referrals] subscribe error', err);
     });
     return () => unsub && unsub();
@@ -56,17 +59,34 @@ export default function ReferralsScreen() {
     let m = 0;
 
     const norm = items
-      .map((r) => ({
-        ...r,
-        _createdAt: toDateSafe((r as any).createdAt) || new Date(0),
-      }))
-      .sort((a: any, b: any) => b._createdAt.getTime() - a._createdAt.getTime());
+      .map((appt) => {
+        // Find best patient name
+        let patientName = appt.patientDetails?.fullName || 
+                         (appt.patientDetails?.firstName && appt.patientDetails?.lastName 
+                           ? `${appt.patientDetails.firstName} ${appt.patientDetails.lastName}` 
+                           : (appt.patientDetails?.firstName || appt.patientDetails?.lastName || 'Patient'));
+        
+        if (patientName === 'Patient' && (appt as any).patientName) {
+          patientName = (appt as any).patientName;
+        }
 
-    norm.forEach((r: any) => {
+        const { total, items: payoutItems } = calculateReferralPayout(appt);
+        
+        return {
+          id: appt.id,
+          patientName,
+          procedureLabel: payoutItems.length > 0 ? payoutItems.map(i => i.label).join(', ') : (appt.procedureName || appt.serviceName || appt.specificProcedure || 'General Referral'),
+          amountGhs: total,
+          _createdAt: toDateSafe(appt.createdAt || appt.startAt) || new Date(),
+        };
+      })
+      // Keep everything for now so the doctor sees the list
+      .sort((a, b) => b._createdAt.getTime() - a._createdAt.getTime());
+
+    norm.forEach((r) => {
       const d = dayjs(r._createdAt);
-      const amount = Number((r as any).amountGhs) || 0;
-      if (d.isSameOrAfter(weekStart)) w += amount;
-      if (d.isSameOrAfter(monthStart)) m += amount;
+      if (d.isSameOrAfter(weekStart)) w += r.amountGhs;
+      if (d.isSameOrAfter(monthStart)) m += r.amountGhs;
     });
 
     return { weekTotal: w, monthTotal: m, normalized: norm };
@@ -108,18 +128,23 @@ export default function ReferralsScreen() {
         keyExtractor={(r: any) => r.id || `${r.doctorId}_${r.appointmentId}_${r.procedureKey}_${r._createdAt.getTime()}`}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         renderItem={({ item }: { item: any }) => (
-          <View style={styles.rowCard}>
+          <TouchableOpacity 
+            style={styles.rowCard} 
+            activeOpacity={0.7}
+            onPress={() => {
+              const fullAppt = items.find(a => a.id === item.id);
+              if (fullAppt) setSelectedAppointment(fullAppt);
+            }}
+          >
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{item.procedureLabel || 'Referral'}</Text>
-              <Text style={styles.rowSub}>
-                {dayjs(item._createdAt).isValid() ? dayjs(item._createdAt).format('MMM D, YYYY') : '—'}
-                {item.patientName ? ` • ${item.patientName}` : ''}
-              </Text>
+              <Text style={styles.rowTitle}>{item.patientName}</Text>
+              <Text style={styles.rowSub}>{item.procedureLabel} • {dayjs(item._createdAt).format('MMM D, YYYY')}</Text>
             </View>
             <View style={styles.amountPill}>
               <Text style={styles.amountText}>GHS {Number(item.amountGhs) || 0}</Text>
             </View>
-          </View>
+            <Feather name="chevron-right" size={16} color={COLORS.border} style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
         )}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
@@ -128,6 +153,95 @@ export default function ReferralsScreen() {
           </View>
         }
       />
+      <Modal visible={!!selectedAppointment} transparent animationType="slide" onRequestClose={() => setSelectedAppointment(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Appointment Details</Text>
+              <TouchableOpacity onPress={() => setSelectedAppointment(null)} style={styles.closeBtn}>
+                <Feather name="x" size={24} color={COLORS.textMain} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedAppointment && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Patient Info */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>PATIENT</Text>
+                  <View style={styles.patientRow}>
+                    <View style={styles.patientAvatar}>
+                      <Feather name="user" size={24} color={COLORS.primary} />
+                    </View>
+                    <View>
+                      <Text style={styles.detailValueLg}>
+                        {selectedAppointment.patientDetails?.fullName || 
+                         `${selectedAppointment.patientDetails?.firstName || ''} ${selectedAppointment.patientDetails?.lastName || ''}`.trim() || 
+                         'Patient'}
+                      </Text>
+                      <Text style={styles.detailSub}>{selectedAppointment.patientDetails?.phone || 'No phone'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Appointment Info */}
+                <View style={styles.detailGrid}>
+                  <View style={styles.gridItem}>
+                    <Text style={styles.detailLabel}>BOOKING DATE</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedAppointment.createdAt ? dayjs(selectedAppointment.createdAt.toDate ? selectedAppointment.createdAt.toDate() : selectedAppointment.createdAt).format('MMM DD, YYYY') : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.gridItem}>
+                    <Text style={styles.detailLabel}>BOOKING TIME</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedAppointment.createdAt ? dayjs(selectedAppointment.createdAt.toDate ? selectedAppointment.createdAt.toDate() : selectedAppointment.createdAt).format('h:mm A') : 'N/A'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>STATUS</Text>
+                  <View style={[styles.statusBanner, {
+                    backgroundColor:
+                      selectedAppointment.status === 'completed' ? '#D1FAE5' :
+                        selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? '#FEE2E2' :
+                          '#FEF3C7',
+                    marginTop: 0,
+                    justifyContent: 'flex-start',
+                    paddingHorizontal: 0,
+                    backgroundColor: 'transparent'
+                  }]}>
+                    <Text style={[styles.detailValue, {
+                      color:
+                        selectedAppointment.status === 'completed' ? '#10B981' :
+                          selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? '#EF4444' : '#F59E0B',
+                      textTransform: 'uppercase'
+                    }]}>
+                      {selectedAppointment.status || 'PENDING'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>PROCEDURE</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedAppointment.specificProcedure || selectedAppointment.procedureName || 'General Procedure'}
+                  </Text>
+                </View>
+
+                {(selectedAppointment.notes || (selectedAppointment as any).reason) && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>NOTES</Text>
+                    <Text style={styles.detailBody}>{selectedAppointment.notes || (selectedAppointment as any).reason}</Text>
+                  </View>
+                )}
+
+                {/* Status removed from here as it is now at the top */}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -172,4 +286,32 @@ const styles = StyleSheet.create({
   emptyWrap: { padding: 24, alignItems: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textMain, textAlign: 'center' },
   emptySub: { fontSize: 13, fontWeight: '600', color: COLORS.textSub, textAlign: 'center', marginTop: 8 },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32,
+    padding: 24, paddingBottom: 40, maxHeight: '80%', ...SHADOW
+  },
+  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textMain },
+  closeBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.bg,
+    alignItems: 'center', justifyContent: 'center'
+  },
+  detailSection: { marginBottom: 16 },
+  detailLabel: { fontSize: 10, fontWeight: '700', color: COLORS.textSub, marginBottom: 4, letterSpacing: 0.5 },
+  detailValue: { fontSize: 14, fontWeight: '600', color: COLORS.textMain },
+  detailValueLg: { fontSize: 16, fontWeight: '700', color: COLORS.textMain },
+  detailSub: { fontSize: 12, color: COLORS.textSub, marginTop: 1 },
+  detailBody: { fontSize: 13, color: COLORS.textMain, lineHeight: 20 },
+  patientRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  patientAvatar: {
+    width: 48, height: 48, borderRadius: 16, backgroundColor: COLORS.primarySoft,
+    alignItems: 'center', justifyContent: 'center'
+  },
+  detailGrid: { flexDirection: 'row', gap: 16, marginBottom: 16 },
+  gridItem: { flex: 1 },
+  statusBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12, borderRadius: 12, marginTop: 8 },
+  statusBannerText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
 });

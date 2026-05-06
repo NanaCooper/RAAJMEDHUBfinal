@@ -48,7 +48,7 @@ export default function DoctorDashboard() {
     return () => { try { unsubAppts(); } catch { } };
   }, [session?.uid]);
 
-  const patientsInQueue = appointments.filter(a => ['pending', 'waiting', 'checked-in'].includes((a.status || '').toString())).length;
+  const totalReferrals = appointments.length;
 
   const patientsSeenThisWeek = appointments.filter(a => {
     const status = a.status || '';
@@ -143,10 +143,10 @@ export default function DoctorDashboard() {
         <View style={styles.secondaryStatsRow}>
           <View style={styles.secondaryCard}>
             <View style={[styles.iconBox, { backgroundColor: '#F1F5F9' }]}>
-              <Feather name="clock" size={20} color={COLORS.textSec} />
+              <Feather name="trending-up" size={20} color={COLORS.primary} />
             </View>
-            <Text style={styles.secondaryNumber}>{patientsInQueue}</Text>
-            <Text style={styles.secondaryLabel}>Waiting Queue</Text>
+            <Text style={styles.secondaryNumber}>{totalReferrals}</Text>
+            <Text style={styles.secondaryLabel}>Total Referrals</Text>
           </View>
 
           <View style={styles.secondaryCard}>
