@@ -10,7 +10,8 @@ import {
   TextInput, 
   ActivityIndicator, 
   StatusBar,
-  Platform
+  Platform,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import {
   deleteUserAccount 
 } from '../../services/users';
 import { updateNotificationPreferences } from '../../services/notifications';
+import { getAuthInstance } from '../../utils/firebaseConfig';
 
 // --- Premium Palette ---
 const COLORS = {
@@ -119,6 +121,9 @@ const PatientSettingsScreen = () => {
   });
 
   const [passwordData, setPasswordData] = useState({ current: '', new: '' });
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteNeedsPassword, setDeleteNeedsPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -149,6 +154,29 @@ const PatientSettingsScreen = () => {
     ]);
   };
 
+  const performDelete = async (password?: string) => {
+    setLoading(true);
+    try {
+      await deleteUserAccount(password);
+      router.replace('/login');
+    } catch (error: any) {
+      if (error.message === 'PASSWORD_REQUIRED') {
+        setDeleteNeedsPassword(true);
+        setDeleteModalVisible(true);
+      } else if (error.message === 'REQUIRES_REAUTH') {
+        Alert.alert("Session Expired", "Please sign out and sign back in, then try deleting your account again.");
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        Alert.alert("Wrong Password", "The password you entered is incorrect. Please try again.");
+      } else if (error.message === 'GOOGLE_REAUTH_FAILED') {
+        Alert.alert("Verification Failed", "Could not confirm your Google sign-in. Please try again.");
+      } else {
+        Alert.alert("Error", "Failed to delete account. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
     // Step 1: First confirmation
     Alert.alert(
@@ -159,32 +187,24 @@ const PatientSettingsScreen = () => {
         {
           text: "Continue",
           style: "destructive",
-          onPress: () => {
-            // Step 2: Ask for password to re-authenticate
-            Alert.prompt(
-              "Confirm Your Password",
-              "For security, please enter your password to permanently delete your account.",
-              async (password) => {
-                if (!password) return;
-                setLoading(true);
-                try {
-                  await deleteUserAccount(password);
-                  router.replace('/login');
-                } catch (error: any) {
-                  if (error.message === 'REQUIRES_REAUTH') {
-                    Alert.alert("Session Expired", "Please sign out and sign back in, then try deleting your account again.");
-                  } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-                    Alert.alert("Wrong Password", "The password you entered is incorrect. Please try again.");
-                  } else {
-                    Alert.alert("Error", "Failed to delete account. Please try again.");
-                  }
-                } finally {
-                  setLoading(false);
-                }
-              },
-              "secure-text"
-            );
-          }
+          onPress: async () => {
+            try {
+              const auth = await getAuthInstance();
+              const providers: string[] = (auth.currentUser?.providerData || []).map((p: any) => p.providerId).filter(Boolean);
+              const hasPasswordProvider = providers.includes('password');
+
+              if (hasPasswordProvider) {
+                setDeleteNeedsPassword(true);
+                setDeleteModalVisible(true);
+              } else {
+                setDeleteNeedsPassword(false);
+                await performDelete();
+              }
+            } catch {
+              // Fallback: attempt delete (service will decide if password/reauth is required)
+              await performDelete();
+            }
+          },
         },
       ]
     );
@@ -359,6 +379,74 @@ const PatientSettingsScreen = () => {
         </View>
 
       </ScrollView>
+
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setDeleteModalVisible(false);
+          setDeletePassword('');
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <Text style={styles.deleteModalTitle}>Confirm Account Deletion</Text>
+            {deleteNeedsPassword ? (
+              <>
+                <Text style={styles.deleteModalText}>
+                  For security, enter your password to permanently delete your account.
+                </Text>
+                <TextInput
+                  style={styles.deletePasswordInput}
+                  placeholder="Password"
+                  placeholderTextColor={COLORS.textSec}
+                  secureTextEntry
+                  value={deletePassword}
+                  onChangeText={setDeletePassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </>
+            ) : (
+              <Text style={styles.deleteModalText}>
+                For security, you may be asked to confirm your sign-in provider before deletion.
+              </Text>
+            )}
+
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalCancelBtn]}
+                onPress={() => {
+                  setDeleteModalVisible(false);
+                  setDeletePassword('');
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.deleteModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalDeleteBtn, loading && { opacity: 0.7 }]}
+                onPress={async () => {
+                  if (deleteNeedsPassword && !deletePassword) return;
+                  setDeleteModalVisible(false);
+                  const pwd = deleteNeedsPassword ? deletePassword : undefined;
+                  setDeletePassword('');
+                  await performDelete(pwd);
+                }}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteModalDeleteText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -579,6 +667,78 @@ const styles = StyleSheet.create({
     color: COLORS.textSec,
     marginTop: 20,
     opacity: 0.6,
+  },
+
+  // Delete modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  deleteModalContent: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOW,
+  },
+  deleteModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.textMain,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  deleteModalText: {
+    fontSize: 13,
+    color: COLORS.textSec,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  deletePasswordInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: COLORS.textMain,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  deleteModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalCancelBtn: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginRight: 10,
+  },
+  deleteModalDeleteBtn: {
+    backgroundColor: COLORS.danger,
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textMain,
+  },
+  deleteModalDeleteText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
   },
 });
 

@@ -1,0 +1,108 @@
+diff --git a/node_modules/react-native-screens/android/.gradle/nb-cache/trust/B4C76CE0AAF9EB3F4A695D3DBA851DE91F3F1385CAB441CBF22708000DAF0325 b/node_modules/react-native-screens/android/.gradle/nb-cache/trust/B4C76CE0AAF9EB3F4A695D3DBA851DE91F3F1385CAB441CBF22708000DAF0325
+new file mode 100644
+index 0000000..e7201a2
+--- /dev/null
++++ b/node_modules/react-native-screens/android/.gradle/nb-cache/trust/B4C76CE0AAF9EB3F4A695D3DBA851DE91F3F1385CAB441CBF22708000DAF0325
+@@ -0,0 +1 @@
++D479F5EF095354E212B22FA29E0F227EA83521AE005DB404C0C2DDE728F7DC27
+diff --git a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt
+index 7af40fa..7efeaf6 100644
+--- a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt
++++ b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenWindowTraits.kt
+@@ -8,6 +8,7 @@ import android.graphics.Color
+ import android.os.Build
+ import android.view.View
+ import android.view.ViewParent
++import android.view.Window
+ import androidx.core.graphics.Insets
+ import androidx.core.view.OnApplyWindowInsetsListener
+ import androidx.core.view.ViewCompat
+@@ -28,6 +29,50 @@ object ScreenWindowTraits {
+     private var didSetNavigationBarAppearance = false
+     private var defaultStatusBarColor: Int? = null
+ 
++    private const val API_35 = 35
++
++    private fun getStatusBarColorCompat(window: Window): Int? {
++        if (Build.VERSION.SDK_INT >= API_35) return null
++        return try {
++            val value = window.javaClass.getMethod("getStatusBarColor").invoke(window)
++            (value as? Number)?.toInt()
++        } catch (_: Throwable) {
++            null
++        }
++    }
++
++    private fun setStatusBarColorCompat(window: Window, color: Int) {
++        if (Build.VERSION.SDK_INT >= API_35) return
++        try {
++            window.javaClass
++                .getMethod("setStatusBarColor", Int::class.javaPrimitiveType)
++                .invoke(window, color)
++        } catch (_: Throwable) {
++            // ignore
++        }
++    }
++
++    private fun getNavigationBarColorCompat(window: Window): Int? {
++        if (Build.VERSION.SDK_INT >= API_35) return null
++        return try {
++            val value = window.javaClass.getMethod("getNavigationBarColor").invoke(window)
++            (value as? Number)?.toInt()
++        } catch (_: Throwable) {
++            null
++        }
++    }
++
++    private fun setNavigationBarColorCompat(window: Window, color: Int) {
++        if (Build.VERSION.SDK_INT >= API_35) return
++        try {
++            window.javaClass
++                .getMethod("setNavigationBarColor", Int::class.javaPrimitiveType)
++                .invoke(window, color)
++        } catch (_: Throwable) {
++            // ignore
++        }
++    }
++
+     private var windowInsetsListener =
+         object : OnApplyWindowInsetsListener {
+             override fun onApplyWindowInsets(
+@@ -99,7 +144,7 @@ object ScreenWindowTraits {
+             return
+         }
+         if (defaultStatusBarColor == null) {
+-            defaultStatusBarColor = activity.window.statusBarColor
++            defaultStatusBarColor = getStatusBarColorCompat(activity.window)
+         }
+         val screenForColor = findScreenForTrait(screen, WindowTraits.COLOR)
+         val screenForAnimated = findScreenForTrait(screen, WindowTraits.ANIMATED)
+@@ -110,10 +155,10 @@ object ScreenWindowTraits {
+             object : GuardedRunnable(context.exceptionHandler) {
+                 override fun runGuarded() {
+                     val window = activity.window
+-                    val curColor: Int = window.statusBarColor
++                    val curColor: Int = getStatusBarColorCompat(window) ?: Color.BLACK
+                     val colorAnimation = ValueAnimator.ofObject(ArgbEvaluator(), curColor, color)
+                     colorAnimation.addUpdateListener { animator ->
+-                        window.statusBarColor = animator.animatedValue as Int
++                        setStatusBarColorCompat(window, animator.animatedValue as Int)
+                     }
+                     if (animated) {
+                         colorAnimation.setDuration(300).startDelay = 0
+@@ -215,13 +260,13 @@ object ScreenWindowTraits {
+         val window = activity.window
+ 
+         val screenForNavBarColor = findScreenForTrait(screen, WindowTraits.NAVIGATION_BAR_COLOR)
+-        val color = screenForNavBarColor?.navigationBarColor ?: window.navigationBarColor
++        val color = screenForNavBarColor?.navigationBarColor ?: (getNavigationBarColorCompat(window) ?: Color.BLACK)
+ 
+         UiThreadUtil.runOnUiThread {
+             WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars =
+                 isColorLight(color)
+         }
+-        window.navigationBarColor = color
++        setNavigationBarColorCompat(window, color)
+     }
+ 
+     @Deprecated(

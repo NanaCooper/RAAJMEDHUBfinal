@@ -1,5 +1,7 @@
 import { db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot, addDoc, collection, deleteDoc } from '../utils/firebaseConfig';
-import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential, deleteUser } from 'firebase/auth';
+import { getAuthInstance, GoogleAuthProvider } from '../utils/firebaseConfig';
+import { EmailAuthProvider } from '@react-native-firebase/auth';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import type { AppUser } from '../types/user';
 
 export async function createUserProfile(user: AppUser) {
@@ -43,14 +45,14 @@ export async function updateUserProfile(userId: string, patch: Partial<AppUser>)
 }
 
 export async function updateUserPassword(currentPassword: string, newPassword: string) {
-  const auth = getAuth();
+  const auth = await getAuthInstance();
   const user = auth.currentUser;
 
   if (user && user.email) {
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     try {
-      await reauthenticateWithCredential(user, credential);
-      await updatePassword(user, newPassword);
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
     } catch (error) {
       console.error("Error updating password:", error);
       throw error;
@@ -58,6 +60,31 @@ export async function updateUserPassword(currentPassword: string, newPassword: s
   } else {
     throw new Error("User not found or email not available.");
   }
+}
+
+async function reauthenticateWithGoogleIfPossible(user: any) {
+  // Requires that GoogleSignin.configure(...) has run (done in AuthProvider).
+  await GoogleSignin.hasPlayServices();
+
+  let idToken: string | null | undefined;
+  try {
+    const silent = await GoogleSignin.signInSilently();
+    idToken = silent?.data?.idToken;
+  } catch {
+    // ignore
+  }
+
+  if (!idToken) {
+    const interactive = await GoogleSignin.signIn();
+    idToken = interactive?.data?.idToken;
+  }
+
+  if (!idToken) {
+    throw new Error('GOOGLE_REAUTH_FAILED');
+  }
+
+  const credential = GoogleAuthProvider.credential(idToken);
+  await user.reauthenticateWithCredential(credential);
 }
 
 export async function requestDataExport(userId: string) {
@@ -91,15 +118,26 @@ export async function setUserOnlineStatus(userId: string, online: boolean) {
   });
 }
 export async function deleteUserAccount(password?: string) {
-  const auth = getAuth();
+  const auth = await getAuthInstance();
   const user = auth.currentUser;
   if (!user) throw new Error("No authenticated user found.");
 
   try {
-    // Step 1: Re-authenticate if password provided (required for sensitive ops)
-    if (password && user.email) {
+    // Step 1: Re-authenticate (required for sensitive ops like account deletion)
+    const providers: string[] = (user.providerData || []).map((p: any) => p.providerId).filter(Boolean);
+    const hasPasswordProvider = providers.includes('password');
+    const hasGoogleProvider = providers.includes('google.com');
+
+    if (password) {
+      if (!user.email) throw new Error('User email not available.');
       const credential = EmailAuthProvider.credential(user.email, password);
-      await reauthenticateWithCredential(user, credential);
+      await user.reauthenticateWithCredential(credential);
+    } else if (hasPasswordProvider) {
+      // Email/password account: require password confirmation.
+      throw new Error('PASSWORD_REQUIRED');
+    } else if (hasGoogleProvider) {
+      // Google-first account: confirm by reauth with Google.
+      await reauthenticateWithGoogleIfPossible(user);
     }
 
     const uid = user.uid;
@@ -114,11 +152,11 @@ export async function deleteUserAccount(password?: string) {
     await Promise.allSettled(deletions);
 
     // Step 3: Delete the Firebase Auth account itself
-    await deleteUser(user);
+    await user.delete();
   } catch (error: any) {
     console.error("Account deletion error:", error);
     // Surface a human-readable message for the UI
-    if (error.code === 'auth/requires-recent-login') {
+    if (error?.code === 'auth/requires-recent-login') {
       throw new Error("REQUIRES_REAUTH");
     }
     throw error;

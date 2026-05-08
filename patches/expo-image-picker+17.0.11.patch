@@ -1,0 +1,31 @@
+diff --git a/node_modules/expo-image-picker/android/src/main/java/expo/modules/imagepicker/ExpoCropImageUtils.kt b/node_modules/expo-image-picker/android/src/main/java/expo/modules/imagepicker/ExpoCropImageUtils.kt
+index a876bbc..7d37f28 100644
+--- a/node_modules/expo-image-picker/android/src/main/java/expo/modules/imagepicker/ExpoCropImageUtils.kt
++++ b/node_modules/expo-image-picker/android/src/main/java/expo/modules/imagepicker/ExpoCropImageUtils.kt
+@@ -10,6 +10,17 @@ import androidx.core.view.WindowInsetsControllerCompat
+  */
+ object ExpoCropImageUtils {
+ 
++  private const val API_35 = 35
++
++  private fun setStatusBarColorCompat(window: android.view.Window, color: Int) {
++    if (android.os.Build.VERSION.SDK_INT >= API_35) return
++    runCatching {
++      window.javaClass
++        .getMethod("setStatusBarColor", Int::class.javaPrimitiveType)
++        .invoke(window, color)
++    }
++  }
++
+   /**
+    * Gets a color value from the theme attributes.
+    * @param theme The theme to resolve the attribute from
+@@ -81,7 +92,7 @@ object ExpoCropImageUtils {
+     toolbarColor: Int,
+     isNight: Boolean
+   ) {
+-    window.statusBarColor = toolbarColor
++    setStatusBarColorCompat(window, toolbarColor)
+     WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isNight
+   }
+ }

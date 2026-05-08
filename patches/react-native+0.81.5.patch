@@ -1,0 +1,192 @@
+diff --git a/node_modules/react-native/.gradle/nb-cache/trust/FB4DC5B9A1FE32D353426D02ACC1B19C864D9D50E346B1EDC8A05D3A8386F8EA b/node_modules/react-native/.gradle/nb-cache/trust/FB4DC5B9A1FE32D353426D02ACC1B19C864D9D50E346B1EDC8A05D3A8386F8EA
+new file mode 100644
+index 0000000..37c75f0
+--- /dev/null
++++ b/node_modules/react-native/.gradle/nb-cache/trust/FB4DC5B9A1FE32D353426D02ACC1B19C864D9D50E346B1EDC8A05D3A8386F8EA
+@@ -0,0 +1 @@
++32DE9F66CAB632BCB43E2A84DCBDA8CC94F914794A2E6D3D930E52FE4CED1BA9
+diff --git a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/statusbar/StatusBarModule.kt b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/statusbar/StatusBarModule.kt
+index dbae14c..8f7e555 100644
+--- a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/statusbar/StatusBarModule.kt
++++ b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/statusbar/StatusBarModule.kt
+@@ -9,6 +9,7 @@ package com.facebook.react.modules.statusbar
+ 
+ import android.animation.ArgbEvaluator
+ import android.animation.ValueAnimator
++import android.graphics.Color
+ import android.os.Build
+ import android.view.View
+ import android.view.WindowInsetsController
+@@ -32,11 +33,11 @@ import com.facebook.react.views.view.setStatusBarVisibility
+ internal class StatusBarModule(reactContext: ReactApplicationContext?) :
+     NativeStatusBarManagerAndroidSpec(reactContext) {
+ 
+-  @Suppress("DEPRECATION")
+   override fun getTypedExportedConstants(): Map<String, Any> {
+     val currentActivity = reactApplicationContext.currentActivity
+     val statusBarColor =
+-        currentActivity?.window?.statusBarColor?.let { color ->
++        currentActivity?.window?.let { window ->
++          val color = getStatusBarColorCompat(window) ?: Color.BLACK
+           String.format("#%06X", 0xFFFFFF and color)
+         } ?: "black"
+     return mapOf(
+@@ -45,7 +46,6 @@ internal class StatusBarModule(reactContext: ReactApplicationContext?) :
+     )
+   }
+ 
+-  @Suppress("DEPRECATION")
+   override fun setColor(colorDouble: Double, animated: Boolean) {
+     val color = colorDouble.toInt()
+     val activity = reactApplicationContext.getCurrentActivity()
+@@ -55,6 +55,13 @@ internal class StatusBarModule(reactContext: ReactApplicationContext?) :
+           "StatusBarModule: Ignored status bar change, current activity is null.")
+       return
+     }
++    if (Build.VERSION.SDK_INT >= API_35) {
++      // Android 15 (API 35+) enforces edge-to-edge; system bar colors are deprecated/disabled.
++      FLog.w(
++          ReactConstants.TAG,
++          "StatusBarModule: Ignored status bar change on Android 15+ (API 35+).")
++      return
++    }
+     if (isEdgeToEdgeFeatureFlagOn) {
+       FLog.w(
+           ReactConstants.TAG,
+@@ -67,15 +74,15 @@ internal class StatusBarModule(reactContext: ReactApplicationContext?) :
+             val window = activity.window ?: return
+             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+             if (animated) {
+-              val curColor = window.statusBarColor
++              val curColor = getStatusBarColorCompat(window) ?: Color.BLACK
+               val colorAnimation = ValueAnimator.ofObject(ArgbEvaluator(), curColor, color)
+               colorAnimation.addUpdateListener { animator ->
+-                activity.window?.statusBarColor = (animator.animatedValue as Int)
++                activity.window?.let { w -> setStatusBarColorCompat(w, animator.animatedValue as Int) }
+               }
+               colorAnimation.setDuration(300).startDelay = 0
+               colorAnimation.start()
+             } else {
+-              window.statusBarColor = color
++              setStatusBarColorCompat(window, color)
+             }
+           }
+         })
+@@ -155,5 +162,28 @@ internal class StatusBarModule(reactContext: ReactApplicationContext?) :
+     private const val HEIGHT_KEY = "HEIGHT"
+     private const val DEFAULT_BACKGROUND_COLOR_KEY = "DEFAULT_BACKGROUND_COLOR"
+     const val NAME: String = NativeStatusBarManagerAndroidSpec.NAME
++
++    private const val API_35 = 35
++
++    private fun getStatusBarColorCompat(window: android.view.Window): Int? {
++      if (Build.VERSION.SDK_INT >= API_35) return null
++      return try {
++        val value = window.javaClass.getMethod("getStatusBarColor").invoke(window)
++        (value as? Number)?.toInt()
++      } catch (_: Throwable) {
++        null
++      }
++    }
++
++    private fun setStatusBarColorCompat(window: android.view.Window, color: Int) {
++      if (Build.VERSION.SDK_INT >= API_35) return
++      try {
++        window.javaClass
++            .getMethod("setStatusBarColor", Int::class.javaPrimitiveType)
++            .invoke(window, color)
++      } catch (_: Throwable) {
++        // ignore
++      }
++    }
+   }
+ }
+diff --git a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/WindowUtil.kt b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/WindowUtil.kt
+index 60f2a94..79f17d9 100644
+--- a/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/WindowUtil.kt
++++ b/node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/WindowUtil.kt
+@@ -64,7 +64,6 @@ internal fun Window.setStatusBarVisibility(isHidden: Boolean) {
+   }
+ }
+ 
+-@Suppress("DEPRECATION")
+ private fun Window.statusBarHide() {
+   if (isEdgeToEdgeFeatureFlagOn) {
+     WindowInsetsControllerCompat(this, decorView).run {
+@@ -76,14 +75,13 @@ private fun Window.statusBarHide() {
+       // Ensure the content extends into the cutout area
+       attributes.layoutInDisplayCutoutMode =
+           WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+-      setDecorFitsSystemWindows(false)
++      WindowCompat.setDecorFitsSystemWindows(this, false)
+     }
+     addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+     clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+   }
+ }
+ 
+-@Suppress("DEPRECATION")
+ private fun Window.statusBarShow() {
+   if (isEdgeToEdgeFeatureFlagOn) {
+     WindowInsetsControllerCompat(this, decorView).run {
+@@ -94,14 +92,13 @@ private fun Window.statusBarShow() {
+     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+       attributes.layoutInDisplayCutoutMode =
+           WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+-      setDecorFitsSystemWindows(true)
++      WindowCompat.setDecorFitsSystemWindows(this, true)
+     }
+     addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+     clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+   }
+ }
+ 
+-@Suppress("DEPRECATION")
+ internal fun Window.enableEdgeToEdge() {
+   WindowCompat.setDecorFitsSystemWindows(this, false)
+ 
+@@ -112,13 +109,14 @@ internal fun Window.enableEdgeToEdge() {
+     isNavigationBarContrastEnforced = true
+   }
+ 
+-  statusBarColor = Color.TRANSPARENT
+-  navigationBarColor =
++  setStatusBarColorCompat(Color.TRANSPARENT)
++  setNavigationBarColorCompat(
+       when {
+         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> Color.TRANSPARENT
+         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isDarkMode -> LightNavigationBarColor
+         else -> DarkNavigationBarColor
+       }
++  )
+ 
+   WindowInsetsControllerCompat(this, decorView).run {
+     isAppearanceLightNavigationBars = !isDarkMode
+@@ -137,3 +135,27 @@ internal fun Window.enableEdgeToEdge() {
+ internal fun Window.disableEdgeToEdge() {
+   WindowCompat.setDecorFitsSystemWindows(this, true)
+ }
++
++private const val API_35 = 35
++
++private fun Window.setStatusBarColorCompat(color: Int) {
++  if (Build.VERSION.SDK_INT >= API_35) return
++  try {
++    this.javaClass
++        .getMethod("setStatusBarColor", Int::class.javaPrimitiveType)
++        .invoke(this, color)
++  } catch (_: Throwable) {
++    // ignore
++  }
++}
++
++private fun Window.setNavigationBarColorCompat(color: Int) {
++  if (Build.VERSION.SDK_INT >= API_35) return
++  try {
++    this.javaClass
++        .getMethod("setNavigationBarColor", Int::class.javaPrimitiveType)
++        .invoke(this, color)
++  } catch (_: Throwable) {
++    // ignore
++  }
++}
