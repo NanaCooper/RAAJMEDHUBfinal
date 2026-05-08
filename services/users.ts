@@ -1,5 +1,8 @@
-import { db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot, addDoc, collection, deleteDoc } from '../utils/firebaseConfig';
-import { getAuthInstance, GoogleAuthProvider } from '../utils/firebaseConfig';
+import { 
+  db, doc, getDoc, setDoc, updateDoc, serverTimestamp, 
+  onSnapshot, addDoc, collection, deleteDoc,
+  getAuthInstance, GoogleAuthProvider 
+} from '../utils/firebaseConfig';
 import { EmailAuthProvider } from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import type { AppUser } from '../types/user';

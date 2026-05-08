@@ -20,7 +20,7 @@ import {
   sendRequestSubmittedNotification, 
   scheduleAppointmentReminders 
 } from "../../services/notifications";
-import { Feather, MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 
 // --- Theme ---
 const COLORS = {
@@ -34,6 +34,8 @@ const COLORS = {
   backdrop: "rgba(0,0,0,0.5)",
   success: "#10B981",
   successSoft: "#ECFDF5",
+  textSub: "#94A3B8", // Slate 400
+  bg: "#F8FAFC",      // Slate 50
 };
 
 const SHADOW = {
@@ -57,12 +59,11 @@ export default function BookingConfirmationModal() {
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   // Parse details from params once to avoid re-renders from param object identity change
-  const { date, appointmentData, scanType, branch } = useMemo(() => {
+  const { appointmentData, scanType, branch } = useMemo(() => {
     try {
       const data = JSON.parse((params.appointmentData as string) || '{}');
       console.log("--- [booking-confirmation.tsx] Params parsed: ", JSON.stringify(params, null, 2));
       return {
-        date: params.date as string,
         appointmentData: data,
         scanType: data?.scanType?.name || (Array.isArray(data?.scanTypes) ? data.scanTypes.map((s: any) => s.name).join(', ') : 'Consultation'),
         branch: data?.branch || 'MediCare Central Clinic',
@@ -70,7 +71,7 @@ export default function BookingConfirmationModal() {
     } catch (e) {
       console.error("--- [booking-confirmation.tsx] Failed to parse appointment data ---", e);
       Alert.alert("Error", "Could not load appointment details.", [{ text: "OK", onPress: () => router.back() }]);
-      return { date: '', appointmentData: null, scanType: 'Error', branch: '' };
+      return { appointmentData: null, scanType: 'Error', branch: '' };
     }
   }, [params, router]);
 
@@ -95,7 +96,7 @@ export default function BookingConfirmationModal() {
       console.log("--- [booking-confirmation.tsx] Cleanup Effect ---");
       subscription.remove();
     }
-  }, [router, scaleAnim, isLoading]);
+  }, [router, scaleAnim, isLoading, isConfirmed]);
 
   const handleConfirm = async () => {
     console.log("--- [booking-confirmation.tsx] handleConfirm triggered (FINAL CHECK) ---");
@@ -143,7 +144,7 @@ export default function BookingConfirmationModal() {
               : [];
 
           const matchedKeys = new Set<string>();
-          const createdItems: Array<{ label: string; amountGhs: number }> = [];
+          const createdItems: { label: string; amountGhs: number }[] = [];
 
           // 1. Process explicit scan types (best for price-based 10% fallback)
           if (scanTypesArr.length > 0) {

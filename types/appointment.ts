@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'requested';
+export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'requested' | 'denied';
 
 export interface ScanType {
   id: string;
@@ -17,6 +17,10 @@ export interface Appointment {
   notes?: string;
   branch?: 'Koforidua' | 'Takoradi' | 'Cape Coast';
   scanType?: ScanType;
+  procedureName?: string;
+  serviceName?: string;
+  specificProcedure?: string;
+  patientName?: string;
   patientDetails?: {
     firstName: string;
     middleName?: string;
@@ -27,6 +31,7 @@ export interface Appointment {
     weight?: string;
     weightUnit?: string;
     age?: number;
+    fullName?: string;
     [key: string]: any;
   };
   createdAt?: Timestamp | string;

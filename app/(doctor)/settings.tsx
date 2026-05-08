@@ -264,7 +264,7 @@ const DoctorSettingsScreen = () => {
       setProfileData(tempProfileData);
       setIsEditModalVisible(false);
       Alert.alert("Success", "Profile updated successfully!");
-    } catch (err: any) {
+    } catch {
       Alert.alert("Error", "Failed to update profile.");
     } finally {
       setLoading(false);

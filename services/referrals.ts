@@ -72,7 +72,7 @@ export function inferReferralProcedure(text: string): { key: ReferralProcedureKe
  * Calculates the total payout for an appointment based on its scan types and details.
  * Shared between booking confirmation and the referrals screen.
  */
-export function calculateReferralPayout(appointment: any): { total: number; items: Array<{ label: string; amountGhs: number; key: string }> } {
+export function calculateReferralPayout(appointment: any): { total: number; items: { label: string; amountGhs: number; key: string }[] } {
   if (!appointment) return { total: 0, items: [] };
 
   // 1. Gather all possible scan/service sources
@@ -91,7 +91,7 @@ export function calculateReferralPayout(appointment: any): { total: number; item
   const procedureName = appointment.procedureName || appointment.serviceName || '';
   
   const matchedKeys = new Set<string>();
-  const items: Array<{ label: string; amountGhs: number; key: string }> = [];
+  const items: { label: string; amountGhs: number; key: string }[] = [];
 
   // 2. Process explicit scan/service types
   for (const s of scanTypesArr) {

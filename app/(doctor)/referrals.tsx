@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 
@@ -188,13 +188,13 @@ export default function ReferralsScreen() {
                   <View style={styles.gridItem}>
                     <Text style={styles.detailLabel}>BOOKING DATE</Text>
                     <Text style={styles.detailValue}>
-                      {selectedAppointment.createdAt ? dayjs(selectedAppointment.createdAt.toDate ? selectedAppointment.createdAt.toDate() : selectedAppointment.createdAt).format('MMM DD, YYYY') : 'N/A'}
+                      {selectedAppointment.createdAt ? dayjs(toDateSafe(selectedAppointment.createdAt)).format('MMM DD, YYYY') : 'N/A'}
                     </Text>
                   </View>
                   <View style={styles.gridItem}>
                     <Text style={styles.detailLabel}>BOOKING TIME</Text>
                     <Text style={styles.detailValue}>
-                      {selectedAppointment.createdAt ? dayjs(selectedAppointment.createdAt.toDate ? selectedAppointment.createdAt.toDate() : selectedAppointment.createdAt).format('h:mm A') : 'N/A'}
+                      {selectedAppointment.createdAt ? dayjs(toDateSafe(selectedAppointment.createdAt)).format('h:mm A') : 'N/A'}
                     </Text>
                   </View>
                 </View>
@@ -209,7 +209,6 @@ export default function ReferralsScreen() {
                     marginTop: 0,
                     justifyContent: 'flex-start',
                     paddingHorizontal: 0,
-                    backgroundColor: 'transparent'
                   }]}>
                     <Text style={[styles.detailValue, {
                       color:
