@@ -3,7 +3,7 @@ import {
   onSnapshot, addDoc, collection, deleteDoc,
   getAuthInstance, GoogleAuthProvider 
 } from '../utils/firebaseConfig';
-import { EmailAuthProvider } from '@react-native-firebase/auth';
+import { EmailAuthProvider, reauthenticateWithCredential, deleteUser, updatePassword } from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import type { AppUser } from '../types/user';
 
@@ -54,8 +54,8 @@ export async function updateUserPassword(currentPassword: string, newPassword: s
   if (user && user.email) {
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     try {
-      await user.reauthenticateWithCredential(credential);
-      await user.updatePassword(newPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
     } catch (error) {
       console.error("Error updating password:", error);
       throw error;
@@ -87,7 +87,7 @@ async function reauthenticateWithGoogleIfPossible(user: any) {
   }
 
   const credential = GoogleAuthProvider.credential(idToken);
-  await user.reauthenticateWithCredential(credential);
+  await reauthenticateWithCredential(user, credential);
 }
 
 export async function requestDataExport(userId: string) {
@@ -134,7 +134,7 @@ export async function deleteUserAccount(password?: string) {
     if (password) {
       if (!user.email) throw new Error('User email not available.');
       const credential = EmailAuthProvider.credential(user.email, password);
-      await user.reauthenticateWithCredential(credential);
+      await reauthenticateWithCredential(user, credential);
     } else if (hasPasswordProvider) {
       // Email/password account: require password confirmation.
       throw new Error('PASSWORD_REQUIRED');
@@ -155,7 +155,7 @@ export async function deleteUserAccount(password?: string) {
     await Promise.allSettled(deletions);
 
     // Step 3: Delete the Firebase Auth account itself
-    await user.delete();
+    await deleteUser(user);
   } catch (error: any) {
     console.error("Account deletion error:", error);
     // Surface a human-readable message for the UI
