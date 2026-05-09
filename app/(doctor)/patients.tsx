@@ -6,16 +6,16 @@ import {
   TouchableOpacity,
   FlatList,
   TextInput,
-  StatusBar,
   Pressable,
   ActivityIndicator
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { subscribeToAppointments } from '../../services/appointments';
 import { db, doc, getDoc } from '../../utils/firebaseConfig';
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -55,7 +55,7 @@ export default function MyPatients() {
   const [loading, setLoading] = useState(true);
   const [patientCache, setPatientCache] = useState<Record<string, string>>({});
 
-  const fetchPatientName = async (pid: string) => {
+  const fetchPatientName = React.useCallback(async (pid: string) => {
     if (patientCache[pid]) return; // Already cached
     try {
       const snap = await getDoc(doc(db, 'users', pid));
@@ -67,7 +67,7 @@ export default function MyPatients() {
     } catch (e) {
       console.warn("Failed to fetch patient name", pid, e);
     }
-  };
+  }, [patientCache]);
 
   useEffect(() => {
     if (!session?.uid) return;
@@ -115,7 +115,7 @@ export default function MyPatients() {
       setLoading(false);
     });
     return () => { try { unsub(); } catch { } };
-  }, [session?.uid, patientCache]); // Re-run when cache updates to refresh names
+  }, [session?.uid, patientCache, fetchPatientName]); // Re-run when cache updates to refresh names
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -127,8 +127,7 @@ export default function MyPatients() {
     );
   }, [query, patients]);
 
-  const openPatient = (id: string) => router.push(`/patients/${id}`);
-  const startChat = (id: string) => router.push(`/doctor-messages/${id}`);
+  const openPatient = (id: string) => router.push(`/patients/${id}` as any);
 
   // --- Renderers ---
 
@@ -165,7 +164,7 @@ export default function MyPatients() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar style="dark" />
 
       {/* Header */}
 

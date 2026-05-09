@@ -6,11 +6,10 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  StatusBar,
   ActivityIndicator,
   TouchableOpacity,
-  Image,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -98,7 +97,7 @@ export default function DoctorProfile(): React.ReactElement {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar style="dark" />
 
      
 
@@ -250,7 +249,7 @@ const styles = StyleSheet.create({
   fieldContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.input,
+    backgroundColor: COLORS.bg,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,

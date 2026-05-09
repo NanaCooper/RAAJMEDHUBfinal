@@ -9,11 +9,11 @@ import {
   Alert, 
   TextInput, 
   ActivityIndicator, 
-  StatusBar,
   Platform,
   Image,
   Modal
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
@@ -273,7 +273,7 @@ const DoctorSettingsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar style="dark" />
       
       
 

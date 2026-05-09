@@ -5,9 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
-  StatusBar,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Drawer } from "expo-router/drawer";
 import { useRouter, usePathname } from "expo-router";
@@ -52,7 +51,7 @@ function CustomDrawerContent(props: any) {
 
   const handleLogout = async () => {
     props.navigation.closeDrawer();
-    try { await signOut(); } catch (e) { }
+    try { await signOut(); } catch { }
     router.replace('/login');
   };
 
@@ -211,7 +210,7 @@ export default function DoctorLayout() {
 
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.surface} />
+      <StatusBar style="dark" />
       <Drawer
         drawerContent={(props) => <CustomDrawerContent {...props} />}
         screenOptions={{

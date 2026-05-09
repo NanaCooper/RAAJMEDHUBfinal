@@ -7,11 +7,11 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  StatusBar,
   ActivityIndicator,
   Pressable,
   ScrollView,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import {
   Feather,
   MaterialCommunityIcons,
@@ -84,7 +84,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar style="dark" />
 
       <KeyboardAvoidingView
         style={styles.flex}

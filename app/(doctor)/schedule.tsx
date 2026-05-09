@@ -1,16 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-
-dayjs.extend(relativeTime);
+import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { subscribeToAppointments } from '../../services/appointments';
 import { getUserProfile } from '../../services/users';
-import { doc, getDoc, db } from '../../utils/firebaseConfig';
-import { Feather, MaterialIcons } from '@expo/vector-icons';
+
+dayjs.extend(relativeTime);
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -69,7 +69,7 @@ export default function DoctorSchedule() {
           if (item.patientId) {
             try {
               details = await getUserProfile(item.patientId);
-            } catch (e) {
+            } catch {
               // console.error("Failed to fetch patient", item.patientId);
             }
           }
@@ -240,7 +240,7 @@ export default function DoctorSchedule() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar style="dark" />
 
 
 

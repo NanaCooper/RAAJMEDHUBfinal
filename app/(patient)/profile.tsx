@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  StatusBar,
   ActivityIndicator,
   Animated,
   Easing,
@@ -200,7 +199,7 @@ export default function PatientProfile(): React.ReactElement {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar style="dark" />
       
       {/* --- Header --- */}
       

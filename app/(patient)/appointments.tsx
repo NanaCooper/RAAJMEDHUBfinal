@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Animated, Modal, ScrollView, LayoutAnimation } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Animated, Modal, ScrollView, LayoutAnimation } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -243,7 +244,7 @@ export default function Appointments() {
   // --- MAIN RENDER ---
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar style="dark" />
 
       {/* HEADER */}
       <View style={styles.header}>
