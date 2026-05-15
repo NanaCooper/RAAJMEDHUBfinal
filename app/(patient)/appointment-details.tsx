@@ -5,9 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
+import { updateAppointmentStatus } from '../../services/appointments';
 
 dayjs.extend(customParseFormat);
-import { updateAppointmentStatus } from '../../services/appointments';
 
 // --- Theme ---
 const COLORS = {
@@ -183,7 +183,7 @@ const AppointmentDetailScreen = () => {
             <Feather name="map-pin" size={20} color={COLORS.primary} />
             <View style={styles.detailTextContainer}>
               <Text style={styles.detailLabel}>Location</Text>
-              <Text style={styles.detailValue}>{appointment.branch || 'MediCare Central Clinic'}</Text>
+              <Text style={styles.detailValue}>{appointment.branch || 'Raaj Medhub Central Clinic'}</Text>
             </View>
           </View>
 

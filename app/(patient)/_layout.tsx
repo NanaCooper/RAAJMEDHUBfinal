@@ -1,22 +1,19 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
   Animated,
   Easing,
-  Platform,
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Drawer } from "expo-router/drawer";
 import { useRouter, usePathname } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from 'expo-linear-gradient';
+import { Feather } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { subscribeToAppointments } from "../../services/appointments";
 import { sendAppointmentNotification } from "../../services/notifications";
@@ -79,7 +76,7 @@ const ScaleButton = ({ onPress, style, children, activeScale = 0.96 }: any) => {
 function CustomDrawerContent(props: any) {
   const router = useRouter();
   const pathname = usePathname();
-  const { signOut, session } = useAuth();
+  const { signOut } = useAuth();
 
   // Animation Values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -93,7 +90,7 @@ function CustomDrawerContent(props: any) {
       useNativeDriver: true,
       easing: Easing.out(Easing.cubic),
     }).start();
-  }, []);
+  }, [fadeAnim]);
 
   const menuItems = [
     { label: "Dashboard", route: "/(patient)/", icon: "grid", badge: null },
@@ -122,8 +119,7 @@ function CustomDrawerContent(props: any) {
 
           {menuItems.map((item, index) => {
             const isActive = pathname === item.route;
-            // Calculate delay for cascade effect
-            const delay = index * 100 + 300;
+            // Calculate delay for cascade effect (intended for future use)
 
             return (
               <ScaleButton
@@ -170,7 +166,7 @@ function CustomDrawerContent(props: any) {
           <ScaleButton
             onPress={async () => {
               props.navigation.closeDrawer();
-              try { await signOut(); } catch (e) { }
+              try { await signOut(); } catch { }
               router.replace('/login');
             }}
           >
@@ -181,7 +177,7 @@ function CustomDrawerContent(props: any) {
               <Text style={styles.logoutText}>Sign Out</Text>
             </View>
           </ScaleButton>
-          <Text style={styles.version}>Medicare v2.5 (Build 402)</Text>
+          <Text style={styles.version}>Raaj Medhub v2.5 (Build 402)</Text>
         </View>
 
       </SafeAreaView>
@@ -197,10 +193,10 @@ export default function PatientLayout() {
   useEffect(() => {
     if (!session?.uid) return;
     const loadNotified = async () => {
-      try {
-        const stored = await AsyncStorage.getItem('notified_assignments');
-        if (stored) notifiedAppointmentsRef.current = new Set(JSON.parse(stored));
-      } catch (e) { }
+        try {
+          const stored = await AsyncStorage.getItem('notified_assignments');
+          if (stored) notifiedAppointmentsRef.current = new Set(JSON.parse(stored));
+        } catch { }
     };
     loadNotified();
     const unsubscribe = subscribeToAppointments(session.uid, 'patient', async (appointments) => {
@@ -233,7 +229,6 @@ export default function PatientLayout() {
         headerStyle: { backgroundColor: THEME.bg, elevation: 0, shadowOpacity: 0 },
         headerTintColor: THEME.text,
         headerTitleStyle: { fontWeight: "800", fontSize: 18 },
-        sceneContainerStyle: { backgroundColor: THEME.bg },
         overlayColor: 'rgba(15, 23, 42, 0.7)',
       }}
     >

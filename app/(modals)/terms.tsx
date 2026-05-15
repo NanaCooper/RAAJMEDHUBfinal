@@ -46,7 +46,7 @@ export default function TermsAndPolicyModal() {
         <View style={styles.introBox}>
           <Text style={styles.lastUpdated}>Last Updated: March 31, 2026</Text>
           <Text style={styles.introText}>
-            At MediCare, we are committed to protecting your personal health information (PHI). 
+            At Raaj Medhub, we are committed to protecting your personal health information (PHI). 
             This Privacy Policy explains how we collect, use, and safe-guard your data.
           </Text>
         </View>
@@ -73,7 +73,7 @@ export default function TermsAndPolicyModal() {
 
         <PolicySection 
           title="4. Your Rights"
-          content="You can request a copy of your medical data or ask for the deletion of your account at any time via the settings menu in the MediCare app."
+          content="You can request a copy of your medical data or ask for the deletion of your account at any time via the settings menu in the Raaj Medhub app."
         />
 
         <PolicySection 
@@ -83,7 +83,7 @@ export default function TermsAndPolicyModal() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            By using MediCare, you agree to these terms. If you have any questions, 
+            By using Raaj Medhub, you agree to these terms. If you have any questions, 
             please contact our support team.
           </Text>
         </View>

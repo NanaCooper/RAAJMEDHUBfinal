@@ -16,8 +16,11 @@ import {
   Keyboard,
   Platform,
 } from "react-native";
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import dayjs from "dayjs";
 
 // --- 🎨 Unified Premium Theme ---
@@ -44,13 +47,13 @@ const SHADOW = {
 };
 
 export default function PatientProfile(): React.ReactElement {
-  const { session } = useAuth();
+  const { session, reloadUser } = useAuth();
+  const router = useRouter();
   
   // --- State Management (Logic Intact) ---
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [dob, setDob] = useState("");
-  const [contact, setContact] = useState("");
   const [role, setRole] = useState("");
   const [createdAt, setCreatedAt] = useState("");
   
@@ -59,8 +62,10 @@ export default function PatientProfile(): React.ReactElement {
   const [preferences, setPreferences] = useState("");
   const [photoURL, setPhotoURL] = useState<string | undefined>(undefined);
   
+  // Date Picker State
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  
   const [loadingProfile, setLoadingProfile] = useState(true);
-  const [profileError, setProfileError] = useState<string | null>(null);
   const [originalProfile, setOriginalProfile] = useState<any>(null);
 
   const [loading, setLoading] = useState(false);
@@ -99,7 +104,6 @@ export default function PatientProfile(): React.ReactElement {
         return;
       }
       setLoadingProfile(true);
-      setProfileError(null);
       try {
         const userRef = doc(db, "users", session.uid);
         const snap = await getDoc(userRef);
@@ -108,7 +112,6 @@ export default function PatientProfile(): React.ReactElement {
           setFullName(data.fullName || "");
           setEmail(data.email || "");
           setDob(data.dob || "");
-          setContact(data.contact || "");
           setRole(data.role || "");
           setCreatedAt(data.createdAt ? new Date(data.createdAt.toDate?.() ?? data.createdAt).toLocaleDateString() : "");
           setPhone(data.phone || data.contact || "");
@@ -116,6 +119,8 @@ export default function PatientProfile(): React.ReactElement {
           // Use photoURL if available, fallback to avatarUri for migration
           setPhotoURL(data.photoURL || data.avatarUri || undefined);
           setOriginalProfile({
+            fullName: data.fullName || "",
+            dob: data.dob || "",
             phone: data.phone || data.contact || "",
             preferences: data.preferences || "",
             photoURL: data.photoURL || data.avatarUri || "",
@@ -123,7 +128,6 @@ export default function PatientProfile(): React.ReactElement {
         }
       } catch (e) {
         console.error(e);
-        setProfileError("Failed to load profile");
       } finally {
         setLoadingProfile(false);
       }
@@ -131,42 +135,70 @@ export default function PatientProfile(): React.ReactElement {
     fetchProfile();
   }, [session?.uid]);
 
-  const isValidPhone = (v: string) => /^[+\d][\d\s\-().]{6,}$/.test(v.trim());
+  const isValidPhone = (v: string) => {
+    if (!v.trim()) return true; // Allow empty
+    return /^[+\d][\d\s\-().]{6,}$/.test(v.trim());
+  };
 
   const validationError = useMemo(() => {
-    if (!phone.trim() || !isValidPhone(phone)) return "Please enter a valid phone number.";
+    if (phone.trim() && !isValidPhone(phone)) return "Please enter a valid phone number.";
     return null;
   }, [phone]);
 
   const dirty = useMemo(() => {
     if (!originalProfile) return false;
     return (
+      fullName !== (originalProfile.fullName || "") ||
+      dob !== (originalProfile.dob || "") ||
       phone !== (originalProfile.phone || "") ||
       preferences !== (originalProfile.preferences || "") ||
       (photoURL || "") !== (originalProfile.photoURL || "")
     );
-  }, [phone, preferences, photoURL, originalProfile]);
+  }, [fullName, dob, phone, preferences, photoURL, originalProfile]);
 
   const handleSave = async () => {
     setError(null);
     Keyboard.dismiss();
-    if (validationError) {
-      setError(validationError);
+    
+    // Basic validation: only require a name
+    if (!fullName.trim()) {
+      setError("Please enter your full name.");
       return;
     }
 
     setLoading(true);
     try {
-      if (!session?.uid) throw new Error("No session");
-      await setDoc(doc(db, "users", session.uid), {
-        phone,
-        preferences,
-        photoURL, // Save as photoURL
-      }, { merge: true });
+      if (!session?.uid) throw new Error("No active session found.");
+      
+      const nameParts = fullName.trim().split(/\s+/);
+      const fName = nameParts[0] || "";
+      const lName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+
+      const updateData: any = {
+        fullName: fullName.trim(),
+        firstName: fName,
+        lastName: lName,
+        dob: dob || "",
+        phone: phone.trim(),
+        preferences: preferences.trim(),
+      };
+
+      // Only include photoURL if it's defined
+      if (photoURL !== undefined) {
+        updateData.photoURL = photoURL;
+      }
+
+      await setDoc(doc(db, "users", session.uid), updateData, { merge: true });
+      
+      // CRITICAL: Refresh the global user state so changes reflect in Drawer/Settings immediately
+      await reloadUser();
+      
       setSavedMsg("Profile updated successfully");
-      setOriginalProfile((prev: any) => ({ ...prev, phone, preferences, photoURL }));
-    } catch (err) {
-      setError("Unable to save changes. Please try again.");
+      setOriginalProfile({ fullName, dob, phone, preferences, photoURL });
+      setError(null);
+    } catch (err: any) {
+      console.error("Save Error:", err);
+      setError(err.message || "Unable to save changes. Please check your connection.");
     } finally {
       setLoading(false);
     }
@@ -185,6 +217,13 @@ export default function PatientProfile(): React.ReactElement {
     }
   };
 
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setDob(dayjs(selectedDate).format('YYYY-MM-DD'));
+    }
+  };
+
   const age = dob ? dayjs().diff(dayjs(dob, 'YYYY-MM-DD'), 'years') : undefined;
 
   if (loadingProfile) {
@@ -198,11 +237,20 @@ export default function PatientProfile(): React.ReactElement {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
       
       {/* --- Header --- */}
-      
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.iconButton} 
+          onPress={() => router.push('/(patient)/settings')}
+        >
+          <Feather name="arrow-left" size={20} color={COLORS.textMain} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Profile</Text>
+        <View style={{ width: 44 }} />
+      </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
@@ -225,9 +273,9 @@ export default function PatientProfile(): React.ReactElement {
           <Text style={styles.profileRole}>{role ? role.toUpperCase() : "MEMBER"}</Text>
         </View>
 
-        {/* --- Read Only Info --- */}
+        {/* --- Account Info (Read Only) --- */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Personal Information</Text>
+          <Text style={styles.cardTitle}>Account Security</Text>
           
           <View style={styles.row}>
             <View style={styles.fieldContainer}>
@@ -235,16 +283,6 @@ export default function PatientProfile(): React.ReactElement {
               <Text style={styles.value}>{email || "—"}</Text>
             </View>
             <Feather name="lock" size={16} color={COLORS.textSec} />
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.row}>
-             <View style={styles.fieldContainer}>
-               <Text style={styles.label}>Date of Birth</Text>
-               <Text style={styles.value}>{dob ? dayjs(dob).format('MMMM DD, YYYY') : "—"}</Text>
-             </View>
-             {age !== undefined && <View style={styles.pill}><Text style={styles.pillText}>{age} yrs</Text></View>}
           </View>
 
           <View style={styles.divider} />
@@ -260,8 +298,45 @@ export default function PatientProfile(): React.ReactElement {
         {/* --- Editable Form --- */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
-            <Text style={styles.cardTitle}>Contact & Preferences</Text>
+            <Text style={styles.cardTitle}>Personal Information</Text>
             <Feather name="edit-2" size={16} color={COLORS.primary} />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Full Name</Text>
+            <TextInput
+              value={fullName}
+              onChangeText={setFullName}
+              style={styles.input}
+              placeholder="Your full name"
+              placeholderTextColor={COLORS.textSec}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.label}>Date of Birth</Text>
+              {age !== undefined && <View style={styles.pill}><Text style={styles.pillText}>{age} yrs</Text></View>}
+            </View>
+            <TouchableOpacity 
+              style={styles.input} 
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.inputValue, !dob && { color: COLORS.textSec }]}>
+                {dob ? dayjs(dob).format('MMMM DD, YYYY') : "Select Date"}
+              </Text>
+              <Feather name="calendar" size={16} color={COLORS.primary} style={styles.inputIcon} />
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={dob ? new Date(dob) : new Date()}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                onChange={onDateChange}
+              />
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -345,10 +420,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 10,
     backgroundColor: COLORS.bg,
   },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: COLORS.textMain, letterSpacing: -0.5 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: COLORS.textMain, letterSpacing: -0.5 },
   iconButton: {
     width: 44,
     height: 44,
@@ -423,8 +498,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: COLORS.textMain,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  textArea: { minHeight: 100, textAlignVertical: 'top' },
+  inputValue: { fontSize: 16, color: COLORS.textMain, fontWeight: '600' },
+  inputIcon: { marginLeft: 10 },
+  textArea: { minHeight: 100, textAlignVertical: 'top', alignItems: 'flex-start' },
 
   // Footer / Actions
   footer: { marginTop: 10 },

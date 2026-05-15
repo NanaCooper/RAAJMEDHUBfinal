@@ -7,7 +7,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../hooks/useAuth";
 
 // --- 🏥 Premium Healthcare Theme ---
@@ -109,7 +109,7 @@ export default function UserTypeSelection() {
           </View>
           <Text style={styles.title}>Select Your Role</Text>
           <Text style={styles.subtitle}>
-            How will you be using MediCare today?
+            How will you be using Raaj Medhub today?
           </Text>
         </View>
 

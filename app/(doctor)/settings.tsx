@@ -4,978 +4,397 @@ import {
   Text, 
   StyleSheet, 
   ScrollView, 
-  Switch, 
   TouchableOpacity, 
   Alert, 
-  TextInput, 
-  ActivityIndicator, 
-  Platform,
   Image,
-  Modal
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'expo-router';
-import { 
-  updateUserProfile, 
-  updateUserPassword, 
-  deleteUserAccount 
-} from '../../services/users';
-import { updateNotificationPreferences } from '../../services/notifications';
-import { getAuthInstance } from '../../utils/firebaseConfig';
+import { db, doc, getDoc } from '../../utils/firebaseConfig';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { subscribeToAppointments } from '../../services/appointments';
 
 // --- Premium Palette ---
 const COLORS = {
-  bg: "#F8FAFC",        // Slate 50
-  card: "#FFFFFF",
-  primary: "#4F46E5",   // Indigo 600
-  primaryDark: "#312E81", // Indigo 900
-  textMain: "#1E293B",  // Slate 800
-  textSec: "#64748B",   // Slate 500
-  input: "#F1F5F9",     // Slate 100
-  border: "#E2E8F0",
-  success: "#10B981",
-  danger: "#EF4444",
-  warning: "#F59E0B",
+  bg: "#F8FAFC",
   surface: "#FFFFFF",
+  primary: "#4F46E5",
+  primarySoft: "#EEF2FF",
+  textMain: "#1E293B",
+  textSec: "#64748B",
+  border: "#E2E8F0",
+  danger: "#EF4444",
+  success: "#10B981",
 };
 
-const SHADOW = {
-  shadowColor: "#64748B",
-  shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.08,
-  shadowRadius: 16,
-  elevation: 4,
-};
-
-// --- Sub-Components ---
-
-const SectionHeader = ({ title, icon }: { title: string; icon: any }) => (
-  <View style={styles.sectionHeaderRow}>
-    <View style={styles.sectionIconBox}>
-      <Feather name={icon} size={16} color={COLORS.primary} />
-    </View>
-    <Text style={styles.sectionHeaderText}>{title}</Text>
-  </View>
-);
-
-const SettingItem = ({ 
-  label, 
-  value, 
-  icon, 
-  onPress, 
-  isSwitch, 
-  switchValue, 
-  onSwitchToggle,
-  isDangerous,
-  isLast
-}: any) => (
+const MenuOption = ({ icon, title, subtitle, onPress, color = COLORS.primary, isLast = false }: any) => (
   <TouchableOpacity 
-    style={[styles.settingItem, isLast && styles.noBorder]} 
+    style={[styles.menuItem, isLast && styles.noBorder]} 
     onPress={onPress}
-    disabled={isSwitch}
     activeOpacity={0.7}
   >
-    <View style={styles.settingItemLeft}>
-      {icon && <Feather name={icon} size={18} color={isDangerous ? COLORS.danger : COLORS.textSec} style={{marginRight: 12}} />}
-      <Text style={[styles.settingLabel, isDangerous && { color: COLORS.danger, fontWeight: '700' }]}>{label}</Text>
+    <View style={[styles.iconBox, { backgroundColor: color + '15' }]}>
+      <Feather name={icon} size={20} color={color} />
     </View>
-    <View style={styles.settingItemRight}>
-      {isSwitch ? (
-        <Switch 
-          value={switchValue} 
-          onValueChange={onSwitchToggle} 
-          trackColor={{ false: COLORS.border, true: COLORS.primary }} 
-          thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
-        />
-      ) : (
-        <View style={styles.rowCenter}>
-          {value && <Text style={styles.settingValue}>{value}</Text>}
-          {!isDangerous && <Feather name="chevron-right" size={18} color={COLORS.border} />}
-        </View>
-      )}
+    <View style={styles.menuText}>
+      <Text style={styles.menuTitle}>{title}</Text>
+      <Text style={styles.menuSubtitle}>{subtitle}</Text>
     </View>
+    <Feather name="chevron-right" size={20} color={COLORS.border} />
   </TouchableOpacity>
 );
 
 const DoctorSettingsScreen = () => {
-  const { user, signOut } = useAuth();
+  const { session, user, signOut } = useAuth();
   const router = useRouter();
-
-  const [loading, setLoading] = useState(false);
-  
-  // States
-  const [profileData, setProfileData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    specialization: '',
-    qualifications: '',
-    bio: '',
-    photoURL: '',
-  });
-
-  const [notificationPrefs, setNotificationPrefs] = useState({
-    push: true,
-    email: true,
-    newAppointment: true,
-  });
-
-  const [passwordData, setPasswordData] = useState({ current: '', new: '' });
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-  const [tempProfileData, setTempProfileData] = useState(profileData);
-  const [showPassword, setShowPassword] = useState(false);
-
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteNeedsPassword, setDeleteNeedsPassword] = useState(false);
+  const [stats, setStats] = useState({ completed: 0, upcoming: 0 });
 
   useEffect(() => {
-    if (user) {
-      setProfileData({
-        fullName: user.fullName || '',
-        email: user.email || '',
-        phone: user.phone || user.contact || '',
-        specialization: user.specialization || user.specialty || '',
-        qualifications: user.qualifications || '',
-        bio: user.bio || '',
-        photoURL: user.photoURL || '',
-      });
-      
-      if (user.notificationPrefs) {
-        setNotificationPrefs(prev => ({ ...prev, ...user.notificationPrefs }));
-      }
+    if (!session?.uid) return;
+    const unsub = subscribeToAppointments(session.uid, 'doctor', (appts) => {
+      const upcoming = appts.filter(a => a.status !== 'cancelled' && a.status !== 'completed').length;
+      const completed = appts.filter(a => a.status === 'completed').length;
+      setStats({ completed, upcoming });
+    });
+    return () => unsub();
+  }, [session?.uid]);
+
+  const handleExportData = async () => {
+    if (!user || !session) return;
+
+    try {
+      Alert.alert(
+        "Practice Data Export",
+        "Generate a professional summary of your practice, including profile details and appointment statistics. Proceed?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Generate Report", 
+            onPress: async () => {
+              try {
+                // Prepare HTML Web Report
+                const htmlContent = `
+                  <html>
+                    <head>
+                      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                      <style>
+                        body { font-family: sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; }
+                        .header { text-align: center; border-bottom: 2px solid #4f46e5; padding-bottom: 20px; margin-bottom: 30px; }
+                        .brand { font-size: 24px; font-weight: 800; color: #4f46e5; }
+                        .section { margin-bottom: 25px; }
+                        .section-title { font-size: 18px; font-weight: 700; color: #4f46e5; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 15px; }
+                        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 10px; }
+                        .stat-box { background: #f8fafc; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0; }
+                        .stat-val { font-size: 24px; font-weight: 800; color: #4f46e5; }
+                        .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="header">
+                        <div class="brand">RAAJ MEDHUB PROFESSIONAL</div>
+                        <div style="color: #64748b; margin-top: 5px;">Practice Activity Report</div>
+                        <div style="font-size: 12px; margin-top: 10px;">Exported: ${new Date().toLocaleString()}</div>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">Professional Profile</div>
+                        <div><strong>Name:</strong> Dr. ${user.fullName || 'N/A'}</div>
+                        <div><strong>Specialization:</strong> ${user.specialization || user.specialty || 'N/A'}</div>
+                        <div><strong>Professional Email:</strong> ${session.email}</div>
+                        <div><strong>Member Since:</strong> ${user.createdAt ? new Date(user.createdAt.toDate?.() || user.createdAt).toLocaleDateString() : 'N/A'}</div>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">Practice Statistics</div>
+                        <div class="stat-grid">
+                          <div class="stat-box">
+                            <div class="stat-val">${stats.completed}</div>
+                            <div style="font-size: 12px; color: #64748b;">Completed Consultations</div>
+                          </div>
+                          <div class="stat-box">
+                            <div class="stat-val">${stats.upcoming}</div>
+                            <div style="font-size: 12px; color: #64748b;">Pending/Upcoming</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="section">
+                        <div class="section-title">Qualifications</div>
+                        <p>${user.qualifications || 'No qualifications listed.'}</p>
+                      </div>
+
+                      <div class="footer">
+                        This document is a professional summary of activity on the Raaj Medhub platform.
+                      </div>
+                    </body>
+                  </html>
+                `;
+
+                const fileName = `Practice_Report_${session.uid.slice(0,5)}.html`;
+                const fileUri = (FileSystem as any).cacheDirectory + fileName;
+                await FileSystem.writeAsStringAsync(fileUri, htmlContent, {
+                  encoding: (FileSystem as any).EncodingType?.UTF8 || 'utf8',
+                });
+
+                if (await Sharing.isAvailableAsync()) {
+                  await Sharing.shareAsync(fileUri, {
+                    mimeType: 'text/html',
+                    dialogTitle: 'Export Practice Data',
+                  });
+                } else {
+                  Alert.alert("Error", "Sharing is not available.");
+                }
+              } catch (err) {
+                console.error("Export error:", err);
+                Alert.alert("Error", "Failed to generate report.");
+              }
+            }
+          }
+        ]
+      );
+    } catch (err) {
+      console.error("Export handler error:", err);
     }
-  }, [user]);
+  };
 
   const handleLogout = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+    Alert.alert("Sign Out", "Are you sure you want to sign out of your professional account?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: async () => {
+      { 
+        text: "Sign Out", 
+        style: "destructive", 
+        onPress: async () => {
           try {
             await signOut();
             router.replace('/login');
           } catch(err){
             console.error("Logout error", err);
           }
-      }},
+        }
+      },
     ]);
   };
 
-  const performDelete = async (password?: string) => {
-    setLoading(true);
-    try {
-      await deleteUserAccount(password);
-      router.replace('/login');
-    } catch (error: any) {
-      if (error.message === 'PASSWORD_REQUIRED') {
-        setDeleteNeedsPassword(true);
-        setDeleteModalVisible(true);
-      } else if (error.message === 'REQUIRES_REAUTH') {
-        Alert.alert("Session Expired", "Please sign out and sign back in, then try deleting your account again.");
-      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        Alert.alert("Wrong Password", "The password you entered is incorrect. Please try again.");
-      } else if (error.message === 'GOOGLE_REAUTH_FAILED') {
-        Alert.alert("Verification Failed", "Could not confirm your Google sign-in. Please try again.");
-      } else {
-        Alert.alert("Error", "Failed to delete account. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteAccount = () => {
-    // Step 1: First confirmation
-    Alert.alert(
-      "Delete Account",
-      "This action is permanent and cannot be undone. All your professional records and schedule will be deleted. Are you absolutely sure?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Continue",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const auth = await getAuthInstance();
-              const providers: string[] = (auth.currentUser?.providerData || []).map((p: any) => p.providerId).filter(Boolean);
-              const hasPasswordProvider = providers.includes('password');
-
-              if (hasPasswordProvider) {
-                setDeleteNeedsPassword(true);
-                setDeleteModalVisible(true);
-              } else {
-                setDeleteNeedsPassword(false);
-                await performDelete();
-              }
-            } catch {
-              // Fallback: attempt delete (service will decide if password/reauth is required)
-              await performDelete();
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const toggleNotification = async (key: keyof typeof notificationPrefs) => {
-    const newVal = !notificationPrefs[key];
-    setNotificationPrefs(prev => ({ ...prev, [key]: newVal }));
-    
-    if (key === 'push') {
-      await updateNotificationPreferences({ enabled: newVal });
-    }
-
-    if (user) {
-      try {
-        await updateUserProfile(user.uid, { 
-          notificationPrefs: { ...notificationPrefs, [key]: newVal } 
-        });
-      } catch (err) {
-        console.error("Failed to save pref", err);
-      }
-    }
-  };
-
-  const handleUpdatePassword = async () => {
-    if (!passwordData.current || !passwordData.new) {
-      Alert.alert("Missing Info", "Please provide both current and new passwords.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await updateUserPassword(passwordData.current, passwordData.new);
-      Alert.alert("Success", "Your password has been updated.");
-      setPasswordData({ current: '', new: '' });
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to update password.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveProfile = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      await updateUserProfile(user.uid, tempProfileData);
-      setProfileData(tempProfileData);
-      setIsEditModalVisible(false);
-      Alert.alert("Success", "Profile updated successfully!");
-    } catch {
-      Alert.alert("Error", "Failed to update profile.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const displayName = user?.fullName || (session as any)?.displayName || 'Doctor';
+  const displayEmail = session?.email || '';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
       
-      
-
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* --- Profile Preview --- */}
-        <View style={styles.profileHero}>
-           <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                {profileData.photoURL ? (
-                  <Image source={{ uri: profileData.photoURL }} style={styles.avatarImg} />
-                ) : (
-                  <Text style={styles.avatarText}>
-                    {profileData.fullName ? profileData.fullName.charAt(0).toUpperCase() : 'D'}
-                  </Text>
-                )}
-              </View>
-              <View style={styles.onlineBadge} />
-           </View>
-           <Text style={styles.heroName}>{profileData.fullName || 'MediCare Doctor'}</Text>
-           <Text style={styles.heroEmail}>{profileData.email}</Text>
-           <Text style={styles.heroSub}>{profileData.specialization || 'Professional Specialist'}</Text>
-           
-           <TouchableOpacity 
-              style={styles.editProfileBtn}
-              onPress={() => {
-                setTempProfileData(profileData);
-                setIsEditModalVisible(true);
-              }}
-            >
-             <Feather name="edit-3" size={14} color={COLORS.primary} />
-             <Text style={styles.editProfileText}>Edit Profile</Text>
-           </TouchableOpacity>
-        </View>
-
-        {/* --- Settings Groups --- */}
-        
-        <View style={styles.card}>
-          <SectionHeader title="Professional Profile" icon="briefcase" />
-          <SettingItem 
-            label="Specialization" 
-            value={profileData.specialization || 'Not set'} 
-            onPress={() => { setTempProfileData(profileData); setIsEditModalVisible(true); }} 
-          />
-          <SettingItem 
-            label="Qualifications" 
-            value={profileData.qualifications || 'Not set'} 
-            onPress={() => { setTempProfileData(profileData); setIsEditModalVisible(true); }} 
-            isLast
-          />
-        </View>
-
-        <View style={styles.card}>
-          <SectionHeader title="Account Settings" icon="user" />
-          <SettingItem 
-            label="Phone Number" 
-            value={profileData.phone || 'Add phone'} 
-            onPress={() => router.push('/(doctor)/profile')} 
-            isLast
-          />
-        </View>
-
-        <View style={styles.card}>
-          <SectionHeader title="Notifications" icon="bell" />
-          <SettingItem 
-            label="Push Notifications" 
-            isSwitch 
-            switchValue={notificationPrefs.push} 
-            onSwitchToggle={() => toggleNotification('push')} 
-          />
-          <SettingItem 
-            label="New Appointments" 
-            isSwitch 
-            switchValue={notificationPrefs.newAppointment} 
-            onSwitchToggle={() => toggleNotification('newAppointment')} 
-            isLast
-          />
-        </View>
-
-        <View style={styles.card}>
-          <SectionHeader title="Security" icon="shield" />
-          
-          <View style={styles.passChangeBox}>
-            <Text style={styles.passLabel}>Change Password</Text>
-            
-            <View style={styles.inputWrapper}>
-              <View style={styles.inputIcon}>
-                <Feather name="lock" size={18} color={COLORS.textSec} />
-              </View>
-              <TextInput 
-                style={styles.enhancedInput}
-                placeholder="Current Password"
-                secureTextEntry={!showPassword}
-                value={passwordData.current}
-                onChangeText={t => setPasswordData(p => ({...p, current: t}))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <View style={styles.inputIcon}>
-                <Feather name="key" size={18} color={COLORS.textSec} />
-              </View>
-              <TextInput 
-                style={styles.enhancedInput}
-                placeholder="New Password"
-                secureTextEntry={!showPassword}
-                value={passwordData.new}
-                onChangeText={t => setPasswordData(p => ({...p, new: t}))}
-              />
-              <TouchableOpacity 
-                style={styles.eyeBtn}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Feather name={showPassword ? "eye-off" : "eye"} size={18} color={COLORS.textSec} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity 
-              style={[styles.premiumPassBtn, (!passwordData.current || !passwordData.new) && { opacity: 0.6 }]}
-              onPress={handleUpdatePassword}
-              disabled={loading || !passwordData.current || !passwordData.new}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Feather name="refresh-cw" size={16} color="#fff" style={{marginRight: 8}} />
-                  <Text style={styles.passBtnText}>Update Password</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <SectionHeader title="App Info & Privacy" icon="info" />
-          <SettingItem 
-            label="Privacy Policy" 
-            onPress={() => router.push('/(modals)/terms')} 
-            isLast
-          />
-        </View>
-
-        {/* --- Action Center --- */}
-        <View style={styles.actionCenter}>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Feather name="log-out" size={18} color={COLORS.primary} />
-            <Text style={styles.logoutBtnText}>Sign Out</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteAccount}>
-             <Text style={styles.deleteBtnText}>Permanent Account Deletion</Text>
-          </TouchableOpacity>
-          
-          <Text style={styles.versionText}>Medicare v2.5.0 (Doctor build)</Text>
-        </View>
-
-      </ScrollView>
-
-      {/* --- Delete Account Modal --- */}
-      <Modal
-        visible={deleteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setDeleteModalVisible(false);
-          setDeletePassword('');
-        }}
-      >
-        <View style={styles.deleteModalOverlay}>
-          <View style={styles.deleteModalContent}>
-            <Text style={styles.deleteModalTitle}>Confirm Account Deletion</Text>
-            {deleteNeedsPassword ? (
-              <>
-                <Text style={styles.deleteModalText}>
-                  For security, enter your password to permanently delete your account.
-                </Text>
-                <TextInput
-                  style={styles.deletePasswordInput}
-                  placeholder="Password"
-                  placeholderTextColor={COLORS.textSec}
-                  secureTextEntry
-                  value={deletePassword}
-                  onChangeText={setDeletePassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </>
+        {/* --- Profile Overview --- */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatarContainer}>
+            {user?.photoURL || (session as any)?.photoURL ? (
+              <Image source={{ uri: user?.photoURL || (session as any)?.photoURL }} style={styles.avatar} />
             ) : (
-              <Text style={styles.deleteModalText}>
-                For security, you may be asked to confirm your sign-in provider before deletion.
-              </Text>
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
             )}
-
-            <View style={styles.deleteModalActions}>
-              <TouchableOpacity
-                style={[styles.deleteModalBtn, styles.deleteModalCancelBtn]}
-                onPress={() => {
-                  setDeleteModalVisible(false);
-                  setDeletePassword('');
-                }}
-                disabled={loading}
-              >
-                <Text style={styles.deleteModalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.deleteModalBtn, styles.deleteModalDeleteBtn, loading && { opacity: 0.7 }]}
-                onPress={async () => {
-                  if (deleteNeedsPassword && !deletePassword) return;
-                  setDeleteModalVisible(false);
-                  const pwd = deleteNeedsPassword ? deletePassword : undefined;
-                  setDeletePassword('');
-                  await performDelete(pwd);
-                }}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.deleteModalDeleteText}>Delete</Text>
-                )}
-              </TouchableOpacity>
+            <View style={styles.badge}>
+              <Feather name="shield" size={10} color="#fff" />
+            </View>
+          </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.userName}>Dr. {displayName}</Text>
+            <Text style={styles.userEmail}>{displayEmail}</Text>
+            <View style={styles.specTag}>
+              <Text style={styles.specTagText}>{user?.specialization || user?.specialty || 'General Practitioner'}</Text>
             </View>
           </View>
         </View>
-      </Modal>
 
-      {/* --- Edit Profile Modal --- */}
-      <Modal
-        visible={isEditModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setIsEditModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
-              <TouchableOpacity 
-                style={styles.closeBtn}
-                onPress={() => setIsEditModalVisible(false)}
-              >
-                <Feather name="x" size={24} color={COLORS.textMain} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Full Name</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={tempProfileData.fullName}
-                  onChangeText={t => setTempProfileData(p => ({...p, fullName: t}))}
-                />
-              </View>
-
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Specialization</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={tempProfileData.specialization}
-                  onChangeText={t => setTempProfileData(p => ({...p, specialization: t}))}
-                />
-              </View>
-
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Qualifications</Text>
-                <TextInput
-                  style={[styles.editInput, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
-                  multiline
-                  value={tempProfileData.qualifications}
-                  onChangeText={t => setTempProfileData(p => ({...p, qualifications: t}))}
-                />
-              </View>
-
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Phone Number</Text>
-                <TextInput
-                  style={styles.editInput}
-                  keyboardType="phone-pad"
-                  value={tempProfileData.phone}
-                  onChangeText={t => setTempProfileData(p => ({...p, phone: t}))}
-                />
-              </View>
-
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Professional Bio</Text>
-                <TextInput
-                  style={[styles.editInput, { height: 100, textAlignVertical: 'top', paddingTop: 12 }]}
-                  multiline
-                  value={tempProfileData.bio}
-                  onChangeText={t => setTempProfileData(p => ({...p, bio: t}))}
-                />
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.saveBtn, loading && { opacity: 0.7 }]}
-                onPress={handleSaveProfile}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+        {/* --- Main Menu --- */}
+        <Text style={styles.sectionTitle}>General Settings</Text>
+        <View style={styles.card}>
+          <MenuOption 
+            icon="user" 
+            title="Professional Profile" 
+            subtitle="Clinical credentials and bio"
+            onPress={() => router.push('/(doctor)/profile')}
+          />
+          <MenuOption 
+            icon="shield" 
+            title="Security & Password" 
+            subtitle="Secure your professional account"
+            onPress={() => router.push('/(doctor)/security')}
+          />
+          <MenuOption 
+            icon="bell" 
+            title="Alert Settings" 
+            subtitle="Assignments and emergency alerts"
+            onPress={() => router.push('/(doctor)/notifications')}
+          />
+          <MenuOption 
+            icon="help-circle" 
+            title="Help & FAQs" 
+            subtitle="App guide for practitioners"
+            onPress={() => router.push('/(doctor)/faqs')}
+            isLast
+          />
         </View>
-      </Modal>
+
+        <Text style={styles.sectionTitle}>Practice Management</Text>
+        <View style={styles.card}>
+          <MenuOption 
+            icon="file-text" 
+            title="Practice Data Export" 
+            subtitle="Generate professional activity report"
+            onPress={handleExportData}
+          />
+          <MenuOption 
+            icon="trash-2" 
+            title="Delete Account" 
+            subtitle="Remove professional profile"
+            color={COLORS.danger}
+            onPress={() => router.push('/(doctor)/delete-account')}
+            isLast
+          />
+        </View>
+
+        {/* --- Actions --- */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <View style={styles.logoutIcon}>
+            <Feather name="log-out" size={20} color={COLORS.primary} />
+          </View>
+          <Text style={styles.logoutText}>Sign Out</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.versionText}>Raaj Medhub Professional v2.5.0 • Build 2024</Text>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  header: {
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 },
+  
+  // Profile Card
+  profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
     backgroundColor: COLORS.surface,
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 24,
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: COLORS.bg,
+  avatarContainer: { position: 'relative' },
+  avatar: { width: 70, height: 70, borderRadius: 35 },
+  avatarPlaceholder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textMain,
-  },
-  scrollContent: { padding: 20, paddingBottom: 60 },
-  
-  // Profile Hero
-  profileHero: {
-    alignItems: 'center',
-    marginBottom: 32,
-    marginTop: 10,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: COLORS.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: '#fff',
-    ...SHADOW,
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarText: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  onlineBadge: {
+  avatarText: { fontSize: 28, fontWeight: '800', color: '#fff' },
+  badge: {
     position: 'absolute',
-    bottom: 5,
-    right: 5,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: COLORS.success,
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
     borderWidth: 3,
     borderColor: '#fff',
-  },
-  heroName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.textMain,
-  },
-  heroEmail: {
-    fontSize: 14,
-    color: COLORS.textSec,
-    marginTop: 4,
-  },
-  heroSub: {
-    fontSize: 13,
-    color: COLORS.primary,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  editProfileBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primary + '10',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginTop: 16,
+    justifyContent: 'center',
   },
-  editProfileText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.primary,
-    marginLeft: 6,
+  profileInfo: { marginLeft: 16, flex: 1 },
+  userName: { fontSize: 18, fontWeight: '800', color: COLORS.textMain },
+  userEmail: { fontSize: 13, color: COLORS.textSec, marginTop: 2 },
+  specTag: {
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
+  specTagText: { color: COLORS.primary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
 
-  // Cards
+  // Sections
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.textSec,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-    ...SHADOW,
+    padding: 8,
+    marginBottom: 24,
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  sectionHeaderRow: {
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: COLORS.primary + '10',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  sectionHeaderText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textMain,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
+    padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.input,
+    borderBottomColor: COLORS.bg,
   },
   noBorder: { borderBottomWidth: 0 },
-  settingItemLeft: { flexDirection: 'row', alignItems: 'center' },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textMain,
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
   },
-  settingItemRight: { flexDirection: 'row', alignItems: 'center' },
-  settingValue: {
-    fontSize: 14,
-    color: COLORS.textSec,
-    marginRight: 8,
-  },
-  rowCenter: { flexDirection: 'row', alignItems: 'center' },
+  menuText: { flex: 1 },
+  menuTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textMain },
+  menuSubtitle: { fontSize: 12, color: COLORS.textSec, marginTop: 2 },
 
-  // Pass Box / Security UI Upgrades
-  passChangeBox: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 4,
-  },
-  passLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textMain,
-    marginBottom: 12,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  inputIcon: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.bg,
-    borderRightWidth: 1,
-    borderRightColor: COLORS.border,
-  },
-  enhancedInput: {
-    flex: 1,
-    height: 48,
-    paddingHorizontal: 16,
-    fontSize: 14,
-    color: COLORS.textMain,
-  },
-  eyeBtn: {
-    paddingHorizontal: 16,
-    height: 48,
-    justifyContent: 'center',
-  },
-  premiumPassBtn: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    ...SHADOW,
-    shadowColor: COLORS.primary,
-  },
-  passBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  // Delete modal
-  deleteModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  deleteModalContent: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW,
-  },
-  deleteModalTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.textMain,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  deleteModalText: {
-    fontSize: 13,
-    color: COLORS.textSec,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  deletePasswordInput: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: COLORS.textMain,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  deleteModalActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  deleteModalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteModalCancelBtn: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginRight: 10,
-  },
-  deleteModalDeleteBtn: {
-    backgroundColor: COLORS.danger,
-  },
-  deleteModalCancelText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textMain,
-  },
-  deleteModalDeleteText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#fff',
-  },
-
-  // Edit Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 24,
-    maxHeight: '90%',
-    ...SHADOW,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.textMain,
-  },
-  closeBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editField: {
-    marginBottom: 20,
-  },
-  editLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSec,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  editInput: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: COLORS.textMain,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  saveBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 40,
-    ...SHADOW,
-    shadowColor: COLORS.primary,
-  },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-  // Actions
-  actionCenter: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
+  // Sign Out
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: COLORS.surface,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
+    padding: 16,
     borderRadius: 20,
+    marginTop: 10,
     borderWidth: 1,
-    borderColor: COLORS.primary,
-    ...SHADOW,
-    marginBottom: 24,
+    borderColor: COLORS.primary + '30',
   },
-  logoutBtnText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.primary,
-    marginLeft: 10,
-  },
-  deleteBtn: {
-    padding: 10,
-  },
-  deleteBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.danger,
-    textDecorationLine: 'underline',
-  },
+  logoutIcon: { marginRight: 12 },
+  logoutText: { fontSize: 16, fontWeight: '800', color: COLORS.primary },
+
   versionText: {
     fontSize: 12,
     color: COLORS.textSec,
-    marginTop: 20,
+    textAlign: 'center',
+    marginTop: 30,
     opacity: 0.6,
   },
 });
