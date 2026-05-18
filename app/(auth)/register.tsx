@@ -225,7 +225,7 @@ export default function RegisterScreen() {
             <View style={styles.logoIcon}>
               <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
             </View>
-            <Text style={styles.appName}>MediCare<Text style={styles.dot}>.</Text></Text>
+            <Text style={styles.appName}>RAAJ MedHub<Text style={styles.dot}>.</Text></Text>
             <Text style={styles.tagline}>Join our secure healthcare network</Text>
           </View>
 

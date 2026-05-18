@@ -30,7 +30,7 @@ export default function BranchInfoModal() {
   }, []);
 
   const branch = {
-    name: "MediCare Central",
+    name: "RAAJ MedHub Central",
     address: "123 Main St, Springfield",
     phone: "+1 555-0101",
     hours: "Mon-Fri 08:00-17:00",

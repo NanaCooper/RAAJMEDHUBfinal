@@ -1,11 +1,11 @@
-# MediCare App Privacy Policy
+# RAAJ MEDHUB App Privacy Policy
 
 **Last Updated: May 18, 2026**
 
-At MediCare, we are committed to protecting your personal health information (PHI). This Privacy Policy explains how we collect, use, and safeguard your data.
+At RAAJ MEDHUB, we are committed to protecting your personal health information (PHI). This Privacy Policy explains how we collect, use, and safeguard your data.
 
 ## Permissions We Request
-MediCare may request the following device permissions only to support app features:
+RAAJ MEDHUB may request the following device permissions only to support app features:
 
 - **Camera (android.permission.CAMERA)**: Used to scan and capture medical referrals/documents if you choose to take a photo from within the app.
 - **Photos/Media (Photo Library / Storage access)**: Used to let you select and upload existing images/documents (such as medical referral letters) from your device.
@@ -33,7 +33,7 @@ You can deny these permissions; however, some features (such as uploading your r
 We retain your data only as long as needed to provide the clinic services and to meet legal/clinical obligations. You can request the deletion of your account and associated data (subject to any clinic regulatory records retention requirements).
 
 ## 5. Your Rights
-You can request a copy of your medical data or ask for the deletion of your account at any time via the settings menu in the MediCare app.
+You can request a copy of your medical data or ask for the deletion of your account at any time via the settings menu in the RAAJ MEDHUB app.
 
 ## 6. Third-Party Services & Sharing
 - **Authentication**: We use Google Sign-In as an identity provider. When you sign in using your Google account, their use of your information is governed by the Google Privacy Policy.

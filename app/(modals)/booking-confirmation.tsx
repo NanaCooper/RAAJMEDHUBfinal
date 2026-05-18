@@ -66,7 +66,7 @@ export default function BookingConfirmationModal() {
       return {
         appointmentData: data,
         scanType: data?.scanType?.name || (Array.isArray(data?.scanTypes) ? data.scanTypes.map((s: any) => s.name).join(', ') : 'Consultation'),
-        branch: data?.branch || 'MediCare Central Clinic',
+        branch: data?.branch || 'RAAJ MedHub Clinic',
       };
     } catch (e) {
       console.error("--- [booking-confirmation.tsx] Failed to parse appointment data ---", e);

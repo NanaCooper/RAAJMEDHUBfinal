@@ -176,14 +176,18 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
-            <View style={styles.divider}>
-              <View style={styles.line} />
-              <Text style={styles.orText}>OR CONTINUE WITH</Text>
-              <View style={styles.line} />
-            </View>
+            {Platform.OS === 'android' && (
+              <>
+                <View style={styles.divider}>
+                  <View style={styles.line} />
+                  <Text style={styles.orText}>OR CONTINUE WITH</Text>
+                  <View style={styles.line} />
+                </View>
 
-            {/* Google Button */}
-            <GoogleSignInButton />
+                {/* Google Button */}
+                <GoogleSignInButton />
+              </>
+            )}
           </View>
 
           {/* --- Footer --- */}

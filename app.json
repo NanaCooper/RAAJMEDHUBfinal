@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "MediCare",
+    "name": "RAAJ MEDHUB",
     "slug": "MediCare",
     "version": "1.0.0",
     "orientation": "default",
@@ -24,9 +24,9 @@
             ]
           }
         ],
-        "NSCameraUsageDescription": "MediCare uses your camera to scan medical referrals and upload patient documents.",
-        "NSPhotoLibraryUsageDescription": "MediCare allows you to upload medical referrals and images from your photo library.",
-        "NSMicrophoneUsageDescription": "MediCare uses your microphone for voice notes if required.",
+        "NSCameraUsageDescription": "RAAJ MEDHUB uses your camera to scan medical referrals and upload patient documents.",
+        "NSPhotoLibraryUsageDescription": "RAAJ MEDHUB allows you to upload medical referrals and images from your photo library.",
+        "NSMicrophoneUsageDescription": "RAAJ MEDHUB uses your microphone for voice notes if required.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
