@@ -20,6 +20,9 @@ export const REFERRAL_FEES_GHS: Record<ReferralProcedureKey, { label: string; am
   endoscopy: { label: 'Endoscopy', amountGhs: 50 },
   ct_abdomen: { label: 'CT Abdomen', amountGhs: 70 },
   ct_angiography: { label: 'CT Angiography', amountGhs: 70 },
+  echocardiogram: { label: 'Echocardiogram', amountGhs: 50 },
+  ecg: { label: 'ECG', amountGhs: 20 },
+  ct_generic: { label: 'CT Scan', amountGhs: 50 },
 };
 
 const referralsCol = () => collection(db, 'referrals');
@@ -47,13 +50,23 @@ export function inferReferralProcedure(text: string): { key: ReferralProcedureKe
     return { key: 'xray', ...REFERRAL_FEES_GHS.xray };
   }
 
+  // Echocardiogram -> 50 GHS
+  if (t.includes('echocardiogram') || t.includes('echocardiography') || t.includes('echo')) {
+    return { key: 'echocardiogram', ...REFERRAL_FEES_GHS.echocardiogram };
+  }
+
+  // ECG -> 20 GHS
+  if (t.includes('ecg') || t.includes('electrocardiogram') || t.includes('electrocardiography')) {
+    return { key: 'ecg', ...REFERRAL_FEES_GHS.ecg };
+  }
+
   // CT Head, CT Chest, HSG, Mammography, Endoscopy -> 50 GHS
   if (t.includes('hsg')) return { key: 'hsg', ...REFERRAL_FEES_GHS.hsg };
   if (t.includes('mammography') || t.includes('mammogram')) return { key: 'mammography', ...REFERRAL_FEES_GHS.mammography };
   if (t.includes('endoscopy')) return { key: 'endoscopy', ...REFERRAL_FEES_GHS.endoscopy };
   
   // CT Specifics
-  const isCT = t.includes('ct') || t.includes('c t') || t.includes('computed tomography');
+  const isCT = /\bct\b/.test(t) || t.includes('computed tomography') || t.includes('c t');
   
   if (isCT) {
     // CT Abdomen, CT Angiography -> 70 GHS
@@ -63,6 +76,9 @@ export function inferReferralProcedure(text: string): { key: ReferralProcedureKe
     // CT Head, CT Chest -> 50 GHS
     if (t.includes('head') || t.includes('brain') || t.includes('skull')) return { key: 'ct_head', ...REFERRAL_FEES_GHS.ct_head };
     if (t.includes('chest') || t.includes('thorax') || t.includes('thoracic')) return { key: 'ct_chest', ...REFERRAL_FEES_GHS.ct_chest };
+
+    // Default for any CT scan -> 50 GHS
+    return { key: 'ct_generic', ...REFERRAL_FEES_GHS.ct_generic };
   }
 
   return null;
@@ -125,7 +141,7 @@ export function calculateReferralPayout(appointment: any): { total: number; item
         if (found) price = Number(found[0]);
       }
 
-      amount = Math.round(price * 0.10);
+      amount = Math.round(price * 0.07);
       
       // Prioritize the specific procedure/scan name for the UI label
       label = appointment.specificProcedure || appointment.specificScan || appointment.specificScanDetails || scanName;
@@ -148,7 +164,7 @@ export function calculateReferralPayout(appointment: any): { total: number; item
     }
 
     if (mainPrice > 0 || procedureName || appointment.specificProcedure) {
-      const amount = Math.round(mainPrice * 0.10);
+      const amount = Math.round(mainPrice * 0.07);
       const label = appointment.specificProcedure || appointment.specificScan || procedureName || 'General Procedure';
       items.push({ label, amountGhs: amount, key: 'general_fallback' });
     }

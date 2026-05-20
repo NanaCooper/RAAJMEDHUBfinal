@@ -251,7 +251,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     };
 
     const deriveScanTypesForDoctor = (procedure: ProcedureItem | null) => {
-        const label = procedure?.category || 'Procedure';
+        const label = procedure?.name || procedure?.category || 'Procedure';
         return [{ id: 'procedure', name: label }];
     };
 

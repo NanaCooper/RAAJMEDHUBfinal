@@ -177,7 +177,7 @@ function CustomDrawerContent(props: any) {
               <Text style={styles.logoutText}>Sign Out</Text>
             </View>
           </ScaleButton>
-          <Text style={styles.version}>Raaj Medhub v2.5 (Build 402)</Text>
+          <Text style={styles.version}>Raaj Medhub v1.0</Text>
         </View>
 
       </SafeAreaView>

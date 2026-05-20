@@ -59,7 +59,7 @@ export default function LoginScreen() {
     setError(null);
 
     if (!identifier || !password) {
-      setError("Please enter your email/phone and password.");
+      setError("Please enter your email or phone number and your password.");
       return;
     }
 
@@ -74,7 +74,7 @@ export default function LoginScreen() {
       // Success is handled by onAuthStateChanged in useAuth hook automatically
     } catch (err: any) {
       console.log("Sign in error:", err);
-      setError(err.message || "Sign in failed. Check credentials.");
+      setError(err.message || "Your email or password is incorrect. Please try again.");
     } finally {
       setLoading(false);
     }

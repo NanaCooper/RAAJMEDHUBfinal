@@ -8,7 +8,10 @@ export type ReferralProcedureKey =
   | 'mammography'
   | 'endoscopy'
   | 'ct_abdomen'
-  | 'ct_angiography';
+  | 'ct_angiography'
+  | 'echocardiogram'
+  | 'ecg'
+  | 'ct_generic';
 
 export interface Referral {
   id?: string;

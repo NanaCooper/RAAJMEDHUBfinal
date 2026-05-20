@@ -63,9 +63,18 @@ export default function BookingConfirmationModal() {
     try {
       const data = JSON.parse((params.appointmentData as string) || '{}');
       console.log("--- [booking-confirmation.tsx] Params parsed: ", JSON.stringify(params, null, 2));
+      let displayScanType = 'Consultation';
+      if (data?.specificProcedure || data?.procedureName) {
+        displayScanType = data.specificProcedure || data.procedureName;
+      } else if (data?.scanType?.name) {
+        displayScanType = data.scanType.name;
+      } else if (Array.isArray(data?.scanTypes) && data.scanTypes.length > 0) {
+        displayScanType = data.scanTypes.map((s: any) => s.name).join(', ');
+      }
+
       return {
         appointmentData: data,
-        scanType: data?.scanType?.name || (Array.isArray(data?.scanTypes) ? data.scanTypes.map((s: any) => s.name).join(', ') : 'Consultation'),
+        scanType: displayScanType,
         branch: data?.branch || 'RAAJ MedHub Clinic',
       };
     } catch (e) {
@@ -162,9 +171,9 @@ export default function BookingConfirmationModal() {
                 label = match.label;
                 key = match.key;
               } else {
-                // Fallback to 10% of actual price
+                // Fallback to 7% of actual price
                 const price = Number(s?.price) || Number(s?.priceGhs) || 0;
-                amount = Math.round(price * 0.10);
+                amount = Math.round(price * 0.07);
                 label = scanName;
               }
 
@@ -231,7 +240,7 @@ export default function BookingConfirmationModal() {
       setIsLoading(false);
       Alert.alert(
         "Booking Failed",
-        "We couldn't save your appointment. Please check the logs for more details and try again.",
+        "We weren't able to save your appointment. Please check your internet connection and try again. If the problem continues, contact support.",
         [{ text: "OK" }]
       );
     }

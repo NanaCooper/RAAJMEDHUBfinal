@@ -175,11 +175,11 @@ const PatientSettingsScreen = () => {
                     dialogTitle: 'Export My Medical Data',
                   });
                 } else {
-                  Alert.alert("Error", "Sharing is not available on this device.");
+                  Alert.alert("Not Supported", "Sharing files isn't available on this device.");
                 }
               } catch (err) {
                 console.error("Export error:", err);
-                Alert.alert("Error", "Failed to generate export file.");
+                Alert.alert("Export Failed", "We couldn't generate your data file. Please try again.");
               }
             }
           }
@@ -295,7 +295,7 @@ const PatientSettingsScreen = () => {
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Raaj Medhub Patient v2.5.0 • Build 2024</Text>
+        <Text style={styles.versionText}>Raaj Medhub v1.0</Text>
       </ScrollView>
     </SafeAreaView>
   );

@@ -98,14 +98,14 @@ export default function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const validate = () => {
-    if (!agreeTerms) return "You must agree to the Terms & Privacy Policy.";
+    if (!agreeTerms) return "Please accept the Terms & Privacy Policy to continue.";
 
     if (method === 'email') {
       if (!email.trim()) return "Please enter your email address.";
-      if (!isEmail(email)) return "Please enter a valid email address.";
+      if (!isEmail(email)) return "That email address doesn't look right. Please check it.";
     } else {
       if (!phone.trim()) return "Please enter your phone number.";
-      if (!validatePhoneNumber(phone)) return "Invalid phone format. Use +CountryCode...";
+      if (!validatePhoneNumber(phone)) return "Please enter a valid phone number with country code (e.g. +233XXXXXXXXX).";
     }
     return null;
   };
@@ -188,10 +188,10 @@ export default function RegisterScreen() {
 
   const handleEmailSignUp = async () => {
     // Validate
-    if (!isEmail(email)) { setError("Invalid email."); return; }
-    if (password.length < 6) { setError("Password too short."); return; }
-    if (password !== confirm) { setError("Passwords don't match."); return; }
-    if (!agreeTerms) { setError("Accept terms."); return; }
+    if (!isEmail(email)) { setError("That email address doesn't look right. Please check it."); return; }
+    if (password.length < 6) { setError("Your password needs to be at least 6 characters long."); return; }
+    if (password !== confirm) { setError("Your passwords don't match. Please try again."); return; }
+    if (!agreeTerms) { setError("Please accept the Terms & Privacy Policy to continue."); return; }
 
     setLoading(true);
     try {

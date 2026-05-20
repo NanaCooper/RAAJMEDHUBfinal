@@ -146,11 +146,11 @@ const DoctorSettingsScreen = () => {
                     dialogTitle: 'Export Practice Data',
                   });
                 } else {
-                  Alert.alert("Error", "Sharing is not available.");
+                  Alert.alert("Not Supported", "Sharing files isn't available on this device.");
                 }
               } catch (err) {
                 console.error("Export error:", err);
-                Alert.alert("Error", "Failed to generate report.");
+                Alert.alert("Export Failed", "We couldn't generate your report. Please try again.");
               }
             }
           }
@@ -269,7 +269,7 @@ const DoctorSettingsScreen = () => {
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Raaj Medhub Professional v2.5.0 • Build 2024</Text>
+        <Text style={styles.versionText}>Raaj Medhub v1.0</Text>
       </ScrollView>
     </SafeAreaView>
   );

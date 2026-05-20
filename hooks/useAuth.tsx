@@ -176,34 +176,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authInst = await getAuthInstance();
     const currentUser = authInst.currentUser;
     if (currentUser) {
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data() as UserData;
-        console.log("Checking suspension for user:", currentUser.uid, userData);
-        // Check for suspension
-        if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
-          console.log("User is suspended. Signing out.");
-          Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
-          await signOutUser();
-          return;
+      try {
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data() as UserData;
+          console.log("Checking suspension for user:", currentUser.uid, userData);
+          // Check for suspension
+          if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
+            console.log("User is suspended. Signing out.");
+            Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
+            await signOutUser();
+            return;
+          }
+          const finalUserData = {
+            uid: currentUser.uid,
+            ...(userData as any),
+            fullName: userData.fullName || userData.name || currentUser.displayName || "",
+          };
+          setUser(finalUserData);
+        } else {
+          // If the user exists in Auth but not Firestore, create a basic profile.
+          // This is common for social sign-ins on first login.
+          const newUser = {
+            email: currentUser.email,
+            createdAt: new Date().toISOString(),
+            profileComplete: false, // Explicitly set profile as incomplete
+          };
+          await setDoc(userRef, newUser);
+          setUser({ uid: currentUser.uid, ...newUser });
         }
-        const finalUserData = {
-          uid: currentUser.uid,
-          ...(userData as any),
-          fullName: userData.fullName || userData.name || currentUser.displayName || "",
-        };
-        setUser(finalUserData);
-      } else {
-        // If the user exists in Auth but not Firestore, create a basic profile.
-        // This is common for social sign-ins on first login.
-        const newUser = {
-          email: currentUser.email,
-          createdAt: new Date().toISOString(),
-          profileComplete: false, // Explicitly set profile as incomplete
-        };
-        await setDoc(userRef, newUser);
-        setUser({ uid: currentUser.uid, ...newUser });
+      } catch (error) {
+        console.error("Error in reloadUser:", error);
       }
     } else {
       setUser(null);
@@ -279,31 +283,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(true);
         setSession(user);
         if (user) {
-          const userRef = doc(db, "users", user.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const userData = userSnap.data() as UserData;
-            console.log("AuthStateChanged: Checking suspension for user:", user.uid, userData);
-            if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
-              console.log("AuthStateChanged: User is suspended. Signing out.");
-              Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
-              await signOutUser();
-              return;
+          try {
+            const userRef = doc(db, "users", user.uid);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const userData = userSnap.data() as UserData;
+              console.log("AuthStateChanged: Checking suspension for user:", user.uid, userData);
+              if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
+                console.log("AuthStateChanged: User is suspended. Signing out.");
+                Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
+                await signOutUser();
+                return;
+              }
+              const finalUserData = {
+                uid: user.uid,
+                ...(userData as any),
+                fullName: userData.fullName || userData.name || user.displayName || "",
+              };
+              setUser(finalUserData);
+            } else {
+              const newUser = {
+                email: user.email,
+                createdAt: new Date().toISOString(),
+                profileComplete: false,
+              };
+              await setDoc(userRef, newUser);
+              setUser({ uid: user.uid, ...newUser });
             }
-            const finalUserData = {
+          } catch (error) {
+            console.error("Error fetching or initializing user profile in AuthStateChanged:", error);
+            // Fallback to basic session info to prevent a black screen or loader hang
+            setUser({
               uid: user.uid,
-              ...(userData as any),
-              fullName: userData.fullName || userData.name || user.displayName || "",
-            };
-            setUser(finalUserData);
-          } else {
-            const newUser = {
               email: user.email,
-              createdAt: new Date().toISOString(),
               profileComplete: false,
-            };
-            await setDoc(userRef, newUser);
-            setUser({ uid: user.uid, ...newUser });
+            });
           }
         } else {
           setUser(null);

@@ -53,35 +53,40 @@ export function formatPhoneNumber(input: string): string {
 }
 
 function getAuthErrorMessage(error: any): string {
-    // Common auth errors
-    if (!error) return 'An unknown error occurred.';
+    if (!error) return 'Something went wrong. Please try again.';
     const code = error.code || '';
 
     switch (code) {
         case 'auth/email-already-in-use':
-            return 'This email is already registered. Please sign in.';
+            return 'An account with this email already exists. Try signing in instead.';
         case 'auth/invalid-email':
-            return 'Invalid email address.';
+            return 'That email address doesn\'t look right. Please double-check it.';
         case 'auth/weak-password':
-            return 'Password should be at least 6 characters.';
+            return 'Your password is too short. Please use at least 6 characters.';
         case 'auth/user-not-found':
-            return 'No account found with this email/phone.';
+            return 'We couldn\'t find an account with that email or phone number.';
         case 'auth/wrong-password':
-            return 'Invalid credentials.';
+            return 'Your email or password is incorrect. Please try again.';
+        case 'auth/invalid-credential':
+            return 'Your email or password is incorrect. Please try again.';
         case 'auth/too-many-requests':
-            return 'Too many failed attempts. Please try again later.';
+            return 'Too many sign-in attempts. Please wait a moment and try again.';
         case 'auth/invalid-phone-number':
-            return 'Invalid phone number format.';
+            return 'That phone number doesn\'t look right. Make sure to include the country code (e.g. +233).';
         case 'auth/quota-exceeded':
-            return 'SMS quota exceeded. Try email instead.';
+            return 'We\'re unable to send an SMS right now. Please try signing in with email instead.';
         case 'auth/invalid-verification-code':
-            return 'Invalid verification code.';
+            return 'The code you entered is incorrect. Please check and try again.';
         case 'auth/code-expired':
-            return 'Code has expired. Request a new one.';
+            return 'That code has expired. Please request a new one.';
+        case 'auth/network-request-failed':
+            return 'No internet connection. Please check your network and try again.';
+        case 'account-suspended':
+            return 'Your account has been suspended. Please contact support for help.';
         case 'email-not-verified':
-            return 'Email not verified yet. Please check your inbox.';
+            return 'You haven\'t verified your email yet. Please check your inbox for the link we sent you.';
         default:
-            return error.message || 'Authentication failed.';
+            return 'Something went wrong. Please try again or contact support if this keeps happening.';
     }
 }
 

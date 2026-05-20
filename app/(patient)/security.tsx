@@ -36,30 +36,30 @@ export default function SecurityScreen() {
 
   const handleUpdatePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert("Error", "Please fill in all fields.");
+      Alert.alert("Missing Information", "Please fill in all three password fields before continuing.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert("Error", "New passwords do not match.");
+      Alert.alert("Passwords Don't Match", "Your new password and the confirmation don't match. Please try again.");
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters.");
+      Alert.alert("Password Too Short", "Your new password needs to be at least 6 characters long.");
       return;
     }
 
     setLoading(true);
     try {
       await updateUserPassword(currentPassword, newPassword);
-      Alert.alert("Success", "Your password has been updated successfully.");
+      Alert.alert("Password Updated", "Your password has been changed successfully.");
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       router.back();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to update password. Please check your current password.");
+      Alert.alert("Couldn't Update Password", "The current password you entered is incorrect. Please try again.");
     } finally {
       setLoading(false);
     }
