@@ -14,10 +14,6 @@ import { Drawer } from "expo-router/drawer";
 import { useRouter, usePathname } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { subscribeToAppointments } from "../../services/appointments";
-import { sendAppointmentNotification } from "../../services/notifications";
-import { getDoctor } from "../../services/doctors";
 
 // --- THEME ENGINE ---
 const THEME = {
@@ -186,39 +182,6 @@ function CustomDrawerContent(props: any) {
 }
 
 export default function PatientLayout() {
-  const { session } = useAuth();
-
-  // Logic remains untouched as requested
-  const notifiedAppointmentsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!session?.uid) return;
-    const loadNotified = async () => {
-        try {
-          const stored = await AsyncStorage.getItem('notified_assignments');
-          if (stored) notifiedAppointmentsRef.current = new Set(JSON.parse(stored));
-        } catch { }
-    };
-    loadNotified();
-    const unsubscribe = subscribeToAppointments(session.uid, 'patient', async (appointments) => {
-      let newNotified = false;
-      for (const appt of appointments) {
-        if (appt.doctorId && appt.id && !notifiedAppointmentsRef.current.has(appt.id) && appt.status !== 'cancelled') {
-          let doctorName = 'A doctor';
-          if ((appt as any).doctorName) doctorName = (appt as any).doctorName;
-          else {
-            const docProfile = await getDoctor(appt.doctorId);
-            if (docProfile) doctorName = (docProfile as any).fullName || (docProfile as any).name;
-          }
-          await sendAppointmentNotification("Doctor Assigned", `${doctorName} has been assigned to you`, appt.id);
-          notifiedAppointmentsRef.current.add(appt.id);
-          newNotified = true;
-        }
-      }
-      if (newNotified) await AsyncStorage.setItem('notified_assignments', JSON.stringify(Array.from(notifiedAppointmentsRef.current)));
-    });
-    return () => unsubscribe();
-  }, [session?.uid]);
-
   return (
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}

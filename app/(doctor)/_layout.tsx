@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import { useRouter, usePathname } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
 import { subscribeToAppointments } from "../../services/appointments";
-import { sendAppointmentNotification, scheduleAppointmentReminders } from "../../services/notifications";
 import { doc, getDoc, db } from "../../utils/firebaseConfig";
 
 // --- 🎨 Unified Premium Theme ---
@@ -113,9 +112,6 @@ function CustomDrawerContent(props: any) {
 
 export default function DoctorLayout() {
   const { session } = useAuth();
-  const knownAppointmentIds = useRef<Set<string>>(new Set());
-  const scheduledAppointmentIds = useRef<Set<string>>(new Set());
-  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     let mounted = true;
@@ -142,59 +138,8 @@ export default function DoctorLayout() {
       unsub = subscribeToAppointments(
         doctorId,
         'doctor',
-        (appointments) => {
+        () => {
           if (!mounted) return;
-
-          const currentIds = new Set<string>();
-          appointments.forEach(a => { if (a.id) currentIds.add(a.id); });
-
-          // 1. Schedule reminders for all future appointments (only once per session)
-          appointments.forEach(appt => {
-            if (appt.id && appt.startAt && appt.status !== 'cancelled' && appt.status !== 'completed') {
-              // Skip if already scheduled in this session
-              if (scheduledAppointmentIds.current.has(appt.id)) return;
-
-              let start: Date;
-              const sa = appt.startAt as any;
-              if (sa.toDate) {
-                start = sa.toDate();
-              } else {
-                start = new Date(sa);
-              }
-
-              if (!isNaN(start.getTime()) && start > new Date()) {
-                console.log(`[DoctorLayout] Scheduling reminders for ${appt.id} at ${start.toISOString()}`);
-                scheduleAppointmentReminders(appt.id, start);
-                scheduledAppointmentIds.current.add(appt.id);
-              }
-            }
-          });
-
-          // 2. Check for new assignments (only after first load)
-          if (!isFirstLoad.current) {
-            appointments.forEach(appt => {
-              if (appt.id && !knownAppointmentIds.current.has(appt.id)) {
-                // This is a new appointment!
-                // Notify the doctor
-                let dateStr = '';
-                const sa = appt.startAt as any;
-                if (sa) {
-                  const d = sa.toDate ? sa.toDate() : new Date(sa);
-                  if (!isNaN(d.getTime())) dateStr = ` on ${d.toLocaleDateString()} at ${d.toLocaleTimeString()}`;
-                }
-
-                sendAppointmentNotification(
-                  "New Patient Assigned",
-                  `You have been assigned a new appointment${dateStr}.`,
-                  appt.id
-                );
-              }
-            });
-          }
-
-          // Update known IDs
-          knownAppointmentIds.current = currentIds;
-          isFirstLoad.current = false;
         },
         (err) => console.log("Doctor appointment sub error", err)
       );

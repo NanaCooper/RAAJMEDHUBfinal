@@ -68,7 +68,17 @@ export default function RootLayout() {
     // Handle notification taps
     const subscription = setupNotificationResponseListener((conversationId, messageId, data) => {
       // Handle different notification types
-      if (data?.type === 'appointment_reminder' || data?.type === 'doctor_assigned' || data?.type === 'patient_assigned') {
+      if (
+        data?.type === 'appointment_reminder' ||
+        data?.type === 'doctor_assigned' ||
+        data?.type === 'patient_assigned' ||
+        data?.type === 'appointment_approved' ||
+        data?.type === 'appointment_rescheduled' ||
+        data?.type === 'appointment_completed' ||
+        data?.type === 'appointment_cancelled' ||
+        data?.type === 'appointment_denied' ||
+        data?.type === 'request_submitted'
+      ) {
         // Navigate to appointments tab
         // We need to determine if user is patient or doctor, but for now we can try generic routing
         // or just let the user navigate manually. 

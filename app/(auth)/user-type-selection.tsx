@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../hooks/useAuth";
+import { useRouter } from "expo-router";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -35,6 +36,7 @@ const SHADOW = {
 
 export default function UserTypeSelection() {
   const { setUserType, reloadUser } = useAuth();
+  const router = useRouter();
   const [selection, setSelection] = useState<"patient" | "doctor" | null>(null);
 
   const handleContinue = async () => {
@@ -43,6 +45,11 @@ export default function UserTypeSelection() {
     // Persist user type and reload the user session
     await setUserType(selection);
     await reloadUser();
+
+    if (selection === 'doctor') {
+      router.replace('/doctor-hospital');
+      return;
+    }
 
     // Navigation will now be handled automatically by the useProtectedRoute hook
   };

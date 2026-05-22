@@ -18,7 +18,8 @@ import { createAppointment } from "../../services/appointments";
 import { createReferral, inferReferralProcedure } from "../../services/referrals";
 import { 
   sendRequestSubmittedNotification, 
-  scheduleAppointmentReminders 
+  scheduleAppointmentReminders,
+  sendReferralSubmittedNotification
 } from "../../services/notifications";
 import { Feather, Ionicons } from "@expo/vector-icons";
 
@@ -213,14 +214,19 @@ export default function BookingConfirmationModal() {
             const breakdown = createdItems.map(i => `${i.label}: GHS ${i.amountGhs}`).join('\n');
             setReferralPayout({ total, breakdown });
             setShowPayoutModal(true);
+
+            const labelSummary = createdItems.map(i => i.label).join(', ');
+            await sendReferralSubmittedNotification(patientName, labelSummary);
           }
         } catch (e) {
           console.log('[booking-confirmation] Referral tracking failed', e);
         }
       }
 
-      // Send "request submitted" notification immediately
-      await sendRequestSubmittedNotification(result.id || '');
+      // Send "request submitted" notification immediately for patient-initiated bookings
+      if (!isDoctorCreated) {
+        await sendRequestSubmittedNotification(result.id || '');
+      }
 
       // Schedule reminders
       if (result.id && appointmentToSave.startAt) {

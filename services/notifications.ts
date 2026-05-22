@@ -42,6 +42,14 @@ export const defaultNotificationPreferences: NotificationPreferences = {
   mutedConversations: [],
 };
 
+function formatDateTime(date?: Date | null) {
+  if (!date) return { dateText: '', timeText: '', dateTimeText: '' };
+  const dateText = date.toLocaleDateString();
+  const timeText = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateTimeText = `${dateText} at ${timeText}`;
+  return { dateText, timeText, dateTimeText };
+}
+
 /**
  * Initialize notifications
  * Call this once when app launches
@@ -423,8 +431,8 @@ export async function sendRequestSubmittedNotification(
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '📋 Request Submitted',
-        body: 'Your request will soon be approved.',
+        title: 'Request received',
+        body: 'We have your appointment request. We will notify you once it is confirmed.',
         sound: prefs.soundEnabled ? 'default' : undefined,
         badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
         data: { type: 'request_submitted', appointmentId },
@@ -449,14 +457,13 @@ export async function sendAppointmentApprovedNotification(
     const prefs = await getNotificationPreferences();
     if (!prefs.enabled) return;
 
-    const dateStr = startAt
-      ? ` on ${startAt.toLocaleDateString()} at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : '';
+    const { dateTimeText } = formatDateTime(startAt || null);
+    const dateStr = dateTimeText ? ` for ${dateTimeText}` : '';
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '✅ Appointment Approved',
-        body: `Your appointment has been approved${dateStr}.`,
+        title: 'Appointment approved',
+        body: `Your appointment is confirmed${dateStr}.`,
         sound: prefs.soundEnabled ? 'default' : undefined,
         badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
         data: { type: 'appointment_approved', appointmentId },
@@ -483,8 +490,8 @@ export async function sendReportReadyPatientNotification(
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '📄 Report Ready',
-        body: `Report on your previous procedure is ready${reportTitle ? `: ${reportTitle}` : ''}.`,
+        title: 'Report ready',
+        body: `Your report is ready${reportTitle ? `: ${reportTitle}` : ''}.`,
         sound: prefs.soundEnabled ? 'default' : undefined,
         badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
         data: { type: 'report_ready_patient', reportId },
@@ -511,8 +518,8 @@ export async function sendReportSentDoctorNotification(
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '📋 Report Received',
-        body: `A report has been sent to you${reportTitle ? `: ${reportTitle}` : ''}.`,
+        title: 'Report received',
+        body: `A report was sent to you${reportTitle ? `: ${reportTitle}` : ''}.`,
         sound: prefs.soundEnabled ? 'default' : undefined,
         badge: prefs.badgeEnabled ? (await getBadgeCount()) + 1 : undefined,
         data: { type: 'report_sent_doctor', reportId },
@@ -538,10 +545,13 @@ export async function sendDoctorAssignedNotification(
     const prefs = await getNotificationPreferences();
     if (!prefs.enabled) return;
 
+    const safeDoctorName = doctorName || 'your doctor';
+    const { dateTimeText } = formatDateTime(date);
+
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '✅ Appointment Approved',
-        body: 'Your appointment has been approved.',
+        title: 'Doctor assigned',
+        body: `Dr. ${safeDoctorName} is assigned to your appointment${dateTimeText ? ` on ${dateTimeText}` : ''}.`,
         sound: prefs.soundEnabled ? 'default' : undefined,
         data: { type: 'doctor_assigned', appointmentId },
       },
@@ -559,16 +569,25 @@ export async function sendDoctorAssignedNotification(
  */
 export async function sendAppointmentRescheduledNotification(
   date: Date,
-  appointmentId: string
+  appointmentId: string,
+  role: 'patient' | 'doctor' = 'patient',
+  otherPartyName?: string
 ) {
   try {
     const prefs = await getNotificationPreferences();
     if (!prefs.enabled) return;
 
+    const { dateTimeText } = formatDateTime(date);
+    const patientName = otherPartyName || 'your patient';
+    const doctorLabel = otherPartyName ? `with Dr. ${otherPartyName}` : 'with your doctor';
+    const body = role === 'doctor'
+      ? `Your appointment ${patientName ? `with ${patientName} ` : ''}was rescheduled to ${dateTimeText}.`
+      : `Your appointment ${doctorLabel} was rescheduled to ${dateTimeText}.`;
+
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Appointment Approved',
-        body: `Your appointment has been approved, you have an appointment on ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        title: 'Appointment rescheduled',
+        body,
         sound: prefs.soundEnabled ? 'default' : undefined,
         data: { type: 'appointment_rescheduled', appointmentId },
       },
@@ -593,10 +612,13 @@ export async function sendPatientAssignedNotification(
     const prefs = await getNotificationPreferences();
     if (!prefs.enabled) return;
 
+    const safePatientName = patientName || 'a patient';
+    const { dateTimeText } = formatDateTime(date);
+
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'New Patient Assigned',
-        body: `Patient ${patientName} has been assigned to you for ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        title: 'New appointment assigned',
+        body: `You have a new appointment with ${safePatientName}${dateTimeText ? ` on ${dateTimeText}` : ''}.`,
         sound: prefs.soundEnabled ? 'default' : undefined,
         data: { type: 'patient_assigned', appointmentId },
       },
@@ -606,6 +628,122 @@ export async function sendPatientAssignedNotification(
     if (prefs.badgeEnabled) await incrementBadgeCount();
   } catch (error) {
     console.error('Failed to send patient assigned notification:', error);
+  }
+}
+
+export async function sendAppointmentCompletedNotification(
+  appointmentId: string,
+  role: 'patient' | 'doctor' = 'patient',
+  otherPartyName?: string,
+  date?: Date
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    const { dateTimeText } = formatDateTime(date || null);
+    const doctorLabel = otherPartyName ? `with Dr. ${otherPartyName}` : 'with your doctor';
+    const patientLabel = otherPartyName ? `with ${otherPartyName}` : '';
+    const body = role === 'doctor'
+      ? `Appointment ${patientLabel ? `${patientLabel} ` : ''}was marked completed${dateTimeText ? ` (${dateTimeText})` : ''}.`
+      : `Your appointment ${doctorLabel} was completed${dateTimeText ? ` (${dateTimeText})` : ''}.`;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Appointment completed',
+        body,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'appointment_completed', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send appointment completed notification:', error);
+  }
+}
+
+export async function sendAppointmentCancelledNotification(
+  appointmentId: string,
+  role: 'patient' | 'doctor' = 'patient',
+  otherPartyName?: string,
+  date?: Date
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    const { dateTimeText } = formatDateTime(date || null);
+    const doctorLabel = otherPartyName ? `with Dr. ${otherPartyName}` : 'with your doctor';
+    const patientLabel = otherPartyName ? `with ${otherPartyName}` : '';
+    const body = role === 'doctor'
+      ? `The appointment ${patientLabel ? `${patientLabel} ` : ''}was cancelled${dateTimeText ? ` (${dateTimeText})` : ''}.`
+      : `Your appointment ${doctorLabel} was cancelled${dateTimeText ? ` (${dateTimeText})` : ''}.`;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Appointment cancelled',
+        body,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'appointment_cancelled', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send appointment cancelled notification:', error);
+  }
+}
+
+export async function sendAppointmentDeniedNotification(
+  appointmentId: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Appointment not approved',
+        body: 'Your appointment request was not approved. Please contact the clinic if you need help.',
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'appointment_denied', appointmentId },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send appointment denied notification:', error);
+  }
+}
+
+export async function sendReferralSubmittedNotification(
+  patientName: string,
+  procedureLabel?: string
+) {
+  try {
+    const prefs = await getNotificationPreferences();
+    if (!prefs.enabled) return;
+
+    const safePatientName = patientName || 'the patient';
+    const procedureText = procedureLabel ? ` for ${procedureLabel}` : '';
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Referral sent',
+        body: `You sent a referral for ${safePatientName}${procedureText}.`,
+        sound: prefs.soundEnabled ? 'default' : undefined,
+        data: { type: 'referral_submitted' },
+      },
+      trigger: null,
+    });
+
+    if (prefs.badgeEnabled) await incrementBadgeCount();
+  } catch (error) {
+    console.error('Failed to send referral submitted notification:', error);
   }
 }
 
@@ -682,7 +820,7 @@ export async function scheduleAppointmentReminders(
         await scheduleUnique(
           oneDayBefore,
           '1day',
-          'Upcoming Appointment Reminder',
+          'Appointment tomorrow',
           `You have an appointment tomorrow at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${partyLabel}.`
         );
       }
@@ -692,8 +830,8 @@ export async function scheduleAppointmentReminders(
         await scheduleUnique(
           twoHoursBefore,
           '2hour',
-          'Appointment Starting Soon',
-          `Your appointment is in 2 hours at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please be ready.`
+          'Appointment in 2 hours',
+          `Your appointment starts in 2 hours at ${startAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Please be ready.`
         );
       }
 

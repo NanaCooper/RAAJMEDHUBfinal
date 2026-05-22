@@ -1,6 +1,15 @@
 import { db, collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from '../utils/firebaseConfig';
 import type { Appointment } from '../types/appointment';
-import { scheduleAppointmentReminders, sendDoctorAssignedNotification, sendPatientAssignedNotification, sendAppointmentRescheduledNotification, sendAppointmentApprovedNotification } from './notifications';
+import {
+  scheduleAppointmentReminders,
+  sendDoctorAssignedNotification,
+  sendPatientAssignedNotification,
+  sendAppointmentRescheduledNotification,
+  sendAppointmentApprovedNotification,
+  sendAppointmentCompletedNotification,
+  sendAppointmentCancelledNotification,
+  sendAppointmentDeniedNotification,
+} from './notifications';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 dayjs.extend(customParseFormat);
@@ -126,6 +135,13 @@ export function subscribeToAppointments(
     changes.forEach(change => {
       const data = change.doc.data();
       const apptId = change.doc.id;
+      const oldDoc = oldDocs.find((d: any) => d.id === apptId);
+      const oldData = oldDoc?.data ? oldDoc.data() : undefined;
+      const oldStatus = oldData?.status;
+      const newStatus = data.status;
+
+      const doctorName = data.doctorName || 'Doctor';
+      const patientName = data.patientDetails?.fullName || data.patientName || 'Patient';
       // Parse startAt robustly
       let startAt: Date | null = null;
       if (data.startAt) {
@@ -176,7 +192,6 @@ export function subscribeToAppointments(
         const docEventKey = `added_patient_${apptId}`;
         if (role === 'doctor' && isRecent && !processedNotificationEvents.has(docEventKey)) {
           processedNotificationEvents.add(docEventKey);
-          const patientName = data.patientDetails?.fullName || 'New Patient';
           sendPatientAssignedNotification(patientName, startAt, apptId);
         }
       }
@@ -193,50 +208,33 @@ export function subscribeToAppointments(
         const isRecentUpdate = (new Date().getTime() - updatedAt.getTime()) < 60000; // 1 min
 
         // Deduplication key for "Doctor Assigned" (Modified)
-        // We use timestamp to allow re-notification if it changes again later (but not within same minute/session)
         const modEventKey = `mod_assigned_${apptId}_${updatedAt.getTime()}`;
+        const doctorJustAssigned = !oldData?.doctorId && !!data.doctorId;
 
-        if (role === 'patient' && isRecentUpdate && data.doctorName && data.status !== 'cancelled' && !processedNotificationEvents.has(modEventKey)) {
-          // We can't easily know if it was *just* assigned without prev state, 
-          // but sending a "Doctor Assigned" notification when the doc is updated is acceptable 
-          // if we debounce or check specific fields. 
-          // For now, we assume a modification with a doctor name implies assignment or update.
-          // Ideally, we'd check if the previous state had no doctor.
-          // Let's rely on the UI/Service layer to trigger this, OR just send it.
-          // Actually, the requirement says: "When the app fetches a doctor has been assigned... send notification"
-          // This implies a transition from No Doctor -> Doctor.
-          // Since we don't have prev state here, we will just schedule reminders which is safe.
-          // For the specific "Doctor Assigned" alert, we might need to be more careful.
-          // Let's try to infer it: if status is 'pending' -> 'upcoming' maybe?
-
+        if (
+          role === 'patient' &&
+          isRecentUpdate &&
+          doctorJustAssigned &&
+          data.doctorName &&
+          data.status !== 'cancelled' &&
+          !processedNotificationEvents.has(modEventKey)
+        ) {
           processedNotificationEvents.add(modEventKey);
-
-          // Re-schedule reminders in case time changed
-          if (startAt > new Date()) {
-            scheduleAppointmentReminders(apptId, startAt, data.doctorName, role);
-          }
-
-          // If we really want to catch the "Just Assigned" event, we need to store local state.
-          // But for this task, ensuring reminders are set is the priority.
-          // The "Admin Booked" case is covered by 'added' + isRecent.
+          sendDoctorAssignedNotification(data.doctorName, startAt, apptId);
         }
 
         // --- CHECK 2: DATE CHANGED / RESCHEDULED ---
         // Find old doc to compare
         // We need to pass oldDocs to check for changes
-        if (role === 'patient' && isRecentUpdate && startAt && data.status !== 'cancelled') {
-          const oldDoc = oldDocs.find(d => d.id === apptId);
+        if (isRecentUpdate && startAt && data.status !== 'cancelled') {
           let oldStartAt: Date | null = null;
 
-          if (oldDoc) {
-            const oldData = oldDoc.data();
-            if (oldData.startAt) {
-              if (typeof oldData.startAt === 'string') {
+          if (oldData?.startAt) {
+            if (typeof oldData.startAt === 'string') {
               const m = dayjs(oldData.startAt, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm:ss.SSSZ']);
               if (m.isValid()) oldStartAt = m.toDate();
-              } else if (oldData.startAt.toDate) {
-                oldStartAt = oldData.startAt.toDate();
-              }
+            } else if (oldData.startAt.toDate) {
+              oldStartAt = oldData.startAt.toDate();
             }
           }
 
@@ -250,17 +248,18 @@ export function subscribeToAppointments(
           // Dedupe key for rescheduling
           const reschedKey = `resched_${apptId}_${updatedAt.getTime()}`;
 
-          if ((isNewDate || isChangedDate) && !processedNotificationEvents.has(reschedKey)) {
+          const isApprovalTransition = ['pending', 'requested', undefined, null].includes(oldStatus) && newStatus === 'upcoming';
+
+          if ((isNewDate || isChangedDate) && !isApprovalTransition && !processedNotificationEvents.has(reschedKey)) {
             processedNotificationEvents.add(reschedKey);
-            sendAppointmentRescheduledNotification(startAt, apptId);
+            sendAppointmentRescheduledNotification(startAt, apptId, role, role === 'doctor' ? patientName : doctorName);
+            scheduleAppointmentReminders(apptId, startAt, role === 'doctor' ? patientName : doctorName, role);
           }
         }
 
         // --- CHECK 3: APPOINTMENT APPROVED (status changed to 'upcoming') ---
         // Detect when admin/staff approves the appointment (status: pending/requested → upcoming)
         if (role === 'patient' && isRecentUpdate && data.status === 'upcoming') {
-          const oldDoc = oldDocs.find((d: any) => d.id === apptId);
-          const oldStatus = oldDoc?.data()?.status;
           // Only notify if it was previously awaiting approval
           const wasAwaitingApproval = !oldStatus || ['pending', 'requested'].includes(oldStatus);
           const approvalKey = `approved_${apptId}_${updatedAt.getTime()}`;
@@ -268,6 +267,26 @@ export function subscribeToAppointments(
           if (wasAwaitingApproval && !processedNotificationEvents.has(approvalKey)) {
             processedNotificationEvents.add(approvalKey);
             sendAppointmentApprovedNotification(apptId, startAt || undefined);
+          }
+        }
+
+        // --- CHECK 4: STATUS CHANGES (completed/cancelled/denied) ---
+        if (isRecentUpdate && oldStatus && oldStatus !== newStatus) {
+          const statusKey = `status_${apptId}_${newStatus}_${updatedAt.getTime()}`;
+          if (!processedNotificationEvents.has(statusKey)) {
+            processedNotificationEvents.add(statusKey);
+
+            if (newStatus === 'completed' && role === 'patient') {
+              sendAppointmentCompletedNotification(apptId, 'patient', doctorName, startAt || undefined);
+            }
+
+            if (newStatus === 'cancelled') {
+              sendAppointmentCancelledNotification(apptId, role, role === 'doctor' ? patientName : doctorName, startAt || undefined);
+            }
+
+            if (newStatus === 'denied' && role === 'patient') {
+              sendAppointmentDeniedNotification(apptId);
+            }
           }
         }
       }

@@ -12,6 +12,9 @@ export interface AppUser {
   avatarUrl?: string | null;
   bio?: string | null;
   specialties?: string[]; // for doctors
+  hospitalId?: string;
+  hospitalName?: string;
+  hospitalRegion?: string;
   createdAt?: string; // ISO string or Firestore timestamp serialized as string
   status?: 'online' | 'offline';
   lastActive?: string; // ISO string or Firestore timestamp

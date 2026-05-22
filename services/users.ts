@@ -1,5 +1,5 @@
 import { 
-  db, doc, getDoc, setDoc, updateDoc, serverTimestamp, 
+  db, doc, getDoc, setDoc, serverTimestamp, 
   onSnapshot, addDoc, collection, deleteDoc,
   getAuthInstance, GoogleAuthProvider 
 } from '../utils/firebaseConfig';
@@ -36,10 +36,10 @@ export async function getUserProfile(userId: string): Promise<AppUser | null> {
 export async function updateUserProfile(userId: string, patch: Partial<AppUser>) {
   try {
     const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, {
+    await setDoc(userRef, {
       ...patch,
       updatedAt: serverTimestamp(),
-    } as any);
+    } as any, { merge: true });
     return await getUserProfile(userId);
   } catch (err) {
     console.error('updateUserProfile error', err);

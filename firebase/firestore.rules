@@ -88,6 +88,18 @@ service cloud.firestore {
       return changed && !noRoleYet;
     }
 
+    function onlyProfileFieldsChanged() {
+      let allowed = [
+        'fullName', 'firstName', 'lastName',
+        'phone', 'dob', 'age', 'specialization',
+        'qualifications', 'bio', 'photoURL',
+        'hospitalId', 'hospitalName', 'hospitalRegion',
+        'updatedAt'
+      ];
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasOnly(allowed);
+    }
+
     function getBranchForRole() {
       let r = getUserRole();
       return r == 'admin_koforidua' ? 'Koforidua'
@@ -116,6 +128,8 @@ service cloud.firestore {
         || isAdmin()
       );
 
+      // TEMP: Allow owners to update their own user document to unblock profile saves.
+      // Once confirmed working, we can reintroduce field-level restrictions.
       allow update: if isAdmin() || isBranchAdmin()
         || (isSignedIn() && request.auth.uid == userId);
 
@@ -212,6 +226,12 @@ service cloud.firestore {
     match /services/{serviceId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
+    }
+
+    match /hospitals/{hospitalId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isDoctor();
+      allow delete: if isAdmin();
     }
 
     match /adminNotes/{noteId} {
