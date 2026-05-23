@@ -2,7 +2,7 @@
   "expo": {
     "name": "RAAJ MEDHUB",
     "slug": "MediCare",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "com.cooper.medicare",
@@ -14,6 +14,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.cooper.medicare",
+      "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "CFBundleURLTypes": [
@@ -40,6 +41,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.cooper.medicare",
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json"
     },
     "web": {
@@ -50,7 +52,7 @@
       "googleClientId": "631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231.apps.googleusercontent.com",
       "router": {},
       "eas": {
-        "projectId": "445d0853-2177-4c71-9b8f-6f7b75e37627"
+        "projectId": "ce56fd7d-9b8c-4a4a-b5cc-1fcc10a92a90"
       }
     },
     "plugins": [
@@ -104,6 +106,6 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "owner": "nanacooper"
+    "owner": "raajmedhub"
   }
 }
