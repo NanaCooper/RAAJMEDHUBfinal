@@ -110,17 +110,34 @@ function useProtectedRoute(session: AuthUser | null | undefined, isLoading: bool
 
       // --- User is fully authenticated and configured ---
       const userType = user.role;
+
+      // 3. If a doctor has not selected a hospital yet and is trying to access a dashboard screen, redirect to doctor-hospital selection screen
+      if (userType === 'doctor' && !user.hospitalId && !inAuthGroup) {
+        console.log('Redirecting doctor to doctor-hospital selection screen');
+        router.replace('/doctor-hospital');
+        return;
+      }
+
       const expectedGroup = `(${userType})`;
       const isSharedRoute = ['settings', 'appointments', 'booking', 'consultation', 'doctors', 'patients'].includes(segments[0] as string);
 
-      // 3. If user is in an auth screen (login, signup) or oauthredirect, redirect them away to their dashboard.
+      // 4. If user is in an auth screen (login, signup) or oauthredirect, redirect them away to their dashboard.
       if (inAuthGroup || isOAuthRedirect) {
+        const lastSegment = segments[segments.length - 1];
+        if (lastSegment === 'doctor-hospital' && !user.hospitalId) {
+          // Stay on doctor-hospital if they haven't chosen a hospital yet
+          return;
+        }
+        if (lastSegment === 'user-type-selection') {
+          // Stay on user-type-selection so they can change their role if they want to
+          return;
+        }
         if (userType === 'patient') router.replace('/(patient)');
         else if (userType === 'doctor') router.replace('/(doctor)');
         return;
       }
 
-      // 4. If the user is on a route that doesn't match their role and is not a shared route, redirect.
+      // 5. If the user is on a route that doesn't match their role and is not a shared route, redirect.
       if (segments[0] !== expectedGroup && !isSharedRoute) {
         if (userType === 'patient') router.replace('/(patient)');
         else if (userType === 'doctor') router.replace('/(doctor)');

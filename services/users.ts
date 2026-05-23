@@ -23,10 +23,58 @@ export async function createUserProfile(user: AppUser) {
 
 export async function getUserProfile(userId: string): Promise<AppUser | null> {
   try {
+    // 1. Try to fetch from 'users' collection
     const userRef = doc(db, 'users', userId);
     const snap = await getDoc(userRef);
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...(snap.data() as any) } as AppUser;
+    if (snap.exists()) {
+      return { id: snap.id, ...(snap.data() as any) } as AppUser;
+    }
+
+    // 2. If not found in 'users', fallback to 'patients' collection
+    const patientRef = doc(db, 'patients', userId);
+    const patientSnap = await getDoc(patientRef);
+    if (patientSnap.exists()) {
+      const data = patientSnap.data() as any;
+      
+      // Parse full name into components for compatibility with the AppUser fields
+      const fullName = data.name || data.fullName || '';
+      const nameParts = fullName.trim().split(/\s+/);
+      let firstName = data.firstName || '';
+      let lastName = data.lastName || '';
+      let middleName = data.middleName || '';
+      
+      if (!firstName && nameParts.length > 0) {
+        firstName = nameParts[0];
+        if (nameParts.length > 2) {
+          middleName = nameParts.slice(1, -1).join(' ');
+          lastName = nameParts[nameParts.length - 1];
+        } else if (nameParts.length === 2) {
+          lastName = nameParts[1];
+        }
+      }
+
+      return {
+        id: patientSnap.id,
+        email: data.email || '',
+        fullName: fullName,
+        firstName: firstName,
+        middleName: middleName,
+        lastName: lastName,
+        role: 'patient',
+        contact: data.contact || data.phone || '',
+        phone: data.phone || data.contact || '',
+        dob: data.dob || '',
+        gender: data.gender || data.sex || '',
+        sex: data.sex || data.gender || '',
+        age: data.age || '',
+        patientNumber: data.patientNumber || '',
+        insuranceId: data.insuranceId || '',
+        status: 'online',
+        createdAt: data.createdAt || '',
+      } as AppUser;
+    }
+
+    return null;
   } catch (err) {
     console.error('getUserProfile error', err);
     throw err;

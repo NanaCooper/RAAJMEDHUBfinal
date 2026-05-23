@@ -63,6 +63,13 @@ export default function MyPatients() {
         const data = snap.data();
         const name = `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'Patient';
         setPatientCache(prev => ({ ...prev, [pid]: name }));
+      } else {
+        const pSnap = await getDoc(doc(db, 'patients', pid));
+        if (pSnap.exists()) {
+          const data = pSnap.data();
+          const name = data.name || data.fullName || 'Patient';
+          setPatientCache(prev => ({ ...prev, [pid]: name }));
+        }
       }
     } catch (e) {
       console.warn("Failed to fetch patient name", pid, e);

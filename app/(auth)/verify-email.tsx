@@ -140,7 +140,13 @@ export default function VerifyEmailScreen() {
 
                     <TouchableOpacity
                         style={styles.backBtn}
-                        onPress={() => router.back()}
+                        onPress={() => {
+                            if (router.canGoBack()) {
+                                router.back();
+                            } else {
+                                router.replace('/register');
+                            }
+                        }}
                     >
                         <Text style={styles.backText}>Back to Sign Up</Text>
                     </TouchableOpacity>

@@ -186,7 +186,7 @@ export default function PatientLayout() {
     <Drawer
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
-        drawerStyle: { width: width * 0.85, backgroundColor: "transparent" },
+        drawerStyle: { width: width * 0.74, backgroundColor: "transparent" },
         drawerType: "slide",
         headerShown: true,
         headerStyle: { backgroundColor: THEME.bg, elevation: 0, shadowOpacity: 0 },
@@ -257,8 +257,8 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   profileCard: {
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 18,
+    padding: 16,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   avatarWrapper: {
     position: 'relative',
@@ -327,8 +327,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
   },
   statItem: {
     alignItems: 'center',
@@ -370,9 +370,10 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    marginBottom: 10,
-    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 4,
+    borderRadius: 12,
     backgroundColor: 'transparent', // Default
   },
   menuItemActive: {
@@ -384,13 +385,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   iconBoxActive: {
     backgroundColor: THEME.primary,
@@ -400,8 +401,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   menuLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '500',
     color: THEME.text,
     flex: 1,
   },
@@ -448,7 +449,8 @@ const styles = StyleSheet.create({
 
   // 3. FOOTER
   footer: {
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
     backgroundColor: 'rgba(255,255,255,0.5)',
@@ -458,21 +460,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: THEME.danger,
-    paddingVertical: 16,
-    borderRadius: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
     shadowColor: THEME.danger,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   logoutIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   logoutText: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '700',
   },
   version: {
     textAlign: 'center',

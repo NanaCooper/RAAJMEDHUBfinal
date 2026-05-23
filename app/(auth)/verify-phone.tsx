@@ -134,7 +134,16 @@ export default function VerifyPhoneScreen() {
                 style={styles.flex}
             >
                 <View style={styles.content}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                    <TouchableOpacity
+                        onPress={() => {
+                            if (router.canGoBack()) {
+                                router.back();
+                            } else {
+                                router.replace('/register');
+                            }
+                        }}
+                        style={styles.backButton}
+                    >
                         <Feather name="arrow-left" size={24} color={COLORS.textMain} />
                     </TouchableOpacity>
 
