@@ -198,7 +198,7 @@ export default function ReviewRequestScreen() {
                     {/* Scans */}
                     <View style={styles.sectionNoCard}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, paddingHorizontal: 4 }}>
-                            <Text style={styles.sectionTitle}>Examination Type</Text>
+                            <Text style={styles.sectionTitle}>Service Type</Text>
                             <Text style={{ fontSize: 12, color: COLORS.textSub, marginLeft: 8 }}>(Tap for info)</Text>
                         </View>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingHorizontal: 4 }}>
@@ -224,7 +224,7 @@ export default function ReviewRequestScreen() {
 
                     {/* Fields */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Patient Details</Text>
+                        <Text style={styles.sectionTitle}>Customer Details</Text>
                         <View style={styles.fieldRow}>
                             <View style={{ flexDirection: 'row', gap: 12 }}>
                                 <View style={{ flex: 1 }}>

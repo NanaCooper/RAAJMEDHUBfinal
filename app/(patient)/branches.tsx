@@ -164,7 +164,7 @@ export default function Branches() {
         onPress={() => handleCall(item.phone)}
       >
         <Feather name="phone-call" size={16} color={COLORS.primary} />
-        <Text style={styles.callButtonText}>Call Clinic</Text>
+        <Text style={styles.callButtonText}>Call Location</Text>
       </TouchableOpacity>
     </TouchableOpacity>
   )};

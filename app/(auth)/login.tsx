@@ -101,7 +101,7 @@ export default function LoginScreen() {
               <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
             </View>
             <Text style={styles.appName}>RAAJ MedHub<Text style={styles.appNameDot}>.</Text></Text>
-            <Text style={styles.tagline}>Professional Healthcare Management</Text>
+            <Text style={styles.tagline}>Smart Appointment Management</Text>
           </View>
 
           {/* --- Login Card --- */}

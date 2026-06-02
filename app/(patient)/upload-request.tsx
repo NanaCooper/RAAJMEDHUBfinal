@@ -295,8 +295,8 @@ export default function UploadRequestForm() {
                                 </View>
                                 <Text style={styles.instructionText}>
                                     {patientType === 'me'
-                                        ? "We&apos;ll use your profile details for the appointment."
-                                        : "We&apos;ll extract the patient&apos;s name and details from the form."}
+                                        ? "We'll use your profile details to pre-fill the form."
+                                        : "We'll extract the client's name and details from the form."}
                                 </Text>
                             </View>
                         </>
