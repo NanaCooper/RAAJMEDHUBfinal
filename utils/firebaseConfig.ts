@@ -33,8 +33,10 @@ import {
   FIREBASE_API_KEY, 
   FIREBASE_APP_ID, 
   FIREBASE_PROJECT_ID, 
-  FIREBASE_STORAGE_BUCKET 
+  FIREBASE_STORAGE_BUCKET,
+  FIREBASE_MESSAGING_SENDER_ID
 } from '../constants/Config';
+import { Platform } from 'react-native';
 
 // In React Native, the app is usually auto-initialized from google-services.json / GoogleService-Info.plist.
 // IMPORTANT: Never throw during module import (release builds may show a black screen).
@@ -46,32 +48,42 @@ function hasEnvFirebaseConfig() {
   return Boolean(FIREBASE_API_KEY && FIREBASE_APP_ID && FIREBASE_PROJECT_ID);
 }
 
-try {
-  // Prefer the default app created natively.
+// Skip Firebase initialization entirely during server-side rendering (eas update export).
+const isServerEnv = typeof window === 'undefined' || Platform.OS === 'web';
+
+if (!isServerEnv) {
   try {
-    app = getApp();
-  } catch (_e) {
-    // If getApp() fails, check if any apps are registered.
-    const apps = getApps();
-    if (apps.length > 0) {
-      app = apps[0];
-    } else if (hasEnvFirebaseConfig()) {
-      // Fall back to JS initialization (mainly for environments that don't bundle native config).
-      app = initializeApp({
-        apiKey: FIREBASE_API_KEY as string,
-        appId: FIREBASE_APP_ID as string,
-        projectId: FIREBASE_PROJECT_ID as string,
-        storageBucket: FIREBASE_STORAGE_BUCKET as string,
-      });
-    } else {
-      enabled = false;
-      initError =
-        'Firebase is not initialized. Ensure android/google-services.json and iOS/GoogleService-Info.plist are included in the build, or configure EXPO_PUBLIC_FIREBASE_* environment variables for EAS builds.';
+    // Prefer the default app created natively.
+    try {
+      app = getApp();
+    } catch (_e) {
+      // If getApp() fails, check if any apps are registered.
+      const apps = getApps();
+      if (apps.length > 0) {
+        app = apps[0];
+      } else if (hasEnvFirebaseConfig()) {
+        // Fall back to JS initialization (for environments that don't bundle native config).
+        app = initializeApp({
+          apiKey: FIREBASE_API_KEY as string,
+          appId: FIREBASE_APP_ID as string,
+          projectId: FIREBASE_PROJECT_ID as string,
+          storageBucket: FIREBASE_STORAGE_BUCKET as string,
+          databaseURL: `https://${FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
+          messagingSenderId: FIREBASE_MESSAGING_SENDER_ID as string,
+        });
+      } else {
+        enabled = false;
+        initError =
+          'Firebase is not initialized. Ensure android/google-services.json and iOS/GoogleService-Info.plist are included in the build, or configure EXPO_PUBLIC_FIREBASE_* environment variables for EAS builds.';
+      }
     }
+  } catch (e: any) {
+    enabled = false;
+    initError = `Firebase init failed: ${e?.message || String(e)}`;
   }
-} catch (e: any) {
+} else {
+  // Server / EAS export environment — Firebase is not available.
   enabled = false;
-  initError = `Firebase init failed: ${e?.message || String(e)}`;
 }
 
 export const appInstance = app;

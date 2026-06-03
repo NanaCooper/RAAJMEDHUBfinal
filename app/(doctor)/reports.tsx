@@ -104,7 +104,7 @@ export default function ReportsScreen() {
     }
     
     try {
-      const message = `Medical Report: ${report.title}\nDate: ${formatDate(report.createdAt)}\nLink: ${url}`;
+      const message = `Report: ${report.title}\nDate: ${formatDate(report.createdAt)}\nLink: ${url}`;
       
       const result = await Share.share({
         message,
@@ -228,7 +228,7 @@ export default function ReportsScreen() {
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.headerSubtitle}>
-        Access and review medical results for your patients.
+        Access and review results for your clients.
       </Text>
     </View>
   );

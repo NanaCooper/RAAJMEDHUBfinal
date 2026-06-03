@@ -321,7 +321,7 @@ export default function ReviewRequestScreen() {
                                 style={[styles.inputField, { width: '100%', height: 80, textAlignVertical: 'top' }]}
                                 value={reason}
                                 onChangeText={setReason}
-                                placeholder="Clinical indication..."
+                                placeholder="Reason for visit..."
                                 multiline
                                 placeholderTextColor={COLORS.textSub}
                             />

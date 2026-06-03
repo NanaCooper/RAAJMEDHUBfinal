@@ -289,9 +289,9 @@ export default function Appointments() {
                         <Text style={styles.heroBadgeText}>RECOMMENDED</Text>
                       </View>
                     </View>
-                    <Text style={styles.heroTitle}>Upload Referral</Text>
+                    <Text style={styles.heroTitle}>Upload Document</Text>
                     <Text style={styles.heroDesc}>
-                      Snap a photo of your doctor&apos;s referral letter. Our AI will automatically extract the details for you.
+                      Snap a photo of your referral document. Our AI will automatically extract the details for you.
                     </Text>
                     <View style={styles.heroArrow}>
                       <Text style={styles.heroArrowText}>Upload Now</Text>
@@ -411,7 +411,7 @@ export default function Appointments() {
               {extractedDataParam && (
                 <>
                   <View style={styles.reviewSection}>
-                    <Text style={styles.reviewSectionTitle}>Patient</Text>
+                    <Text style={styles.reviewSectionTitle}>Client</Text>
                     <View style={styles.reviewRow}>
                       <View style={styles.reviewField}>
                         <Text style={styles.reviewLabel}>Name</Text>

@@ -31,16 +31,16 @@ const FAQ_DATA = [
     answer: "Go to the Home screen, find your preferred doctor or branch, and tap 'Book Appointment'. Select an available time slot and confirm your details."
   },
   {
-    question: "Where can I see my medical reports?",
-    answer: "All your uploaded scans and doctor reports are available in the 'Reports' tab at the bottom of the screen."
+    question: "Where can I see my reports?",
+    answer: "All your uploaded scans and reports are available in the 'Reports' tab at the bottom of the screen."
   },
   {
     question: "How do I contact support?",
     answer: "You can reach us via the 'Support' section below or email us at raajmedhub@gmail.com. You can also call us at +233559559910."
   },
   {
-    question: "Is my medical data secure?",
-    answer: "Yes, we use industry-standard encryption and Firebase's secure storage to ensure your personal and medical information remains private and protected."
+    question: "Is my data secure?",
+    answer: "Yes, we use industry-standard encryption and Firebase's secure storage to ensure your personal information remains private and protected."
   },
   {
     question: "How can I update my profile?",

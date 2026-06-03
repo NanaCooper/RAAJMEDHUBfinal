@@ -91,7 +91,7 @@ export default function DoctorNotificationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionTitle}>Clinical Notifications</Text>
+        <Text style={styles.sectionTitle}>Professional Alerts</Text>
         <View style={styles.card}>
           <NotificationItem 
             label="Push Notifications"
@@ -103,23 +103,23 @@ export default function DoctorNotificationsScreen() {
           <View style={styles.divider} />
           <NotificationItem 
             label="New Assignments"
-            description="Get notified immediately when a patient is assigned to you."
+            description="Get notified immediately when a client is assigned to you."
             icon="user-plus"
             value={prefs.newAppointment}
             onToggle={() => togglePref('newAppointment')}
           />
           <View style={styles.divider} />
           <NotificationItem 
-            label="Emergency Alerts"
-            description="High-priority alerts for urgent patient care."
+            label="Priority Alerts"
+            description="High-priority alerts for urgent service requests."
             icon="alert-triangle"
             value={prefs.emergencyAlerts}
             onToggle={() => togglePref('emergencyAlerts')}
           />
           <View style={styles.divider} />
           <NotificationItem 
-            label="Patient Messages"
-            description="Alerts for new messages in the consultation portal."
+            label="Client Messages"
+            description="Alerts for new messages in the service portal."
             icon="message-circle"
             value={prefs.patientMessages}
             onToggle={() => togglePref('patientMessages')}
@@ -129,7 +129,7 @@ export default function DoctorNotificationsScreen() {
         <View style={styles.infoBox}>
           <Feather name="info" size={16} color={COLORS.textSec} />
           <Text style={styles.infoText}>
-            Critical system alerts cannot be disabled to ensure patient safety and practice compliance.
+            Critical system alerts cannot be disabled to ensure service continuity and practice compliance.
           </Text>
         </View>
       </ScrollView>

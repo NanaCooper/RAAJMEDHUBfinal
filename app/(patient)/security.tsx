@@ -85,7 +85,7 @@ export default function SecurityScreen() {
           <View style={styles.infoBox}>
             <Feather name="shield" size={32} color={COLORS.primary} />
             <Text style={styles.infoTitle}>Secure Your Account</Text>
-            <Text style={styles.infoText}>Regularly updating your password helps keep your medical data safe.</Text>
+            <Text style={styles.infoText}>Regularly updating your password helps keep your account data safe.</Text>
           </View>
 
           <View style={styles.card}>

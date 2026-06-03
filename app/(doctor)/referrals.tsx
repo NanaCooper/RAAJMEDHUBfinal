@@ -136,9 +136,9 @@ export default function ReferralsScreen() {
         let patientName = appt.patientDetails?.fullName ||
           (appt.patientDetails?.firstName && appt.patientDetails?.lastName
             ? `${appt.patientDetails.firstName} ${appt.patientDetails.lastName}`
-            : (appt.patientDetails?.firstName || appt.patientDetails?.lastName || 'Patient'));
+            : (appt.patientDetails?.firstName || appt.patientDetails?.lastName || 'Client'));
 
-        if (patientName === 'Patient' && (appt as any).patientName) {
+        if (patientName === 'Client' && (appt as any).patientName) {
           patientName = (appt as any).patientName;
         }
 
@@ -396,7 +396,7 @@ export default function ReferralsScreen() {
 
                 {/* Patient Info */}
                 <View style={styles.detailCard}>
-                  <Text style={styles.detailLabel}>PATIENT INFO</Text>
+                  <Text style={styles.detailLabel}>CLIENT INFO</Text>
                   <View style={styles.patientRow}>
                     <View style={styles.patientAvatarLg}>
                       <Feather name="user" size={18} color={COLORS.primary} />
@@ -405,7 +405,7 @@ export default function ReferralsScreen() {
                       <Text style={styles.detailValueLg}>
                         {selectedAppointment.patientDetails?.fullName ||
                           `${selectedAppointment.patientDetails?.firstName || ''} ${selectedAppointment.patientDetails?.lastName || ''}`.trim() ||
-                          'Patient'}
+                          'Client'}
                       </Text>
                       <Text style={styles.detailSub}>{selectedAppointment.patientDetails?.phone || 'No contact provided'}</Text>
                     </View>
@@ -437,7 +437,7 @@ export default function ReferralsScreen() {
 
                 {(selectedAppointment.notes || (selectedAppointment as any).reason) && (
                   <View style={styles.detailCard}>
-                    <Text style={styles.detailLabel}>CLINICAL NOTES</Text>
+                    <Text style={styles.detailLabel}>SERVICE NOTES</Text>
                     <Text style={styles.detailBody}>{selectedAppointment.notes || (selectedAppointment as any).reason}</Text>
                   </View>
                 )}

@@ -58,7 +58,7 @@ const PatientSettingsScreen = () => {
     try {
       Alert.alert(
         "Export My Data",
-        "We will generate a file containing your profile and medical report history. You can then send this file via email or save it. Proceed?",
+        "We will generate a file containing your profile and report history. You can then send this file via email or save it. Proceed?",
         [
           { text: "Cancel", style: "cancel" },
           { 
@@ -96,7 +96,7 @@ const PatientSettingsScreen = () => {
                     <body>
                       <div class="header">
                         <div class="brand">RAAJ MEDHUB</div>
-                        <div class="doc-type">Medical Data Export</div>
+                        <div class="doc-type">Account Data Export</div>
                         <div style="font-size: 12px; color: #94a3b8; margin-top: 10px;">Generated: ${new Date().toLocaleString()}</div>
                       </div>
 
@@ -121,13 +121,13 @@ const PatientSettingsScreen = () => {
                           </div>
                         </div>
                         <div class="info-item" style="margin-top: 15px;">
-                          <div class="label">Medical Preferences</div>
+                          <div class="label">Service Preferences</div>
                           <div class="value">${user.preferences || 'None specified'}</div>
                         </div>
                       </div>
 
                       <div class="section">
-                        <div class="section-title">Medical Report History</div>
+                        <div class="section-title">Report History</div>
                         ${reports.length > 0 ? `
                           <table>
                             <thead>
@@ -149,7 +149,7 @@ const PatientSettingsScreen = () => {
                               `).join('')}
                             </tbody>
                           </table>
-                        ` : '<p style="font-size: 14px; color: #64748b;">No medical reports found on file.</p>'}
+                        ` : '<p style="font-size: 14px; color: #64748b;">No reports found on file.</p>'}
                       </div>
 
                       <div class="footer">
@@ -172,7 +172,7 @@ const PatientSettingsScreen = () => {
                 if (await Sharing.isAvailableAsync()) {
                   await Sharing.shareAsync(htmlUri, {
                     mimeType: 'text/html',
-                    dialogTitle: 'Export My Medical Data',
+                    dialogTitle: 'Export My Data',
                   });
                 } else {
                   Alert.alert("Not Supported", "Sharing files isn't available on this device.");
@@ -245,7 +245,7 @@ const PatientSettingsScreen = () => {
           <MenuOption 
             icon="user" 
             title="Personal Information" 
-            subtitle="Name, phone, and medical preferences"
+            subtitle="Name, phone, and service preferences"
             onPress={() => router.push('/(patient)/profile')}
           />
           <MenuOption 

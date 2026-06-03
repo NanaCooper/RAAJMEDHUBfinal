@@ -76,7 +76,7 @@ export default function DeleteAccountScreen() {
 
     Alert.alert(
       "Final Confirmation",
-      "This will permanently delete all your medical records and appointments. This cannot be undone.",
+      "This will permanently delete all your records and appointments. This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         { 
@@ -109,7 +109,7 @@ export default function DeleteAccountScreen() {
           </Text>
           <View style={styles.bulletList}>
             <Text style={styles.bulletItem}>• All appointment history</Text>
-            <Text style={styles.bulletItem}>• All medical reports and scans</Text>
+            <Text style={styles.bulletItem}>• All reports and documents</Text>
             <Text style={styles.bulletItem}>• Your profile and preferences</Text>
             <Text style={styles.bulletItem}>• Communication history with providers</Text>
           </View>

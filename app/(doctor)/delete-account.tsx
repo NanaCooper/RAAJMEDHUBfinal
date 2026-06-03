@@ -91,7 +91,7 @@ export default function DoctorDeleteAccountScreen() {
               </View>
               <View style={styles.listItem}>
                 <Feather name="x-circle" size={16} color={COLORS.danger} />
-                <Text style={styles.listText}>Clinical notes and report history</Text>
+                <Text style={styles.listText}>Service notes and report history</Text>
               </View>
               <View style={styles.listItem}>
                 <Feather name="x-circle" size={16} color={COLORS.danger} />

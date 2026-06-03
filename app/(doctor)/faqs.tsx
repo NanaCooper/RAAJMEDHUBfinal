@@ -27,24 +27,24 @@ const COLORS = {
 
 const FAQ_DATA = [
   {
-    question: "How do I upload medical reports?",
-    answer: "Go to the 'Reports' tab, search for the patient, and select 'Upload Request'. You can then attach files and add clinical notes for the patient to view."
+    question: "How do I upload reports?",
+    answer: "Go to the 'Reports' tab, search for the client, and select 'Upload Request'. You can then attach files and add service notes for the client to view."
   },
   {
     question: "How can I set my availability?",
     answer: "Navigate to 'Availability' from the main menu. You can set your daily working hours and block off specific dates when you are away."
   },
   {
-    question: "How do I contact clinic administration?",
+    question: "How do I contact administration?",
     answer: "For administrative issues or schedule conflicts, please email raajmedhub@gmail.com or call our hotline at +233559559910."
   },
   {
-    question: "Can I edit a patient's diagnosis?",
-    answer: "Yes, you can update a patient's clinical records through the 'My Patients' section. Select a patient and update their history or active conditions."
+    question: "Can I update a client's records?",
+    answer: "Yes, you can update a client's service records through the 'My Clients' section. Select a client and update their history or active notes."
   },
   {
     question: "Is my professional data secure?",
-    answer: "Absolutely. Raaj Medhub uses HIPAA-compliant security standards to ensure all patient-doctor communications and records remain encrypted and private."
+    answer: "Absolutely. Raaj Medhub uses industry-standard security to ensure all client-specialist communications and records remain encrypted and private."
   }
 ];
 
@@ -89,8 +89,8 @@ export default function DoctorFAQsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.introBox}>
           <Feather name="book-open" size={40} color={COLORS.primary} />
-          <Text style={styles.introTitle}>Doctor&apos;s Guide</Text>
-          <Text style={styles.introSub}>Common questions about managing your practice on Raaj Medhub.</Text>
+          <Text style={styles.introTitle}>Specialist Guide</Text>
+          <Text style={styles.introSub}>Common questions about managing your schedule on Raaj Medhub.</Text>
         </View>
 
         <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>

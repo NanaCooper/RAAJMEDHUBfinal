@@ -23,6 +23,12 @@
               "com.cooper.medicare",
               "com.googleusercontent.apps.631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231"
             ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "com.cooper.medicare",
+              "com.googleusercontent.apps.631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231"
+            ]
           }
         ],
         "NSCameraUsageDescription": "RAAJ MEDHUB uses your camera to scan medical referrals and upload patient documents.",
@@ -106,6 +112,9 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "owner": "raajmedhub"
+    "owner": "raajmedhub",
+    "updates": {
+      "url": "https://u.expo.dev/ce56fd7d-9b8c-4a4a-b5cc-1fcc10a92a90"
+    }
   }
 }

@@ -219,7 +219,7 @@ const DoctorSettingsScreen = () => {
           <MenuOption 
             icon="user" 
             title="Professional Profile" 
-            subtitle="Clinical credentials and bio"
+            subtitle="Professional credentials and bio"
             onPress={() => router.push('/(doctor)/profile')}
           />
           <MenuOption 
