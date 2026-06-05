@@ -15,9 +15,9 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-
 import { isEmail, validatePhoneNumber, signUpWithEmail } from "../../utils/authHelpers";
 import { getRemainingCooldown } from "../../utils/rateLimiter";
+import { APP_NAME } from "../../constants/AppStrings";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -225,7 +225,7 @@ export default function RegisterScreen() {
             <View style={styles.logoIcon}>
               <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
             </View>
-            <Text style={styles.appName}>RAAJ MedHub<Text style={styles.dot}>.</Text></Text>
+            <Text style={styles.appName}>{APP_NAME}<Text style={styles.dot}>.</Text></Text>
             <Text style={styles.tagline}>Join our trusted scheduling network</Text>
           </View>
 
@@ -351,7 +351,7 @@ export default function RegisterScreen() {
 
           <View style={styles.footer}>
             <Feather name="shield" size={14} color={COLORS.textSec} />
-            <Text style={styles.footerText}>HIPAA Compliant & Secure Encryption</Text>
+            <Text style={styles.footerText}>Industry-Standard Secure Encryption</Text>
           </View>
 
         </ScrollView>

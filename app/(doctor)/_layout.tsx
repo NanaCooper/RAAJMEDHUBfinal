@@ -14,6 +14,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
 import { subscribeToAppointments } from "../../services/appointments";
 import { doc, getDoc, db } from "../../utils/firebaseConfig";
+import { NAV_MY_PATIENTS, NAV_PATIENT_LIST, NAV_PATIENT_REPORTS, DR_PREFIX } from "../../constants/AppStrings";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -32,7 +33,7 @@ const MENU_ITEMS = [
   { label: "Appointments", route: "/(doctor)/appointments", icon: "clipboard" },
   { label: "Referrals", route: "/(doctor)/referrals", icon: "dollar-sign" },
   { label: "Schedule", route: "/(doctor)/schedule", icon: "calendar" },
-  { label: "My Patients", route: "/(doctor)/patients", icon: "file-text" },
+  { label: NAV_MY_PATIENTS, route: "/(doctor)/patients", icon: "file-text" },
   { label: "Reports", route: "/(doctor)/reports", icon: "folder" },
   { label: "Profile", route: "/(doctor)/profile", icon: "user" },
   { label: "Settings", route: "/(doctor)/settings", icon: "settings" },
@@ -63,7 +64,7 @@ function CustomDrawerContent(props: any) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.docName} numberOfLines={2}>
-            Dr. {user?.fullName || user?.name || "Doctor"}
+            {DR_PREFIX}{user?.fullName || user?.name || "Specialist"}
           </Text>
           <Text style={styles.docSpecialty} numberOfLines={1}>
             {user?.specialties?.[0] || "General Practitioner"}
@@ -180,8 +181,8 @@ export default function DoctorLayout() {
 
         <Drawer.Screen name="referrals" options={{ title: "Referrals" }} />
 
-        <Drawer.Screen name="patients" options={{ title: "Patient List" }} />
-        <Drawer.Screen name="reports" options={{ title: "Patient Reports" }} />
+        <Drawer.Screen name="patients" options={{ title: NAV_PATIENT_LIST }} />
+        <Drawer.Screen name="reports" options={{ title: NAV_PATIENT_REPORTS }} />
         <Drawer.Screen name="availability" options={{ title: "Availability Settings" }} />
         <Drawer.Screen name="settings" options={{ title: "Settings" }} />
         <Drawer.Screen name="appointments" options={{ title: "Appointments" }} />

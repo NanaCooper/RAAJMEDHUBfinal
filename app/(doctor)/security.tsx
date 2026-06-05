@@ -15,6 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { SECURITY_DESCRIPTION } from '../../constants/AppStrings';
 import { updateUserPassword } from '../../services/users';
 
 const COLORS = {
@@ -82,7 +83,7 @@ export default function DoctorSecurityScreen() {
           <View style={styles.infoCard}>
             <Feather name="shield" size={32} color={COLORS.primary} />
             <Text style={styles.infoTitle}>Secure Your Practice</Text>
-            <Text style={styles.infoSub}>Regularly updating your password helps protect patient data and your professional profile.</Text>
+            <Text style={styles.infoSub}>{SECURITY_DESCRIPTION}</Text>
           </View>
 
           <View style={styles.card}>

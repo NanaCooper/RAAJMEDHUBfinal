@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import { APP_NAME } from "../constants/AppStrings";
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>RAAJ MedHub</Text>
+      <Text style={styles.title}>{APP_NAME}</Text>
     </View>
   );
 }

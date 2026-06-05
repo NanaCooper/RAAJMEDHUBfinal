@@ -17,6 +17,7 @@ import { db, doc, getDoc } from '../../utils/firebaseConfig';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { subscribeToAppointments } from '../../services/appointments';
+import { APP_NAME_PROFESSIONAL, APP_NAME, APP_VERSION_LABEL, DR_PREFIX } from '../../constants/AppStrings';
 
 // --- Premium Palette ---
 const COLORS = {
@@ -95,14 +96,14 @@ const DoctorSettingsScreen = () => {
                     </head>
                     <body>
                       <div class="header">
-                        <div class="brand">RAAJ MEDHUB PROFESSIONAL</div>
+                        <div class="brand">${APP_NAME_PROFESSIONAL}</div>
                         <div style="color: #64748b; margin-top: 5px;">Practice Activity Report</div>
                         <div style="font-size: 12px; margin-top: 10px;">Exported: ${new Date().toLocaleString()}</div>
                       </div>
 
                       <div class="section">
                         <div class="section-title">Professional Profile</div>
-                        <div><strong>Name:</strong> Dr. ${user.fullName || 'N/A'}</div>
+                        <div><strong>Name:</strong> ${DR_PREFIX}${user.fullName || 'N/A'}</div>
                         <div><strong>Specialization:</strong> ${user.specialization || user.specialty || 'N/A'}</div>
                         <div><strong>Professional Email:</strong> ${session.email}</div>
                         <div><strong>Member Since:</strong> ${user.createdAt ? new Date(user.createdAt.toDate?.() || user.createdAt).toLocaleDateString() : 'N/A'}</div>
@@ -128,7 +129,7 @@ const DoctorSettingsScreen = () => {
                       </div>
 
                       <div class="footer">
-                        This document is a professional summary of activity on the Raaj Medhub platform.
+                        This document is a professional summary of activity on the ${APP_NAME} platform.
                       </div>
                     </body>
                   </html>
@@ -269,7 +270,7 @@ const DoctorSettingsScreen = () => {
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Raaj Medhub v1.0</Text>
+        <Text style={styles.versionText}>{APP_VERSION_LABEL}</Text>
       </ScrollView>
     </SafeAreaView>
   );

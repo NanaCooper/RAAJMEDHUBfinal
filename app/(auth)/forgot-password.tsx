@@ -15,6 +15,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { APP_NAME } from "../../constants/AppStrings";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -106,7 +107,7 @@ export default function ForgotPasswordScreen() {
             <View style={styles.logoIcon}>
               <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
             </View>
-            <Text style={styles.appName}>RAAJ MedHub<Text style={styles.dot}>.</Text></Text>
+            <Text style={styles.appName}>{APP_NAME}<Text style={styles.dot}>.</Text></Text>
             <Text style={styles.tagline}>Secure · Private · Trusted</Text>
           </View>
 

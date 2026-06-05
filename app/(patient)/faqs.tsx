@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { APP_NAME } from '../../constants/AppStrings';
 
 
 
@@ -90,7 +91,7 @@ export default function FAQsScreen() {
         <View style={styles.introBox}>
           <Feather name="help-circle" size={40} color={COLORS.primary} />
           <Text style={styles.introTitle}>How can we help you?</Text>
-          <Text style={styles.introSub}>Find answers to frequently asked questions or learn how to navigate Raaj Medhub.</Text>
+          <Text style={styles.introSub}>Find answers to frequently asked questions or learn how to navigate {APP_NAME}.</Text>
         </View>
 
         <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>

@@ -22,6 +22,7 @@ import {
   sendReferralSubmittedNotification
 } from "../../services/notifications";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { DEFAULT_LOCATION } from "../../constants/AppStrings";
 
 // --- Theme ---
 const COLORS = {
@@ -76,7 +77,7 @@ export default function BookingConfirmationModal() {
       return {
         appointmentData: data,
         scanType: displayScanType,
-        branch: data?.branch || 'RAAJ MedHub Clinic',
+        branch: data?.branch || DEFAULT_LOCATION,
       };
     } catch (e) {
       console.error("--- [booking-confirmation.tsx] Failed to parse appointment data ---", e);

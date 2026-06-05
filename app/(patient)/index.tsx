@@ -17,6 +17,7 @@ import { subscribeToAppointments } from "../../services/appointments";
 import type { Appointment } from "../../types/appointment";
 import { getDoctor } from "../../services/doctors";
 import dayjs from "dayjs";
+import { DEFAULT_LOCATION, DASHBOARD_FALLBACK_NAME } from "../../constants/AppStrings";
 
 // --- Theme Constants ---
 const COLORS = {
@@ -134,7 +135,7 @@ export default function PatientDashboard(): React.ReactElement {
             doctorId: a.doctorId,
             doctor: doctorName,
             status: a.status, // Pass status
-            location: a.branch || a.location || "RAAJ MEDHUB Clinic",
+            location: a.branch || a.location || DEFAULT_LOCATION,
             branch: a.branch || "",
             scanType: scanName,
             phone: docMap[a.doctorId]?.contact,
@@ -188,7 +189,7 @@ export default function PatientDashboard(): React.ReactElement {
       <View>
         <Text style={styles.greeting}>Welcome back,</Text>
         <Text style={styles.username}>
-          {user?.fullName ? user.fullName.split(" ")[0] : (user?.name ? user.name.split(" ")[0] : "Patient")}
+          {user?.fullName ? user.fullName.split(" ")[0] : (user?.name ? user.name.split(" ")[0] : DASHBOARD_FALLBACK_NAME)}
         </Text>
       </View>
 

@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../hooks/useAuth';
 import { subscribeToAppointments } from '../../services/appointments';
 import BookingForm from '../../components/appointment/BookingForm';
+import { APPOINTMENTS_COMING_SOON, APPOINTMENTS_COMING_SOON_TITLE, APPOINTMENTS_COMING_SOON_BODY } from '../../constants/AppStrings';
 
 dayjs.extend(customParseFormat);
 dayjs.extend(isSameOrAfter);
@@ -50,6 +51,24 @@ export default function Appointments() {
   const params = useLocalSearchParams();
   const { session } = useAuth();
   const listRef = useRef<FlatList>(null);
+
+  // --- Android Coming Soon Block ---
+  if (APPOINTMENTS_COMING_SOON) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <StatusBar style="dark" />
+        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+          <Feather name="calendar" size={36} color="#4F46E5" />
+        </View>
+        <Text style={{ fontSize: 24, fontWeight: '800', color: '#1E293B', textAlign: 'center', marginBottom: 12 }}>
+          {APPOINTMENTS_COMING_SOON_TITLE}
+        </Text>
+        <Text style={{ fontSize: 15, color: '#64748B', textAlign: 'center', lineHeight: 24 }}>
+          {APPOINTMENTS_COMING_SOON_BODY}
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   // --- STATE ---
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'book'>('upcoming');

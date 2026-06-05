@@ -21,6 +21,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { GoogleSignInButton } from '../../components/GoogleSignInButton';
 import { signInUniversal } from "../../utils/authHelpers";
+import { APP_NAME, APP_SUBTITLE } from "../../constants/AppStrings";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -100,8 +101,8 @@ export default function LoginScreen() {
             <View style={styles.logoIcon}>
               <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
             </View>
-            <Text style={styles.appName}>RAAJ MedHub<Text style={styles.appNameDot}>.</Text></Text>
-            <Text style={styles.tagline}>Smart Appointment Management</Text>
+            <Text style={styles.appName}>{APP_NAME}<Text style={styles.appNameDot}>.</Text></Text>
+            <Text style={styles.tagline}>{APP_SUBTITLE}</Text>
           </View>
 
           {/* --- Login Card --- */}
@@ -192,7 +193,7 @@ export default function LoginScreen() {
 
           {/* --- Footer --- */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>New to MedHub?</Text>
+            <Text style={styles.footerText}>New to {APP_NAME}?</Text>
             <TouchableOpacity onPress={() => router.push("/register")}>
               <Text style={styles.createLink}>Create Account</Text>
             </TouchableOpacity>

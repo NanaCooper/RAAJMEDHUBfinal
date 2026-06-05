@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../hooks/useAuth";
 import { useRouter } from "expo-router";
+import { APP_NAME } from "../../constants/AppStrings";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -116,7 +117,7 @@ export default function UserTypeSelection() {
           </View>
           <Text style={styles.title}>Select Your Role</Text>
           <Text style={styles.subtitle}>
-            How will you be using Raaj Medhub today?
+            How will you be using {APP_NAME} today?
           </Text>
         </View>
 

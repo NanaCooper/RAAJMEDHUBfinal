@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
+import { APP_NAME, DOCTOR_LABEL_PLURAL } from "../../constants/AppStrings";
 
 export default function BranchInfoModal() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function BranchInfoModal() {
   }, []);
 
   const branch = {
-    name: "RAAJ MedHub Central",
+    name: `${APP_NAME} Central`,
     address: "123 Main St, Springfield",
     phone: "+1 555-0101",
     hours: "Mon-Fri 08:00-17:00",
@@ -71,7 +72,7 @@ export default function BranchInfoModal() {
           </View>
 
           <View style={{ marginTop: 12 }}>
-            <Text style={styles.sectionTitle}>Doctors</Text>
+            <Text style={styles.sectionTitle}>{DOCTOR_LABEL_PLURAL}</Text>
             {branch.doctors.map((d) => (
               <Text key={d} style={styles.listItem}>
                 • {d}

@@ -11,6 +11,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { APP_NAME } from "../../constants/AppStrings";
 
 // --- Theme Constants ---
 const COLORS = {
@@ -91,9 +92,9 @@ const getBranchStatus = (hours: string) => {
 export default function Branches() {
 
   const branches: Branch[] = [
-    { id: "b1", name: "RAAJ MedHub - Koforidua", address: "N991 Old Estate Rd, Koforidua", mapQuery: "https://maps.app.goo.gl/VduixvoNpLRxaoga7", phone: "0249419970", hours: "24/7" },
-    { id: "b2", name: "RAAJ MedHub - Cape Coast", address: "Pedu, Cape Coast", mapQuery: "https://maps.app.goo.gl/qMxrxCP76Qrf7ZaL9", phone: "0257351887", hours: "24/7" },
-    { id: "b3", name: "RAAJ MedHub - Takoradi", address: "Kojo Kum Avenue, Takoradi", mapQuery: "https://maps.app.goo.gl/vgiZ7qFn9kN3dB5h6", phone: "0257351887", hours: "24/7" },
+    { id: "b1", name: `${APP_NAME} - Koforidua`, address: "N991 Old Estate Rd, Koforidua", mapQuery: "https://maps.app.goo.gl/VduixvoNpLRxaoga7", phone: "0249419970", hours: "24/7" },
+    { id: "b2", name: `${APP_NAME} - Cape Coast`, address: "Pedu, Cape Coast", mapQuery: "https://maps.app.goo.gl/qMxrxCP76Qrf7ZaL9", phone: "0257351887", hours: "24/7" },
+    { id: "b3", name: `${APP_NAME} - Takoradi`, address: "Kojo Kum Avenue, Takoradi", mapQuery: "https://maps.app.goo.gl/vgiZ7qFn9kN3dB5h6", phone: "0257351887", hours: "24/7" },
   ];
 
   const handleCall = (phone: string) => {

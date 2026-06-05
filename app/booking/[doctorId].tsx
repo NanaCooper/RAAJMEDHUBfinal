@@ -323,8 +323,8 @@ export default function BookingScreen() {
 
         <Controller control={control} name="notes" render={({ field: { onChange, value } }) => (
           <>
-            <Text style={[styles.label, { marginTop: 12 }]}>Medical Comments / History</Text>
-            <TextInput style={[styles.input, { height: 100 }]} value={value} onChangeText={onChange} multiline placeholder="Add any relevant medical history" />
+            <Text style={[styles.label, { marginTop: 12 }]}>Additional Comments / Background</Text>
+            <TextInput style={[styles.input, { height: 100 }]} value={value} onChangeText={onChange} multiline placeholder="Add any relevant background information" />
           </>
         )} />
 

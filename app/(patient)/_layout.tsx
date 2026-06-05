@@ -14,6 +14,7 @@ import { Drawer } from "expo-router/drawer";
 import { useRouter, usePathname } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
+import { APP_VERSION_LABEL, NAV_MY_REPORTS } from "../../constants/AppStrings";
 
 // --- THEME ENGINE ---
 const THEME = {
@@ -91,7 +92,7 @@ function CustomDrawerContent(props: any) {
   const menuItems = [
     { label: "Dashboard", route: "/(patient)/", icon: "grid", badge: null },
     { label: "Make a Request", route: "/(patient)/appointments", icon: "calendar", badge: null },
-    { label: "My Reports", route: "/(patient)/reports", icon: "file-text", badge: null },
+    { label: NAV_MY_REPORTS, route: "/(patient)/reports", icon: "file-text", badge: null },
     { label: "Profile", route: "/(patient)/profile", icon: "user", badge: null },
     { label: "Find Locations", route: "/(patient)/branches", icon: "map-pin", badge: null },
     { label: "Settings", route: "/(patient)/settings", icon: "sliders", badge: null },
@@ -173,7 +174,7 @@ function CustomDrawerContent(props: any) {
               <Text style={styles.logoutText}>Sign Out</Text>
             </View>
           </ScaleButton>
-          <Text style={styles.version}>Raaj Medhub v1.0</Text>
+          <Text style={styles.version}>{APP_VERSION_LABEL}</Text>
         </View>
 
       </SafeAreaView>

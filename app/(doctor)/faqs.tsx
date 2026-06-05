@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { APP_NAME } from '../../constants/AppStrings';
 
 
 
@@ -44,7 +45,7 @@ const FAQ_DATA = [
   },
   {
     question: "Is my professional data secure?",
-    answer: "Absolutely. Raaj Medhub uses industry-standard security to ensure all client-specialist communications and records remain encrypted and private."
+    answer: `Absolutely. ${APP_NAME} uses industry-standard security to ensure all client-specialist communications and records remain encrypted and private.`
   }
 ];
 
@@ -90,7 +91,7 @@ export default function DoctorFAQsScreen() {
         <View style={styles.introBox}>
           <Feather name="book-open" size={40} color={COLORS.primary} />
           <Text style={styles.introTitle}>Specialist Guide</Text>
-          <Text style={styles.introSub}>Common questions about managing your schedule on Raaj Medhub.</Text>
+          <Text style={styles.introSub}>Common questions about managing your schedule on {APP_NAME}.</Text>
         </View>
 
         <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>

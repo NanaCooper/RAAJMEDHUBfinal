@@ -9,6 +9,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { APP_NAME } from '../../constants/AppStrings';
 
 const COLORS = {
   bg: "#F8FAFC",
@@ -46,23 +47,23 @@ export default function TermsAndPolicyModal() {
         <View style={styles.introBox}>
           <Text style={styles.lastUpdated}>Last Updated: March 31, 2026</Text>
           <Text style={styles.introText}>
-            At Raaj Medhub, we are committed to protecting your personal health information (PHI). 
+            At {APP_NAME}, we are committed to protecting your personal information. 
             This Privacy Policy explains how we collect, use, and safe-guard your data.
           </Text>
         </View>
 
         <PolicySection 
           title="1. Information We Collect"
-          content="• Profile Data: Your name, age, phone number, and email.
-• Medical Documentation: Images of referrals and medical records that you upload.
-• Usage Data: We collect minimal technical data via Firebase for app performance and crash reports."
+          content={`• Profile Data: Your name, age, phone number, and email.
+• Documentation: Images of documents and records that you upload.
+• Usage Data: We collect minimal technical data via Firebase for app performance and crash reports.`}
         />
 
         <PolicySection 
           title="2. How We Use Information"
-          content="• To manage and schedule your medical appointments.
-• To provide doctors with necessary medical history for your consults.
-• To send appointment reminders via notifications."
+          content={`• To manage and schedule your appointments.
+• To provide specialists with necessary background information for your sessions.
+• To send appointment reminders via notifications.`}
         />
 
         <PolicySection 
@@ -73,17 +74,17 @@ export default function TermsAndPolicyModal() {
 
         <PolicySection 
           title="4. Your Rights"
-          content="You can request a copy of your medical data or ask for the deletion of your account at any time via the settings menu in the Raaj Medhub app."
+          content={`You can request a copy of your data or ask for the deletion of your account at any time via the settings menu in the ${APP_NAME} app.`}
         />
 
         <PolicySection 
           title="5. Third-Party Sharing"
-          content="We do not sell your medical data to third parties. Data is shared only with the medical professionals at your chosen branch (Koforidua, Takoradi, or Cape Coast)."
+          content="We do not sell your data to third parties. Data is shared only with the professionals at your chosen branch (Koforidua, Takoradi, or Cape Coast)."
         />
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            By using Raaj Medhub, you agree to these terms. If you have any questions, 
+            By using {APP_NAME}, you agree to these terms. If you have any questions, 
             please contact our support team.
           </Text>
         </View>

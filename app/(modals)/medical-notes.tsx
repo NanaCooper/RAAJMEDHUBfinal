@@ -165,7 +165,7 @@ export default function MedicalNotesModal() {
               {saving ? (
                   <ActivityIndicator size="small" color="#fff" />
               ) : (
-                  <Text style={styles.primaryBtnText}>Save to Medical History</Text>
+                  <Text style={styles.primaryBtnText}>Save Session Notes</Text>
               )}
             </TouchableOpacity>
           </View>
