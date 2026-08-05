@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'com.cooper.medicare',
-      buildNumber: '1',
+      buildNumber: '2',
       googleServicesFile: './GoogleService-Info.plist',
       infoPlist: {
         CFBundleURLTypes: [
@@ -55,7 +55,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: 'com.cooper.medicare',
-      versionCode: 30,
+      versionCode: 31,
       googleServicesFile: './google-services.json',
     },
     web: {
