@@ -10,7 +10,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...config,
     name: appName,
     slug: 'MediCare',
-    version: '1.0.2',
+    version: '1.0.3',
     orientation: 'default',
     icon: './assets/images/icon.png',
     scheme: 'com.cooper.medicare',
@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'com.cooper.medicare',
-      buildNumber: '2',
+      buildNumber: '3',
       googleServicesFile: './GoogleService-Info.plist',
       infoPlist: {
         CFBundleURLTypes: [
@@ -55,7 +55,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: 'com.cooper.medicare',
-      versionCode: 31,
+      versionCode: 32,
       googleServicesFile: './google-services.json',
     },
     web: {
