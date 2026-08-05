@@ -7,7 +7,7 @@
 
 import { Platform } from 'react-native';
 
-export const isAndroidBuild = Platform.OS === 'android' || process.env.EXPO_PUBLIC_APP_MODE === 'android';
+export const isAndroidBuild = false;
 
 // --- Branding ---
 export const APP_NAME = 'RAAJ Connect';
