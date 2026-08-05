@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
 import { getDoctorReports, subscribeToDoctorReportNotifications, Report } from '../../services/reports';
+import { isAndroidBuild } from '../../constants/AppStrings';
 
 // --- Global Theme ---
 const COLORS = {
@@ -228,7 +229,7 @@ export default function ReportsScreen() {
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.headerSubtitle}>
-        Access and review results for your clients.
+        {isAndroidBuild ? "Access and review documents for your clients." : "Access and review results for your clients."}
       </Text>
     </View>
   );
@@ -275,9 +276,9 @@ export default function ReportsScreen() {
             <View style={styles.emptyIconCircle}>
               <Ionicons name="folder-open-outline" size={40} color={COLORS.primary} />
             </View>
-            <Text style={styles.emptyMainText}>No Reports Available</Text>
+            <Text style={styles.emptyMainText}>{isAndroidBuild ? 'No Documents Available' : 'No Reports Available'}</Text>
             <Text style={styles.emptySubText}>
-              Any physical or imaging scans processed around your referrals will appear here.
+              {isAndroidBuild ? 'Any documents processed for your clients will appear here.' : 'Any physical or imaging scans processed around your referrals will appear here.'}
             </Text>
           </View>
         }

@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from '../../hooks/useAuth';
+import { PRESCRIPTION_LABEL, MED_RECORD_LABEL, MEDICATION_LABEL } from '../../constants/AppStrings';
 
 export default function PrescriptionModal() {
   const router = useRouter();
@@ -71,7 +72,7 @@ export default function PrescriptionModal() {
   const handleSave = () => {
     const payload = { drugName, dosage, frequency, duration, instructions, doctorSignature };
     console.log("Save prescription (mock):", payload);
-    Alert.alert("Saved", "Prescription saved to patient records (mock).");
+    Alert.alert("Saved", `${PRESCRIPTION_LABEL} saved to ${MED_RECORD_LABEL.toLowerCase()} (mock).`);
     router.back();
   };
 
@@ -81,9 +82,9 @@ export default function PrescriptionModal() {
 
       <View style={styles.card}>
         <ScrollView>
-          <Text style={styles.title}>Prescription</Text>
+          <Text style={styles.title}>{PRESCRIPTION_LABEL}</Text>
 
-          <Text style={styles.label}>Drug name</Text>
+          <Text style={styles.label}>{MEDICATION_LABEL}</Text>
           <TextInput value={drugName} onChangeText={setDrugName} style={styles.input} />
 
           <Text style={styles.label}>Dosage</Text>
@@ -104,7 +105,7 @@ export default function PrescriptionModal() {
           />
 
           <View style={styles.signatureRow}>
-            <Text style={styles.sigLabel}>Prescribed by</Text>
+            <Text style={styles.sigLabel}>{process.env.EXPO_PUBLIC_APP_MODE === 'android' ? 'Recommended by' : 'Prescribed by'}</Text>
             <Text style={styles.sigValue}>{doctorSignature}</Text>
           </View>
 

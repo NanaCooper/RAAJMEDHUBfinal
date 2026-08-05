@@ -49,7 +49,7 @@ export const UrgentMessageModal: React.FC<UrgentMessageModalProps> = ({
           <View style={styles.form}>
             <Text style={styles.label}>Reason for Urgency</Text>
             <View style={styles.reasonButtons}>
-              {["Severe Symptoms", "Follow-up Required", "Critical Result", "Medication Issue"].map(
+              {["Severe Condition", "Follow-up Required", "Critical Result", "Action Required"].map(
                 (reason) => (
                   <TouchableOpacity
                     key={reason}

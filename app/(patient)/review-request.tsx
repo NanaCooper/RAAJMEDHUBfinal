@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import dayjs from 'dayjs';
 import ScaleButton from '../../components/ui/ScaleButton';
 import { useAuth } from '../../hooks/useAuth';
+import { PROC_CT_SCAN, PROC_XRAY, PROC_MRI, PREGNANCY_WARNING } from '../../constants/AppStrings';
 
 // --- THEME ---
 const COLORS = {
@@ -34,7 +35,7 @@ const SHADOW = {
 // Reuse config from BookingForm (should ideally be shared constant)
 const scanTypesConfig = [
     {
-        id: 'ct', name: 'CT Scan', icon: 'layers', duration: '20 min', price: 950,
+        id: 'ct', name: PROC_CT_SCAN, icon: 'layers', duration: '20 min', price: 950,
         description: [
             'Wear comfortable, loose-fitting clothing.',
             'You may be asked to remove hairpins, jewelry, eyeglasses, hearing aids and any removable dental work.',
@@ -42,15 +43,15 @@ const scanTypesConfig = [
         ]
     },
     {
-        id: 'xray', name: 'X-Ray', icon: 'image', duration: '10 min', price: 250,
+        id: 'xray', name: PROC_XRAY, icon: 'image', duration: '10 min', price: 250,
         description: [
             'Remove jewelry, eyeglasses, and any metal objects.',
-            'Tell your doctor if you are pregnant.',
-            'Wear a hospital gown if required.'
+            PREGNANCY_WARNING,
+            'Wear standard provided attire if required.'
         ]
     },
     {
-        id: 'mri', name: 'MRI', icon: 'disc', duration: '45 min', price: 1800,
+        id: 'mri', name: PROC_MRI, icon: 'disc', duration: '45 min', price: 1800,
         description: [
             'Eat and take medications as usual unless told otherwise.',
             'Remove all metal items, jewelry, and watches.',
@@ -58,7 +59,7 @@ const scanTypesConfig = [
         ]
     },
     {
-        id: 'ultrasound', name: 'Ultrasound', icon: 'activity', duration: '30 min', price: 400,
+        id: 'ultrasound', name: 'Standard Service D', icon: 'activity', duration: '30 min', price: 400,
         description: [
             'For abdominal scans: Fast for 8-12 hours.',
             'For pelvic scans: Drink plenty of water 1 hour before and do not empty your bladder.',
@@ -297,7 +298,7 @@ export default function ReviewRequestScreen() {
                                 style={[styles.inputField, { width: '100%' }]}
                                 value={procedure}
                                 onChangeText={setProcedure}
-                                placeholder="e.g. Head CT, Chest X-Ray"
+                                placeholder="e.g. Detailed specific request"
                                 placeholderTextColor={COLORS.textSub}
                             />
                         </View>

@@ -100,6 +100,7 @@ export default function CompleteProfileScreen() {
   const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
   const [age, setAge] = useState("");
+  const [dob, setDob] = useState("");
   const [contact, setContact] = useState(""); // Secondary contact or Phone
   const [emailInput, setEmailInput] = useState(""); // For phone users to add email
 
@@ -145,9 +146,12 @@ export default function CompleteProfileScreen() {
   const validate = () => {
     if (!firstName.trim()) return "Please enter your first name.";
     if (!lastName.trim()) return "Please enter your last name.";
-    if (!age.trim()) return "Please enter your age.";
-    const ageNum = parseInt(age.trim(), 10);
-    if (isNaN(ageNum) || ageNum < 1 || ageNum > 120) return "Please enter a valid age (1-120).";
+    if (!age.trim() && !dob.trim()) return "Please enter either your Age or Date of Birth.";
+    if (dob.trim()) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob.trim())) {
+        return "Please enter Date of Birth in YYYY-MM-DD format.";
+      }
+    }
 
     if (isPhoneUser) {
       if (!password) return "Please set a password.";
@@ -191,7 +195,8 @@ export default function CompleteProfileScreen() {
         middleName: middleName.trim(),
         lastName: lastName.trim(),
         fullName,
-        age: parseInt(age.trim(), 10),
+        age: isNaN(Number(age.trim())) ? age.trim() : parseInt(age.trim(), 10),
+        dob: dob.trim() || null,
         sex: 'Unknown', // Todo: Add sex selection
         authMethod: isPhoneUser ? 'phone' : 'email',
         profileComplete: true,
@@ -334,12 +339,40 @@ export default function CompleteProfileScreen() {
             />
 
             <InputField
+              label="Date of Birth"
+              icon="calendar"
+              value={dob}
+              onChangeText={(val: string) => {
+                setDob(val);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+                  const birthDate = new Date(val.trim());
+                  const today = new Date();
+                  let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+                  const m = today.getMonth() - birthDate.getMonth();
+                  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                    calculatedAge--;
+                  }
+                  if (!isNaN(calculatedAge) && calculatedAge >= 0) {
+                    setAge(String(calculatedAge));
+                  }
+                }
+              }}
+              placeholder="YYYY-MM-DD"
+              keyboardType="default"
+            />
+
+            <InputField
               label="Age"
               icon="user"
               value={age}
-              onChangeText={setAge}
+              onChangeText={(val: string) => {
+                setAge(val);
+                if (!val.trim()) {
+                  setDob("");
+                }
+              }}
               placeholder="e.g. 25"
-              keyboardType="numeric"
+              keyboardType="default"
             />
 
             {!isPhoneUser && (

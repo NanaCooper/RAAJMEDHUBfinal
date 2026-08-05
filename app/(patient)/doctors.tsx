@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { listDoctors } from '../../services/doctors';
 import { useAuth } from '../../hooks/useAuth';
+import { DOCTOR_LABEL_PLURAL } from '../../constants/AppStrings';
 
 const COLORS = {
   bg: '#F8FAFC',
@@ -57,7 +58,7 @@ const MyDoctorsScreen = () => {
     >
       <View style={styles.cardHeader}>
         <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>{item.fullName?.charAt(0) || 'D'}</Text>
+          <Text style={styles.avatarText}>{item.fullName?.charAt(0) || (DOCTOR_LABEL_PLURAL === 'Specialists' ? 'S' : 'D')}</Text>
         </View>
         <View style={styles.infoContainer}>
           <Text style={styles.doctorName}>{item.fullName}</Text>
@@ -81,7 +82,7 @@ const MyDoctorsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Doctors</Text>
+        <Text style={styles.headerTitle}>{DOCTOR_LABEL_PLURAL === 'Specialists' ? 'My Specialists' : 'My Doctors'}</Text>
       </View>
       <FlatList
         data={doctors}

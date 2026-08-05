@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ScrollView } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ScrollView, Alert } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import dayjs from 'dayjs';
@@ -9,9 +9,10 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../hooks/useAuth';
-import { subscribeToAppointments } from '../../services/appointments';
+import { subscribeToAppointments, updateAppointment } from '../../services/appointments';
 import ScaleButton from '../../components/ui/ScaleButton';
 import BookingForm from '../../components/appointment/BookingForm';
+import { APPOINTMENTS_COMING_SOON, APPOINTMENTS_COMING_SOON_TITLE, APPOINTMENTS_COMING_SOON_BODY } from '../../constants/AppStrings';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
@@ -52,13 +53,14 @@ const CARD_SHADOW = {
 export default function Appointments() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
 
   // --- STATE ---
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'book'>('upcoming');
   const [bookingMethod, setBookingMethod] = useState<'upload' | 'manual' | null>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [extractedNotes, setExtractedNotes] = useState<string>('');
+  const [markingReportReady, setMarkingReportReady] = useState(false);
 
   // Parse extracted data
   const extractedDataParam = React.useMemo(() => {
@@ -71,6 +73,32 @@ export default function Appointments() {
   }, [params.extractedData]);
 
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null); // For details modal
+
+  const handleToggleReportReady = async (apt: any) => {
+    if (!apt?.id) return;
+    setMarkingReportReady(true);
+    try {
+      const newStatus = !apt.reportReady;
+      const doctorName = (user as any)?.fullName || (user as any)?.name || 'Radiologist';
+      await updateAppointment(apt.id, {
+        reportReady: newStatus,
+        reportReadyAt: newStatus ? new Date().toISOString() : null,
+        reportReadyBy: newStatus ? doctorName : '',
+      } as any);
+      setSelectedAppointment((prev: any) => prev ? { ...prev, reportReady: newStatus, reportReadyBy: doctorName } : null);
+      Alert.alert(
+        newStatus ? "Report Marked Ready!" : "Report Status Reset",
+        newStatus 
+          ? "The front desk and procedure room have been notified that this report is ready." 
+          : "Report status has been reset."
+      );
+    } catch (err: any) {
+      console.error("Error updating report status", err);
+      Alert.alert("Error", "Could not update report status. Please try again.");
+    } finally {
+      setMarkingReportReady(false);
+    }
+  };
 
   // --- EFFECTS ---
   useEffect(() => {
@@ -107,6 +135,7 @@ export default function Appointments() {
           doctor: a.doctorName || 'Assigned soon',
           patientName: a.patientDetails ? `${a.patientDetails.firstName} ${a.patientDetails.lastName}` : (a.patientName || 'Guest Patient'), // Try a.patientName too as simple fallback
           status: a.status || 'upcoming',
+          activationStatus: a.activationStatus || 'ACTIVATED',
           scanType: { name: scanName },
           branch: a.branch,
           // Full details for modal - ensure patientDetails is safe
@@ -114,6 +143,9 @@ export default function Appointments() {
           specificScan: a.specificScan || '',
           notes: a.notes || '',
           reason: a.reason || '',
+          reportReady: a.reportReady || false,
+          reportReadyAt: a.reportReadyAt || null,
+          reportReadyBy: a.reportReadyBy || '',
         };
       });
 
@@ -139,13 +171,16 @@ export default function Appointments() {
 
   const renderAppointmentCard = ({ item }: { item: any }) => {
     const isPast = item.status === 'completed' || item.status === 'cancelled';
+    const displayStatus = item.activationStatus === 'PENDING' ? 'Awaiting Arrival' : item.status;
+    
     const statusMap: Record<string, { color: string; bg: string; icon: string }> = {
       upcoming: { color: COLORS.primary, bg: COLORS.primarySoft, icon: 'calendar' },
       pending: { color: COLORS.warning, bg: COLORS.warningSoft, icon: 'clock' },
+      'Awaiting Arrival': { color: COLORS.warning, bg: COLORS.warningSoft, icon: 'clock' },
       completed: { color: COLORS.success, bg: COLORS.successSoft, icon: 'check-circle' },
       cancelled: { color: COLORS.error, bg: COLORS.errorSoft, icon: 'x-circle' },
     };
-    const statusConfig = statusMap[item.status] || { color: COLORS.textSub, bg: COLORS.border, icon: 'info' };
+    const statusConfig = statusMap[displayStatus] || { color: COLORS.textSub, bg: COLORS.border, icon: 'info' };
 
     const hasDate = item.date && dayjs(item.date).isValid();
 
@@ -176,7 +211,7 @@ export default function Appointments() {
             <Text style={styles.cardTitle}>{item.scanType?.name || 'Consultation'}</Text>
             <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
               <Feather name={statusConfig.icon as any} size={12} color={statusConfig.color} />
-              <Text style={[styles.statusText, { color: statusConfig.color }]}>{item.status}</Text>
+              <Text style={[styles.statusText, { color: statusConfig.color }]}>{displayStatus}</Text>
             </View>
           </View>
 
@@ -197,12 +232,37 @@ export default function Appointments() {
               </View>
             )}
           </View>
+
+          {item.reportReady && (
+            <View style={{ flexDirection: 'row', items: 'center', gap: 4, backgroundColor: '#F3E8FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', marginTop: 8 }}>
+              <Feather name="check-circle" size={11} color="#7E22CE" />
+              <Text style={{ fontSize: 10, fontWeight: '800', color: '#7E22CE' }}>REPORT READY</Text>
+            </View>
+          )}
         </View>
 
         <Feather name="chevron-right" size={20} color={COLORS.border} />
       </ScaleButton>
     );
   };
+
+  if (APPOINTMENTS_COMING_SOON) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{APPOINTMENTS_COMING_SOON_TITLE}</Text>
+        </View>
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconCircle}>
+            <Feather name="calendar" size={48} color={COLORS.textSub} />
+          </View>
+          <Text style={styles.emptyText}>{APPOINTMENTS_COMING_SOON_TITLE}</Text>
+          <Text style={styles.emptySubtext}>{APPOINTMENTS_COMING_SOON_BODY}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -395,24 +455,78 @@ export default function Appointments() {
                   {/* Status */}
                   <View style={[styles.statusBanner, {
                     backgroundColor:
+                      selectedAppointment.activationStatus === 'PENDING' ? COLORS.warningSoft :
                       selectedAppointment.status === 'confirmed' ? COLORS.successSoft :
                         selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.errorSoft :
                           COLORS.warningSoft
                   }]}>
                     <Feather name={
+                      selectedAppointment.activationStatus === 'PENDING' ? 'clock' :
                       selectedAppointment.status === 'confirmed' ? 'check-circle' :
                         selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? 'x-circle' : 'clock'
                     } size={20} color={
+                      selectedAppointment.activationStatus === 'PENDING' ? COLORS.warning :
                       selectedAppointment.status === 'confirmed' ? COLORS.success :
                         selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.error : COLORS.warning
                     } />
                     <Text style={[styles.statusBannerText, {
                       color:
+                        selectedAppointment.activationStatus === 'PENDING' ? COLORS.warning :
                         selectedAppointment.status === 'confirmed' ? COLORS.success :
                           selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.error : COLORS.warning
                     }]}>
-                      {selectedAppointment.status.toUpperCase()}
+                      {selectedAppointment.activationStatus === 'PENDING' ? 'AWAITING ARRIVAL' : selectedAppointment.status.toUpperCase()}
                     </Text>
+                  </View>
+
+                  {/* Radiologist Report Ready Action */}
+                  <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderColor: COLORS.border }}>
+                    <Text style={styles.detailLabel}>RADIOLOGIST REPORT STATUS</Text>
+                    {selectedAppointment.reportReady ? (
+                      <View style={{ backgroundColor: '#F3E8FF', padding: 14, borderRadius: 16, borderLeftWidth: 4, borderColor: '#7E22CE', marginTop: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Feather name="check-circle" size={20} color="#7E22CE" />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: '#6B21A8' }}>Report Marked Ready</Text>
+                            <Text style={{ fontSize: 11, color: '#7E22CE', marginTop: 2 }}>Front desk & procedure room notified</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handleToggleReportReady(selectedAppointment)}
+                          disabled={markingReportReady}
+                          style={{ marginTop: 10, alignSelf: 'flex-end' }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: '#7E22CE', textDecorationLine: 'underline' }}>
+                            Unmark Ready
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => handleToggleReportReady(selectedAppointment)}
+                        disabled={markingReportReady}
+                        style={{
+                          backgroundColor: '#4F46E5',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          paddingVertical: 14,
+                          borderRadius: 16,
+                          marginTop: 8,
+                          shadowColor: '#4F46E5',
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: 0.2,
+                          shadowRadius: 8,
+                          elevation: 3,
+                        }}
+                      >
+                        <Feather name="file-text" size={18} color="#FFF" />
+                        <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>
+                          {markingReportReady ? "Notifying Front Desk..." : "Mark Report as Ready"}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </ScrollView>
               )}

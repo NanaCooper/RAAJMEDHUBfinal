@@ -23,6 +23,8 @@ import {
 } from "../../services/notifications";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { DEFAULT_LOCATION } from "../../constants/AppStrings";
+import { useAuth } from "../../hooks/useAuth";
+import { canPerformAction, recordAction } from "../../utils/rateLimiter";
 
 // --- Theme ---
 const COLORS = {
@@ -59,6 +61,7 @@ export default function BookingConfirmationModal() {
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [referralPayout, setReferralPayout] = useState<{ total: number; breakdown: string } | null>(null);
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const { session } = useAuth();
 
   // Parse details from params once to avoid re-renders from param object identity change
   const { appointmentData, scanType, branch } = useMemo(() => {
@@ -117,20 +120,40 @@ export default function BookingConfirmationModal() {
       Alert.alert("Error", "Missing appointment data. Please try again.");
       return;
     }
+
+    // Rate limit check — 30s cooldown to prevent duplicate appointment submissions
+    if (session?.uid) {
+      const rateLimitResult = await canPerformAction(session.uid, 'appointment');
+      if (!rateLimitResult.allowed) {
+        Alert.alert(
+          "Booking Already Submitted",
+          `Your last booking was just submitted. Please wait ${rateLimitResult.remainingSeconds}s before submitting again to avoid duplicates.`
+        );
+        return;
+      }
+    }
+
     console.log("[LOG] handleConfirm: Received appointment data:", JSON.stringify(appointmentData, null, 2));
 
     setIsLoading(true);
     try {
       // The startAt is now an ISO string, so we can parse it directly
+      const isDoctorCreatedBooking = appointmentData?.createdByRole === 'doctor' || !!appointmentData?.doctorId;
       const appointmentToSave = {
         ...appointmentData,
         startAt: dayjs(appointmentData.startAt).toDate(),
+        activationStatus: isDoctorCreatedBooking ? "PENDING" : "ACTIVATED",
       };
       console.log("[LOG] handleConfirm: Final object being sent to createAppointment:", JSON.stringify(appointmentToSave, null, 2));
 
       console.log("--- [booking-confirmation.tsx] Attempting to call createAppointment... ---");
       const result = await createAppointment(appointmentToSave as any);
       console.log("[LOG] handleConfirm: Successfully created appointment. Firestore response:", result);
+
+      // Record the booking action to start the 30s cooldown
+      if (session?.uid) {
+        await recordAction(session.uid, 'appointment');
+      }
 
       // --- Doctor Referrals (payout tracking) ---
       const isDoctorCreated = appointmentToSave?.createdByRole === 'doctor' || !!appointmentToSave?.doctorId;

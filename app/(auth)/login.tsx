@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -21,7 +21,12 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import { GoogleSignInButton } from '../../components/GoogleSignInButton';
 import { signInUniversal } from "../../utils/authHelpers";
-import { APP_NAME, APP_SUBTITLE } from "../../constants/AppStrings";
+import {
+  recordFailedLoginAttempt,
+  checkLoginLockout,
+  clearLoginAttempts,
+} from "../../utils/rateLimiter";
+import { APP_NAME, APP_SUBTITLE, isAndroidBuild } from "../../constants/AppStrings";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -48,7 +53,7 @@ const SHADOW = {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { isLoading: authLoading } = useAuth(); // We still use isLoading from context if needed
+  const { isLoading: authLoading } = useAuth();
 
   const [identifier, setIdentifier] = useState(""); // Email or Phone
   const [password, setPassword] = useState("");
@@ -56,11 +61,60 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Lockout state — countdown timer shown instead of the sign-in button
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+  const lockoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tick the lockout countdown
+  useEffect(() => {
+    if (lockoutSeconds > 0) {
+      lockoutRef.current = setInterval(() => {
+        setLockoutSeconds((prev) => {
+          if (prev <= 1) {
+            if (lockoutRef.current) clearInterval(lockoutRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (lockoutRef.current) clearInterval(lockoutRef.current);
+    };
+  }, [lockoutSeconds]);
+
+  // On mount, check if there's an existing lockout for the current identifier
+  const checkExistingLockout = async (id: string) => {
+    if (!id.trim()) return;
+    const result = await checkLoginLockout(id.trim().toLowerCase());
+    if (result.locked) {
+      setLockoutSeconds(result.remainingSeconds);
+      setError(`Too many failed attempts. Please wait ${result.remainingSeconds}s.`);
+    }
+  };
+
+  // Re-check lockout whenever the user changes the identifier field
+  useEffect(() => {
+    if (lockoutRef.current) clearInterval(lockoutRef.current);
+    setLockoutSeconds(0);
+    // Slight delay so we don't check on every keystroke
+    const t = setTimeout(() => checkExistingLockout(identifier), 400);
+    return () => clearTimeout(t);
+  }, [identifier]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSignIn = async () => {
     setError(null);
 
     if (!identifier || !password) {
       setError("Please enter your email or phone number and your password.");
+      return;
+    }
+
+    // Check lockout before attempting sign-in
+    const lockout = await checkLoginLockout(identifier.trim().toLowerCase());
+    if (lockout.locked) {
+      setLockoutSeconds(lockout.remainingSeconds);
+      setError(`Too many failed attempts. Please wait ${lockout.remainingSeconds}s before trying again.`);
       return;
     }
 
@@ -72,16 +126,38 @@ export default function LoginScreen() {
         throw new Error(result.message || "Sign in failed.");
       }
 
-      // Success is handled by onAuthStateChanged in useAuth hook automatically
+      // Successful login — clear any recorded failure counter
+      await clearLoginAttempts(identifier.trim().toLowerCase());
+      setLockoutSeconds(0);
+      // Navigation handled automatically by onAuthStateChanged in useAuth
+
     } catch (err: any) {
       console.log("Sign in error:", err);
-      setError(err.message || "Your email or password is incorrect. Please try again.");
+      const message = err.message || "Your email or password is incorrect. Please try again.";
+
+      // Record the failed attempt and check if we should now lock out
+      const attemptResult = await recordFailedLoginAttempt(identifier.trim().toLowerCase());
+
+      if (attemptResult.locked) {
+        setLockoutSeconds(attemptResult.remainingSeconds);
+        setError(`Too many failed attempts. Please wait ${attemptResult.remainingSeconds}s before trying again.`);
+      } else {
+        // Show the original error plus a warning of remaining attempts if close to lockout
+        const attemptsLeft = attemptResult.attemptsLeft;
+        if (attemptsLeft <= 2) {
+          setError(`${message} (${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left before temporary lockout)`);
+        } else {
+          setError(message);
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const isLockedOut = lockoutSeconds > 0;
   const overallLoading = loading || authLoading;
+  const isDisabled = overallLoading || isLockedOut;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -99,7 +175,7 @@ export default function LoginScreen() {
           {/* --- Brand Header --- */}
           <View style={styles.header}>
             <View style={styles.logoIcon}>
-              <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
+              <MaterialCommunityIcons name="office-building" size={32} color={COLORS.surface} />
             </View>
             <Text style={styles.appName}>{APP_NAME}<Text style={styles.appNameDot}>.</Text></Text>
             <Text style={styles.tagline}>{APP_SUBTITLE}</Text>
@@ -109,13 +185,13 @@ export default function LoginScreen() {
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.title}>Welcome Back</Text>
-              <Text style={styles.subtitle}>Securely access your patient portal</Text>
+              <Text style={styles.subtitle}>{isAndroidBuild ? 'Securely access your account' : 'Securely access your patient portal'}</Text>
             </View>
 
             {error && (
-              <View style={styles.errorContainer}>
-                <Feather name="alert-circle" size={16} color={COLORS.danger} />
-                <Text style={styles.errorText}>{error}</Text>
+              <View style={[styles.errorContainer, isLockedOut && styles.errorContainerWarning]}>
+                <Feather name={isLockedOut ? "lock" : "alert-circle"} size={16} color={isLockedOut ? COLORS.warning : COLORS.danger} />
+                <Text style={[styles.errorText, isLockedOut && styles.errorTextWarning]}>{error}</Text>
               </View>
             )}
 
@@ -131,7 +207,7 @@ export default function LoginScreen() {
                   autoCapitalize="none"
                   value={identifier}
                   onChangeText={setIdentifier}
-                  editable={!overallLoading}
+                  editable={!isDisabled}
                 />
               </View>
             </View>
@@ -153,7 +229,7 @@ export default function LoginScreen() {
                   secureTextEntry={secure}
                   value={password}
                   onChangeText={setPassword}
-                  editable={!overallLoading}
+                  editable={!isDisabled}
                 />
                 <Pressable onPress={() => setSecure(!secure)} style={styles.eyeIcon}>
                   <Feather name={secure ? "eye-off" : "eye"} size={20} color={COLORS.textSec} />
@@ -161,14 +237,19 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {/* Sign In Button */}
+            {/* Sign In Button — shows lockout countdown when locked */}
             <TouchableOpacity
-              style={[styles.primaryBtn, overallLoading && styles.btnDisabled]}
+              style={[styles.primaryBtn, isDisabled && styles.btnDisabled]}
               onPress={handleSignIn}
-              disabled={overallLoading}
+              disabled={isDisabled}
             >
               {overallLoading ? (
                 <ActivityIndicator color="#FFF" />
+              ) : isLockedOut ? (
+                <>
+                  <Feather name="clock" size={20} color="#FFF" />
+                  <Text style={styles.primaryBtnText}>Try again in {lockoutSeconds}s</Text>
+                </>
               ) : (
                 <>
                   <Text style={styles.primaryBtnText}>Sign In</Text>
@@ -258,7 +339,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, fontSize: 16, color: COLORS.textMain, height: '100%' },
   eyeIcon: { padding: 8 },
 
-  // --- Errors ---
+  // --- Errors / Lockout ---
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -269,7 +350,12 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: COLORS.danger,
   },
+  errorContainerWarning: {
+    backgroundColor: '#FFFBEB',
+    borderLeftColor: COLORS.warning,
+  },
   errorText: { color: COLORS.danger, fontSize: 13, marginLeft: 8, flex: 1 },
+  errorTextWarning: { color: '#92400E' },
 
   // --- Buttons ---
   primaryBtn: {

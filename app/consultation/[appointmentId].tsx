@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { MED_NOTES_LABEL, PRESCRIPTION_LABEL, CONDITIONS_LABEL, MEDICATION_LABEL, ALLERGIES_LABEL, PATIENT_INFO } from '../../constants/AppStrings';
 
 type Params = { appointmentId?: string };
 
@@ -24,9 +25,9 @@ export default function ConsultationScreen() {
     name: "James Wilson",
     age: 34,
     lastVisit: "2024-11-01",
-    conditions: ["Hypertension", "Type 2 Diabetes"],
-    medications: ["Lisinopril 10mg", "Metformin 1000mg"],
-    allergies: ["Penicillin", "Shellfish"],
+    conditions: ["Condition A", "Condition B"],
+    medications: ["Item A 10mg", "Item B 1000mg"],
+    allergies: ["Allergen A", "Allergen B"],
   };
 
   // mock state
@@ -109,7 +110,7 @@ export default function ConsultationScreen() {
 
             {/* Medical Notes Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>📝 Medical Notes</Text>
+              <Text style={styles.sectionTitle}>📝 {MED_NOTES_LABEL}</Text>
               <TextInput 
                 style={[styles.input, { height: 120 }]} 
                 value={notes} 
@@ -122,12 +123,12 @@ export default function ConsultationScreen() {
 
             {/* Prescription Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>💊 Prescription</Text>
+              <Text style={styles.sectionTitle}>💊 {PRESCRIPTION_LABEL}</Text>
               <TextInput 
                 style={styles.input} 
                 value={prescription} 
                 onChangeText={setPrescription} 
-                placeholder="e.g., Drug, dosage, frequency"
+                placeholder="e.g., Item, schedule, quantity"
                 placeholderTextColor="#999"
               />
             </View>
@@ -141,14 +142,14 @@ export default function ConsultationScreen() {
               style={[styles.saveBtn, { marginTop: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#0b6efd" }]} 
               onPress={() => router.push("/(modals)/medical-notes")}
             >
-              <Text style={{ color: "#0b6efd", fontWeight: "700" }}>Open Medical Notes Modal</Text>
+              <Text style={{ color: "#0b6efd", fontWeight: "700" }}>Open {MED_NOTES_LABEL} Modal</Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
             {/* Patient History View */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>👤 Patient Info</Text>
+              <Text style={styles.sectionTitle}>👤 {PATIENT_INFO}</Text>
               <View style={styles.historyCard}>
                 <Text style={styles.historyLabel}>Name:</Text>
                 <Text style={styles.historyValue}>{patientData.name}</Text>
@@ -164,7 +165,7 @@ export default function ConsultationScreen() {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>🩺 Medical Conditions</Text>
+              <Text style={styles.sectionTitle}>🩺 {CONDITIONS_LABEL}</Text>
               {patientData.conditions.map((condition, idx) => (
                 <View key={idx} style={styles.historyCard}>
                   <Text style={styles.historyValue}>• {condition}</Text>
@@ -173,7 +174,7 @@ export default function ConsultationScreen() {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>💊 Current Medications</Text>
+              <Text style={styles.sectionTitle}>💊 {MEDICATION_LABEL}</Text>
               {patientData.medications.map((med, idx) => (
                 <View key={idx} style={styles.historyCard}>
                   <Text style={styles.historyValue}>• {med}</Text>
@@ -182,7 +183,7 @@ export default function ConsultationScreen() {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>⚠️ Allergies</Text>
+              <Text style={styles.sectionTitle}>⚠️ {ALLERGIES_LABEL}</Text>
               {patientData.allergies.map((allergy, idx) => (
                 <View key={idx} style={[styles.historyCard, styles.allergyCard]}>
                   <Text style={styles.allergyText}>• {allergy}</Text>

@@ -20,6 +20,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { subscribeToAppointments } from '../../services/appointments';
 import { calculateReferralPayout } from '../../services/referrals';
 import type { Appointment } from '../../types/appointment';
+import { APPOINTMENTS_COMING_SOON } from '../../constants/AppStrings';
 
 // Enable LayoutAnimation on Android for smooth tab switching
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -151,6 +152,7 @@ export default function ReferralsScreen() {
           amountGhs: total,
           _createdAt: toDateSafe(appt.createdAt || appt.startAt) || new Date(),
           status,
+          activationStatus: (appt as any).activationStatus || 'ACTIVATED',
           isCompleted,
           isPending,
         };
@@ -190,6 +192,20 @@ export default function ReferralsScreen() {
     const now = dayjs();
     return completedReferrals.filter(r => dayjs(r._createdAt).isSame(now, timeFilter));
   }, [completedReferrals, timeFilter]);
+
+  if (APPOINTMENTS_COMING_SOON) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.emptyWrap}>
+          <View style={styles.emptyIconBox}>
+            <Feather name="lock" size={24} color={COLORS.textSub} />
+          </View>
+          <Text style={styles.emptyTitle}>Coming Soon</Text>
+          <Text style={styles.emptySub}>The referrals feature will be available shortly.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!session?.uid) {
     return (
@@ -376,21 +392,23 @@ export default function ReferralsScreen() {
                 {/* Financial Status Banner */}
                 <View style={[styles.statusBanner, {
                   backgroundColor:
+                    (selectedAppointment as any).activationStatus === 'PENDING' ? COLORS.warningSoft :
                     selectedAppointment.status === 'completed' ? COLORS.successSoft :
                       selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.dangerSoft :
                         COLORS.warningSoft,
                 }]}>
                   <Feather
-                    name={selectedAppointment.status === 'completed' ? "check-circle" : selectedAppointment.status === 'cancelled' ? "x-circle" : "clock"}
+                    name={(selectedAppointment as any).activationStatus === 'PENDING' ? "clock" : selectedAppointment.status === 'completed' ? "check-circle" : selectedAppointment.status === 'cancelled' ? "x-circle" : "clock"}
                     size={16}
-                    color={selectedAppointment.status === 'completed' ? COLORS.success : selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.danger : COLORS.warning}
+                    color={(selectedAppointment as any).activationStatus === 'PENDING' ? COLORS.warning : selectedAppointment.status === 'completed' ? COLORS.success : selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.danger : COLORS.warning}
                   />
                   <Text style={[styles.statusBannerText, {
                     color:
+                      (selectedAppointment as any).activationStatus === 'PENDING' ? COLORS.warning :
                       selectedAppointment.status === 'completed' ? COLORS.success :
                         selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.danger : COLORS.warning,
                   }]}>
-                    {selectedAppointment.status === 'completed' ? 'PAYOUT CONFIRMED' : selectedAppointment.status === 'cancelled' ? 'CANCELLED' : 'PAYMENT PENDING'}
+                    {(selectedAppointment as any).activationStatus === 'PENDING' ? 'AWAITING ARRIVAL' : selectedAppointment.status === 'completed' ? 'PAYOUT CONFIRMED' : selectedAppointment.status === 'cancelled' ? 'CANCELLED' : 'PAYMENT PENDING'}
                   </Text>
                 </View>
 

@@ -1,23 +1,16 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const isAndroidBuild = process.env.EXPO_PUBLIC_APP_MODE === 'android';
-  const appName = isAndroidBuild ? 'RAAJ Connect' : 'RAAJ MEDHUB';
-  const cameraDesc = isAndroidBuild
-    ? 'RAAJ Connect uses your camera to scan documents and upload attachments.'
-    : 'RAAJ MEDHUB uses your camera to scan medical referrals and upload patient documents.';
-  const photoDesc = isAndroidBuild
-    ? 'RAAJ Connect allows you to upload documents and images from your photo library.'
-    : 'RAAJ MEDHUB allows you to upload medical referrals and images from your photo library.';
-  const micDesc = isAndroidBuild
-    ? 'RAAJ Connect uses your microphone for voice notes if required.'
-    : 'RAAJ MEDHUB uses your microphone for voice notes if required.';
+  const appName = 'RAAJ Connect';
+  const cameraDesc = 'RAAJ Connect uses your camera to scan documents and upload attachments.';
+  const photoDesc = 'RAAJ Connect allows you to upload documents and images from your photo library.';
+  const micDesc = 'RAAJ Connect uses your microphone for voice notes if required.';
 
   return {
     ...config,
     name: appName,
     slug: 'MediCare',
-    version: '1.0.1',
+    version: '1.0.2',
     orientation: 'default',
     icon: './assets/images/icon.png',
     scheme: 'com.cooper.medicare',
@@ -62,7 +55,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       package: 'com.cooper.medicare',
-      versionCode: 4,
+      versionCode: 30,
       googleServicesFile: './google-services.json',
     },
     web: {
@@ -71,6 +64,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     extra: {
       googleClientId: '631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231.apps.googleusercontent.com',
+      geminiApiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || '',
       router: {},
       eas: {
         projectId: 'ce56fd7d-9b8c-4a4a-b5cc-1fcc10a92a90',

@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../hooks/useAuth';
+import { NAV_MY_REPORTS, SCANS_INFO } from '../../constants/AppStrings';
 import { getPatientReports, subscribeToPatientReportNotifications, Report } from '../../services/reports';
 
 // --- Global Theme ---
@@ -260,7 +261,7 @@ export default function ReportsScreen() {
             </View>
             <Text style={styles.emptyMainText}>No Reports Available</Text>
             <Text style={styles.emptySubText}>
-              Any physical or imaging scans requested by your doctor will appear here once processed.
+              {SCANS_INFO}
             </Text>
           </View>
         }

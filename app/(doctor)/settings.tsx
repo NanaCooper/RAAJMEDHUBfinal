@@ -17,7 +17,8 @@ import { db, doc, getDoc } from '../../utils/firebaseConfig';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { subscribeToAppointments } from '../../services/appointments';
-import { APP_NAME_PROFESSIONAL, APP_NAME, APP_VERSION_LABEL, DR_PREFIX } from '../../constants/AppStrings';
+import { APP_NAME_PROFESSIONAL, APP_NAME, APP_VERSION_LABEL, DR_PREFIX, isAndroidBuild } from '../../constants/AppStrings';
+import { canPerformAction, recordAction } from '../../utils/rateLimiter';
 
 // --- Premium Palette ---
 const COLORS = {
@@ -66,6 +67,16 @@ const DoctorSettingsScreen = () => {
 
   const handleExportData = async () => {
     if (!user || !session) return;
+
+    // Rate limit check — prevent spamming expensive report generation
+    const rateLimitResult = await canPerformAction(session.uid, 'data_export');
+    if (!rateLimitResult.allowed) {
+      Alert.alert(
+        "Please Wait",
+        `You recently generated a report. Please wait ${rateLimitResult.remainingSeconds}s before generating again.`
+      );
+      return;
+    }
 
     try {
       Alert.alert(
@@ -142,6 +153,8 @@ const DoctorSettingsScreen = () => {
                 });
 
                 if (await Sharing.isAvailableAsync()) {
+                  // Record before sharing so cooldown starts even if user cancels the share
+                  await recordAction(session.uid, 'data_export');
                   await Sharing.shareAsync(fileUri, {
                     mimeType: 'text/html',
                     dialogTitle: 'Export Practice Data',
@@ -206,10 +219,10 @@ const DoctorSettingsScreen = () => {
             </View>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.userName}>Dr. {displayName}</Text>
+            <Text style={styles.userName}>{DR_PREFIX}{displayName}</Text>
             <Text style={styles.userEmail}>{displayEmail}</Text>
             <View style={styles.specTag}>
-              <Text style={styles.specTagText}>{user?.specialization || user?.specialty || 'General Practitioner'}</Text>
+              <Text style={styles.specTagText}>{user?.specialization || user?.specialty || (isAndroidBuild ? 'Specialist' : 'General Practitioner')}</Text>
             </View>
           </View>
         </View>
@@ -219,7 +232,7 @@ const DoctorSettingsScreen = () => {
         <View style={styles.card}>
           <MenuOption 
             icon="user" 
-            title="Professional Profile" 
+            title={isAndroidBuild ? "Profile" : "Professional Profile"} 
             subtitle="Professional credentials and bio"
             onPress={() => router.push('/(doctor)/profile')}
           />
@@ -234,14 +247,17 @@ const DoctorSettingsScreen = () => {
             title="Alert Settings" 
             subtitle="Assignments and emergency alerts"
             onPress={() => router.push('/(doctor)/notifications')}
+            isLast={isAndroidBuild}
           />
-          <MenuOption 
-            icon="help-circle" 
-            title="Help & FAQs" 
-            subtitle="App guide for practitioners"
-            onPress={() => router.push('/(doctor)/faqs')}
-            isLast
-          />
+          {!isAndroidBuild && (
+            <MenuOption 
+              icon="help-circle" 
+              title="Help & FAQs" 
+              subtitle="App guide for practitioners"
+              onPress={() => router.push('/(doctor)/faqs')}
+              isLast
+            />
+          )}
         </View>
 
         <Text style={styles.sectionTitle}>Practice Management</Text>

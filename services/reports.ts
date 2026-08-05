@@ -223,7 +223,7 @@ export function subscribeToPatientReportNotifications(
           const isRecent = (Date.now() - updatedAt.getTime()) < 120000; // 2 min
           if (isRecent || change.type === 'modified') {
             notifiedReportIds.add(`patient_${id}`);
-            const title = data.reportName || data.title || data.scanType?.name || 'Medical Report';
+            const title = data.reportName || data.title || data.scanType?.name || 'Report';
             sendReportReadyPatientNotification(title, id);
             if (onNewReport) {
               onNewReport(normaliseReport(id, data));
@@ -266,7 +266,7 @@ export function subscribeToPatientReportNotifications(
               const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
               if (isRecent || change.type === 'modified') {
                 notifiedReportIds.add(`patient_reports_${id}`);
-                const title = data.title || data.scanType || 'Medical Report';
+                const title = data.title || data.scanType || 'Report';
                 sendReportReadyPatientNotification(title, id);
                 if (onNewReport) onNewReport(normaliseReport(id, data));
               }
@@ -309,7 +309,7 @@ export function subscribeToDoctorReportNotifications(
           const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
           if (isRecent || change.type === 'modified') {
             notifiedReportIds.add(`doctor_appt_${id}`);
-            const title = data.reportName || data.title || data.scanType?.name || 'Medical Report';
+            const title = data.reportName || data.title || data.scanType?.name || 'Report';
             sendReportSentDoctorNotification(title, id);
             if (onNewReport) onNewReport(reportFromAppointment(id, data));
           }
@@ -342,7 +342,7 @@ export function subscribeToDoctorReportNotifications(
               const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
               if (isRecent || change.type === 'modified') {
                 notifiedReportIds.add(`doctor_reports_${id}`);
-                const title = data.title || 'Medical Report';
+                const title = data.title || 'Report';
                 sendReportSentDoctorNotification(title, id);
                 if (onNewReport) onNewReport(normaliseReport(id, data));
               }

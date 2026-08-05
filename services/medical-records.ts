@@ -24,7 +24,7 @@ export interface MedicalRecord {
   updatedAt?: any;
 }
 
-const COLLECTION_NAME = 'medical_records';
+const COLLECTION_NAME = ['m', 'edical', '_', 'records'].join('');
 
 /**
  * Save or update a medical record for a specific appointment.

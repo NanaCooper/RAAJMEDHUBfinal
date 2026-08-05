@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { updateUserPassword } from '../../services/users';
+import { useAuth } from '../../hooks/useAuth';
+import { canPerformAction, recordAction } from '../../utils/rateLimiter';
 
 const COLORS = {
   bg: "#F8FAFC",
@@ -25,14 +27,50 @@ const COLORS = {
   textSec: "#64748B",
   border: "#E2E8F0",
   success: "#10B981",
+  warning: "#F59E0B",
 };
 
 export default function SecurityScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const [loading, setLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Cooldown state for the update button
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tick cooldown down every second
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            if (cooldownRef.current) clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, [cooldown]);
+
+  // Check if there's already an active cooldown when the screen mounts
+  useEffect(() => {
+    const checkCooldown = async () => {
+      if (!session?.uid) return;
+      const result = await canPerformAction(session.uid, 'password_change');
+      if (!result.allowed) {
+        setCooldown(result.remainingSeconds);
+      }
+    };
+    checkCooldown();
+  }, [session?.uid]);
 
   const handleUpdatePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -50,9 +88,30 @@ export default function SecurityScreen() {
       return;
     }
 
+    // Rate limit check
+    if (!session?.uid) {
+      Alert.alert("Error", "No active session found.");
+      return;
+    }
+
+    const rateLimitResult = await canPerformAction(session.uid, 'password_change');
+    if (!rateLimitResult.allowed) {
+      setCooldown(rateLimitResult.remainingSeconds);
+      Alert.alert(
+        "Please Wait",
+        `You recently changed your password. Please wait ${rateLimitResult.remainingSeconds}s before trying again.`
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       await updateUserPassword(currentPassword, newPassword);
+
+      // Record this action to start the cooldown
+      await recordAction(session.uid, 'password_change');
+      setCooldown(60);
+
       Alert.alert("Password Updated", "Your password has been changed successfully.");
       setCurrentPassword('');
       setNewPassword('');
@@ -64,6 +123,8 @@ export default function SecurityScreen() {
       setLoading(false);
     }
   };
+
+  const isDisabled = loading || cooldown > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -96,6 +157,7 @@ export default function SecurityScreen() {
               secureTextEntry
               value={currentPassword}
               onChangeText={setCurrentPassword}
+              editable={!isDisabled}
             />
 
             <Text style={[styles.label, { marginTop: 20 }]}>New Password</Text>
@@ -105,6 +167,7 @@ export default function SecurityScreen() {
               secureTextEntry
               value={newPassword}
               onChangeText={setNewPassword}
+              editable={!isDisabled}
             />
 
             <Text style={[styles.label, { marginTop: 20 }]}>Confirm New Password</Text>
@@ -114,16 +177,35 @@ export default function SecurityScreen() {
               secureTextEntry
               value={confirmPassword}
               onChangeText={setConfirmPassword}
+              editable={!isDisabled}
             />
 
             <TouchableOpacity 
-              style={[styles.updateBtn, loading && { opacity: 0.7 }]} 
+              style={[styles.updateBtn, isDisabled && styles.updateBtnDisabled]} 
               onPress={handleUpdatePassword}
-              disabled={loading}
+              disabled={isDisabled}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.updateBtnText}>Update Password</Text>}
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : cooldown > 0 ? (
+                <>
+                  <Feather name="clock" size={18} color="#fff" />
+                  <Text style={styles.updateBtnText}>  Wait {cooldown}s</Text>
+                </>
+              ) : (
+                <Text style={styles.updateBtnText}>Update Password</Text>
+              )}
             </TouchableOpacity>
           </View>
+
+          {cooldown > 0 && (
+            <View style={styles.cooldownNote}>
+              <Feather name="clock" size={14} color={COLORS.warning} />
+              <Text style={styles.cooldownText}>
+                Password change cooldown: {cooldown}s remaining.
+              </Text>
+            </View>
+          )}
 
           <View style={styles.footerInfo}>
             <Feather name="info" size={16} color={COLORS.textSec} />
@@ -188,12 +270,24 @@ const styles = StyleSheet.create({
   },
   updateBtn: {
     backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 18,
     borderRadius: 16,
-    alignItems: 'center',
+    alignSelf: 'stretch',
     marginTop: 30,
   },
+  updateBtnDisabled: { opacity: 0.6 },
   updateBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  cooldownNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 4,
+    gap: 6,
+  },
+  cooldownText: { fontSize: 13, color: COLORS.warning, fontWeight: '600' },
   footerInfo: {
     flexDirection: 'row',
     marginTop: 24,

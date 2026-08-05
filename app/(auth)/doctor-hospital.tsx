@@ -149,7 +149,7 @@ export default function DoctorHospitalScreen() {
       if (!hospitalToSave && trimmedCustom) {
         const region = customRegion === 'Other' ? customRegionOther.trim() : customRegion;
         if (!region) {
-          setError('Please enter your hospital region.');
+          setError('Please enter your facility region.');
           setSaving(false);
           return;
         }
@@ -167,7 +167,7 @@ export default function DoctorHospitalScreen() {
       }
 
       if (!hospitalToSave) {
-        setError('Please select or enter your hospital.');
+        setError('Please select or enter your facility.');
         setSaving(false);
         return;
       }
@@ -227,7 +227,7 @@ export default function DoctorHospitalScreen() {
         <TouchableOpacity style={styles.iconButton} onPress={handleBack}>
           <Feather name="chevron-left" size={20} color={COLORS.textMain} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Hospital Setup</Text>
+        <Text style={styles.headerTitle}>Facility Setup</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -242,7 +242,7 @@ export default function DoctorHospitalScreen() {
               <Feather name="map-pin" size={20} color={COLORS.primary} />
             </View>
             <Text style={styles.title}>Where do you practice?</Text>
-            <Text style={styles.subtitle}>Choose from the list or add your primary facility to help patients find you.</Text>
+            <Text style={styles.subtitle}>Choose from the list or add your primary facility to help {Platform.OS === 'android' ? 'clients' : 'patients'} find you.</Text>
           </View>
 
           {/* --- Search Bar --- */}
@@ -253,7 +253,7 @@ export default function DoctorHospitalScreen() {
               onChangeText={(val) => { animateLayout(); setSearch(val); }}
               onFocus={() => setFocusedInput('search')}
               onBlur={() => setFocusedInput(null)}
-              placeholder="Search hospital or region..."
+              placeholder="Search facility or region..."
               placeholderTextColor={COLORS.textSec}
               style={styles.inputText}
             />

@@ -707,7 +707,7 @@ export async function sendAppointmentDeniedNotification(
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Appointment not approved',
-        body: 'Your appointment request was not approved. Please contact the clinic if you need help.',
+        body: 'Your appointment request was not approved. Please contact the facility if you need help.',
         sound: prefs.soundEnabled ? 'default' : undefined,
         data: { type: 'appointment_denied', appointmentId },
       },

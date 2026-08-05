@@ -17,7 +17,8 @@ import { db, doc, getDoc } from '../../utils/firebaseConfig';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { getPatientReports } from '../../services/reports';
-import { APP_NAME_FULL, APP_VERSION_LABEL, EXPORT_FOOTER, EXPORT_FILE_PREFIX } from '../../constants/AppStrings';
+import { APP_NAME_FULL, APP_VERSION_LABEL, EXPORT_FOOTER, EXPORT_FILE_PREFIX, HEALTH_TIPS } from '../../constants/AppStrings';
+import { canPerformAction, recordAction } from '../../utils/rateLimiter';
 
 // --- Premium Palette ---
 const COLORS = {
@@ -55,6 +56,16 @@ const PatientSettingsScreen = () => {
 
   const handleExportData = async () => {
     if (!user || !session) return;
+
+    // Rate limit check — prevent spamming expensive Firestore read + file generation
+    const rateLimitResult = await canPerformAction(session.uid, 'data_export');
+    if (!rateLimitResult.allowed) {
+      Alert.alert(
+        "Please Wait",
+        `You recently exported your data. Please wait ${rateLimitResult.remainingSeconds}s before exporting again.`
+      );
+      return;
+    }
 
     try {
       Alert.alert(
@@ -170,6 +181,8 @@ const PatientSettingsScreen = () => {
 
                 // 4. Share the HTML report
                 if (await Sharing.isAvailableAsync()) {
+                  // Record the export BEFORE sharing so cooldown starts even if user cancels
+                  await recordAction(session.uid, 'data_export');
                   await Sharing.shareAsync(htmlUri, {
                     mimeType: 'text/html',
                     dialogTitle: 'Export My Data',
@@ -257,7 +270,7 @@ const PatientSettingsScreen = () => {
           <MenuOption 
             icon="bell" 
             title="Notifications" 
-            subtitle="Alerts, reminders, and health tips"
+            subtitle={HEALTH_TIPS}
             onPress={() => router.push('/(patient)/notifications')}
           />
           <MenuOption 

@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { getDoctor } from '../../services/doctors';
+import { DOCTOR_LABEL } from '../../constants/AppStrings';
 
 const COLORS = {
   bg: '#F8FAFC',
@@ -42,7 +43,7 @@ export default function DoctorDetailsScreen() {
   if (!doctor) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>Doctor not found</Text>
+        <Text style={styles.errorText}>{DOCTOR_LABEL} not found</Text>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
@@ -62,7 +63,7 @@ export default function DoctorDetailsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Feather name="arrow-left" size={24} color={COLORS.textMain} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Doctor Details</Text>
+        <Text style={styles.headerTitle}>{DOCTOR_LABEL} Details</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -73,7 +74,7 @@ export default function DoctorDetailsScreen() {
                 <Image source={{ uri: doctor.photoURL }} style={styles.avatar} />
              ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>{doctor.fullName?.charAt(0) || 'D'}</Text>
+                  <Text style={styles.avatarText}>{doctor.fullName?.charAt(0) || (DOCTOR_LABEL === 'Specialist' ? 'S' : 'D')}</Text>
                 </View>
              )}
           </View>

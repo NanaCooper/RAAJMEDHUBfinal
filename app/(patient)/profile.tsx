@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { doc, getDoc, setDoc, db } from "../../utils/firebaseConfig";
+import { PATIENT_LABEL } from "../../constants/AppStrings";
+import { canPerformAction, recordAction } from "../../utils/rateLimiter";
 import * as ImagePicker from 'expo-image-picker';
 import {
   View,
@@ -71,6 +73,32 @@ export default function PatientProfile(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  // Save cooldown — prevents rapid repeated Firestore writes
+  const [saveCooldown, setSaveCooldown] = useState(0);
+  const saveCooldownRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (saveCooldown > 0) {
+      saveCooldownRef.current = setInterval(() => {
+        setSaveCooldown((prev) => {
+          if (prev <= 1) { if (saveCooldownRef.current) clearInterval(saveCooldownRef.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => { if (saveCooldownRef.current) clearInterval(saveCooldownRef.current); };
+  }, [saveCooldown]);
+
+  // Restore any active cooldown on mount (e.g. user navigated back)
+  useEffect(() => {
+    const check = async () => {
+      if (!session?.uid) return;
+      const result = await canPerformAction(session.uid, 'profile_save');
+      if (!result.allowed) setSaveCooldown(result.remainingSeconds);
+    };
+    check();
+  }, [session?.uid]);
 
   // Snackbar animation
   const snackAnim = useRef(new Animated.Value(0)).current;
@@ -166,6 +194,15 @@ export default function PatientProfile(): React.ReactElement {
       return;
     }
 
+    // Rate limit check — 15s cooldown between profile saves
+    if (!session?.uid) { setError("No active session."); return; }
+    const rateLimitResult = await canPerformAction(session.uid, 'profile_save');
+    if (!rateLimitResult.allowed) {
+      setSaveCooldown(rateLimitResult.remainingSeconds);
+      setError(`Please wait ${rateLimitResult.remainingSeconds}s before saving again.`);
+      return;
+    }
+
     setLoading(true);
     try {
       if (!session?.uid) throw new Error("No active session found.");
@@ -192,6 +229,10 @@ export default function PatientProfile(): React.ReactElement {
       
       // CRITICAL: Refresh the global user state so changes reflect in Drawer/Settings immediately
       await reloadUser();
+
+      // Record action to start the 15s cooldown
+      await recordAction(session.uid, 'profile_save');
+      setSaveCooldown(15);
       
       setSavedMsg("Profile updated successfully");
       setOriginalProfile({ fullName, dob, phone, preferences, photoURL });
@@ -270,7 +311,13 @@ export default function PatientProfile(): React.ReactElement {
           </View>
           
           <Text style={styles.profileName}>{fullName || "User"}</Text>
-          <Text style={styles.profileRole}>{role ? role.toUpperCase() : "MEMBER"}</Text>
+          <Text style={styles.profileRole}>
+            {role 
+              ? (role.toLowerCase() === 'patient' 
+                  ? PATIENT_LABEL.toUpperCase() 
+                  : role.toUpperCase()) 
+              : "MEMBER"}
+          </Text>
         </View>
 
         {/* --- Account Info (Read Only) --- */}
@@ -374,12 +421,14 @@ export default function PatientProfile(): React.ReactElement {
            )}
            
            <TouchableOpacity
-             style={[styles.saveBtn, (!dirty || !!validationError || loading) && styles.saveBtnDisabled]}
+             style={[styles.saveBtn, (!dirty || !!validationError || loading || saveCooldown > 0) && styles.saveBtnDisabled]}
              onPress={handleSave}
-             disabled={!dirty || !!validationError || loading}
+             disabled={!dirty || !!validationError || loading || saveCooldown > 0}
            >
              {loading ? (
                <ActivityIndicator color="#fff" />
+             ) : saveCooldown > 0 ? (
+               <Text style={styles.saveBtnText}>Wait {saveCooldown}s</Text>
              ) : (
                <Text style={styles.saveBtnText}>{dirty ? "Save Changes" : "Up to Date"}</Text>
              )}

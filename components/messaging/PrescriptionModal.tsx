@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { MEDICATION_LABEL, PRESCRIPTION_LABEL } from '../../constants/AppStrings';
 import { Fonts } from "../../constants/theme";
 
 interface PrescriptionModalProps {
@@ -49,10 +51,10 @@ export const PrescriptionModal: React.FC<PrescriptionModalProps> = ({
         activeOpacity={1}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>Send Prescription</Text>
-          <Text style={styles.description}>Create and send a prescription to the patient</Text>
+          <Text style={styles.title}>Send {PRESCRIPTION_LABEL}</Text>
+          <Text style={styles.description}>Create and send to the client</Text>
           <ScrollView style={styles.form}>
-            <Text style={styles.label}>Medication Name</Text>
+            <Text style={styles.label}>{MEDICATION_LABEL}</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g., Amoxicillin"

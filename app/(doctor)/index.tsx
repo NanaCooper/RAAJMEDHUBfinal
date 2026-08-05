@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../hooks/useAuth";
 import dayjs from "dayjs";
 import { subscribeToAppointments } from '../../services/appointments';
+import { NAV_MY_PATIENTS, isAndroidBuild } from "../../constants/AppStrings";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -130,8 +131,8 @@ export default function DoctorDashboard() {
               <Feather name="users" size={24} color="#FFF" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.actionTitle}>My Patients</Text>
-              <Text style={styles.actionSub}>Assigned patient list & history</Text>
+              <Text style={styles.actionTitle}>{NAV_MY_PATIENTS}</Text>
+              <Text style={styles.actionSub}>{isAndroidBuild ? 'Client list & history' : 'Assigned patient list & history'}</Text>
             </View>
           </TouchableOpacity>
         </View>

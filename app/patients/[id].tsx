@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { getUserProfile } from "../../services/users";
 import { AppUser } from "../../types/user";
+import { PATIENT_INFO, MED_RECORD_LABEL } from "../../constants/AppStrings";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -119,14 +120,14 @@ export default function PatientRecordScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
           <Feather name="chevron-left" size={24} color={COLORS.textMain} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{patient?.fullName || "Patient Record"}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{patient?.fullName || MED_RECORD_LABEL}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Patient Info Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Patient Information</Text>
+          <Text style={styles.cardTitle}>{PATIENT_INFO}</Text>
           <InfoRow icon="user" label="Full Name" value={patient?.fullName || 'N/A'} />
           <InfoRow icon="mail" label="Email" value={patient?.email || 'N/A'} />
           <InfoRow icon="phone" label="Contact" value={patient?.contact || 'N/A'} />

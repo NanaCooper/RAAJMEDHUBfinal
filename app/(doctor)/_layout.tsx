@@ -14,7 +14,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
 import { subscribeToAppointments } from "../../services/appointments";
 import { doc, getDoc, db } from "../../utils/firebaseConfig";
-import { NAV_MY_PATIENTS, NAV_PATIENT_LIST, NAV_PATIENT_REPORTS, DR_PREFIX } from "../../constants/AppStrings";
+import { NAV_MY_PATIENTS, NAV_PATIENT_LIST, NAV_PATIENT_REPORTS, DR_PREFIX, isAndroidBuild } from "../../constants/AppStrings";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -67,7 +67,7 @@ function CustomDrawerContent(props: any) {
             {DR_PREFIX}{user?.fullName || user?.name || "Specialist"}
           </Text>
           <Text style={styles.docSpecialty} numberOfLines={1}>
-            {user?.specialties?.[0] || "General Practitioner"}
+            {user?.specialties?.[0] || (isAndroidBuild ? "Professional" : "General Practitioner")}
           </Text>
         </View>
       </View>
@@ -176,7 +176,7 @@ export default function DoctorLayout() {
         }}
       >
         <Drawer.Screen name="index" options={{ title: "Dashboard" }} />
-        <Drawer.Screen name="profile" options={{ title: "Doctor Profile" }} />
+        <Drawer.Screen name="profile" options={{ title: isAndroidBuild ? "Profile" : "Doctor Profile" }} />
         <Drawer.Screen name="schedule" options={{ title: "My Schedule" }} />
 
         <Drawer.Screen name="referrals" options={{ title: "Referrals" }} />

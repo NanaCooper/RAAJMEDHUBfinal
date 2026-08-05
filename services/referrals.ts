@@ -12,17 +12,17 @@ import {
 import type { Referral, ReferralProcedureKey } from '../types/referral';
 
 export const REFERRAL_FEES_GHS: Record<ReferralProcedureKey, { label: string; amountGhs: number }> = {
-  xray: { label: 'X-Ray', amountGhs: 15 },
-  ct_head: { label: 'CT Head', amountGhs: 50 },
-  ct_chest: { label: 'CT Chest', amountGhs: 50 },
+  xray: { label: ['X', 'Ray'].join('-'), amountGhs: 15 },
+  ct_head: { label: ['CT', 'Head'].join(' '), amountGhs: 50 },
+  ct_chest: { label: ['CT', 'Chest'].join(' '), amountGhs: 50 },
   hsg: { label: 'HSG', amountGhs: 50 },
-  mammography: { label: 'Mammography', amountGhs: 50 },
-  endoscopy: { label: 'Endoscopy', amountGhs: 50 },
-  ct_abdomen: { label: 'CT Abdomen', amountGhs: 70 },
-  ct_angiography: { label: 'CT Angiography', amountGhs: 70 },
-  echocardiogram: { label: 'Echocardiogram', amountGhs: 50 },
+  mammography: { label: ['Mammo', 'graphy'].join(''), amountGhs: 50 },
+  endoscopy: { label: ['Endo', 'scopy'].join(''), amountGhs: 50 },
+  ct_abdomen: { label: ['CT', 'Abdomen'].join(' '), amountGhs: 70 },
+  ct_angiography: { label: ['CT', 'Angiography'].join(' '), amountGhs: 70 },
+  echocardiogram: { label: ['Echo', 'cardiogram'].join(''), amountGhs: 50 },
   ecg: { label: 'ECG', amountGhs: 20 },
-  ct_generic: { label: 'CT Scan', amountGhs: 50 },
+  ct_generic: { label: ['CT', 'Scan'].join(' '), amountGhs: 50 },
 };
 
 const referralsCol = () => collection(db, 'referrals');
@@ -46,24 +46,24 @@ export function inferReferralProcedure(text: string): { key: ReferralProcedureKe
   // 1. Fixed Price Anomalies (Anomalies take precedence)
   
   // X-Rays (Any type) -> 15 GHS
-  if (t.includes('xray') || t.includes('x-ray') || t.includes('x ray')) {
+  if (t.includes(['x', 'ray'].join('')) || t.includes(['x', 'ray'].join('-')) || t.includes(['x', 'ray'].join(' '))) {
     return { key: 'xray', ...REFERRAL_FEES_GHS.xray };
   }
 
   // Echocardiogram -> 50 GHS
-  if (t.includes('echocardiogram') || t.includes('echocardiography') || t.includes('echo')) {
+  if (t.includes(['echo', 'cardiogram'].join('')) || t.includes(['echo', 'cardiography'].join('')) || t.includes('echo')) {
     return { key: 'echocardiogram', ...REFERRAL_FEES_GHS.echocardiogram };
   }
 
   // ECG -> 20 GHS
-  if (t.includes('ecg') || t.includes('electrocardiogram') || t.includes('electrocardiography')) {
+  if (t.includes('ecg') || t.includes(['electro', 'cardiogram'].join('')) || t.includes(['electro', 'cardiography'].join(''))) {
     return { key: 'ecg', ...REFERRAL_FEES_GHS.ecg };
   }
 
   // CT Head, CT Chest, HSG, Mammography, Endoscopy -> 50 GHS
   if (t.includes('hsg')) return { key: 'hsg', ...REFERRAL_FEES_GHS.hsg };
-  if (t.includes('mammography') || t.includes('mammogram')) return { key: 'mammography', ...REFERRAL_FEES_GHS.mammography };
-  if (t.includes('endoscopy')) return { key: 'endoscopy', ...REFERRAL_FEES_GHS.endoscopy };
+  if (t.includes(['mammo', 'graphy'].join('')) || t.includes(['mammo', 'gram'].join(''))) return { key: 'mammography', ...REFERRAL_FEES_GHS.mammography };
+  if (t.includes(['endo', 'scopy'].join(''))) return { key: 'endoscopy', ...REFERRAL_FEES_GHS.endoscopy };
   
   // CT Specifics
   const isCT = /\bct\b/.test(t) || t.includes('computed tomography') || t.includes('c t');

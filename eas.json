@@ -1,7 +1,8 @@
 {
   "cli": {
     "version": ">= 16.28.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local",
+    "promptToConfigurePushNotifications": false
   },
   "build": {
     "development": {
@@ -27,11 +28,31 @@
       },
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_MODE": "android"
+      }
+    },
+    "preview-android": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_MODE": "android",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBJI7QKQ4ytOhgZdMKCGn37mte-aE0rlPU",
+        "EXPO_PUBLIC_ANDROID_CLIENT_ID": "631948568273-ln21s9ig74lqddjqpah9bo1v9v7so28p.apps.googleusercontent.com",
+        "EXPO_PUBLIC_IOS_CLIENT_ID": "631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231.apps.googleusercontent.com",
+        "EXPO_PUBLIC_WEB_CLIENT_ID": "631948568273-9ekasgjfgref8f776ktc5opqf0jiq6jr.apps.googleusercontent.com",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:631948568273:android:987fcc14e9be3e143507f0",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "medicareapp-f0dc0",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "medicareapp-f0dc0.firebasestorage.app"
       }
     },
     "production": {
       "channel": "production",
-      "autoIncrement": true,
+      "autoIncrement": false,
       "ios": {
         "image": "sdk-54"
       },
@@ -50,16 +71,33 @@
     },
     "production-apk": {
       "channel": "production",
-      "autoIncrement": true,
+      "autoIncrement": false,
       "android": {
         "buildType": "apk"
       }
     },
     "production-android": {
       "channel": "production",
-      "autoIncrement": true,
+      "autoIncrement": false,
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_MODE": "android",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBJI7QKQ4ytOhgZdMKCGn37mte-aE0rlPU",
+        "EXPO_PUBLIC_ANDROID_CLIENT_ID": "631948568273-ln21s9ig74lqddjqpah9bo1v9v7so28p.apps.googleusercontent.com",
+        "EXPO_PUBLIC_IOS_CLIENT_ID": "631948568273-fbk4afbh7tcbrt6h4ock3vh2sn19j231.apps.googleusercontent.com",
+        "EXPO_PUBLIC_WEB_CLIENT_ID": "631948568273-9ekasgjfgref8f776ktc5opqf0jiq6jr.apps.googleusercontent.com",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:631948568273:android:987fcc14e9be3e143507f0",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "medicareapp-f0dc0",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "medicareapp-f0dc0.firebasestorage.app"
+      }
+    },
+    "production-android-apk": {
+      "channel": "production",
+      "autoIncrement": false,
+      "android": {
+        "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_APP_MODE": "android",

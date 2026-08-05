@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -46,13 +47,11 @@ export default function UserTypeSelection() {
     // Persist user type and reload the user session
     await setUserType(selection);
     await reloadUser();
-
     if (selection === 'doctor') {
-      router.replace('/doctor-hospital');
-      return;
+      router.replace('/(doctor)');
+    } else {
+      router.replace('/(patient)');
     }
-
-    // Navigation will now be handled automatically by the useProtectedRoute hook
   };
 
   const SelectionCard = ({
@@ -125,15 +124,15 @@ export default function UserTypeSelection() {
         <View style={styles.selectionContainer}>
           <SelectionCard
             type="patient"
-            title="I am a Patient"
-            description="Book appointments, view records, and manage your personal health journey."
+            title={Platform.OS === 'android' ? "I am a Customer" : "I am a Patient"}
+            description={Platform.OS === 'android' ? "Schedule appointments, view documents, and manage your personal schedule." : "Book appointments, view records, and manage your personal schedule and documents."}
             iconName="user"
           />
           
           <SelectionCard
             type="doctor"
             title="I am a Provider"
-            description="Manage patient queues, schedules, and conduct consultations."
+            description={Platform.OS === 'android' ? "Manage queues, schedules, and conduct service sessions." : "Manage patient queues, schedules, and conduct consultations."}
             iconName="briefcase"
           />
         </View>

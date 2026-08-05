@@ -1,5 +1,6 @@
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import {
+    auth,
     db,
     doc,
     setDoc,
@@ -113,7 +114,7 @@ export async function signUpWithEmail(
     pass: string
 ): Promise<AuthResponse> {
     try {
-        const userCredential = await auth().createUserWithEmailAndPassword(email, pass);
+        const userCredential = await auth.createUserWithEmailAndPassword(email, pass);
         const user = userCredential.user;
 
         // Send verification
@@ -154,7 +155,7 @@ export async function sendVerificationEmail(user: FirebaseAuthTypes.User): Promi
 
 export async function checkEmailVerificationStatus(): Promise<{ verified: boolean; user?: FirebaseAuthTypes.User }> {
     try {
-        const user = auth().currentUser;
+        const user = auth.currentUser;
         if (!user) return { verified: false };
         await user.reload();
         return { verified: user.emailVerified, user };
@@ -182,12 +183,12 @@ export async function sendPhoneVerificationCode(
             };
         }
 
-        const confirmation = await auth().signInWithPhoneNumber(formatted);
+        const confirmation = await auth.signInWithPhoneNumber(formatted);
         await recordVerificationSent(formatted, 'phone');
 
         return {
             success: true,
-            confirmationResult: confirmation as any // Type assertion for compatibility if needed
+            confirmationResult: confirmation as any
         };
     } catch (error: any) {
         return {
@@ -222,19 +223,19 @@ export async function linkPhoneWithPassword(
     password: string
 ): Promise<AuthResponse> {
     try {
-        const user = auth().currentUser;
+        const user = auth.currentUser;
         if (!user) return { success: false, message: 'No user signed in' };
 
         const formatted = formatPhoneNumber(phoneNumber);
         const internalEmail = `${formatted}${INTERNAL_DOMAIN}`;
 
-        const credential = auth.EmailAuthProvider.credential(internalEmail, password);
+        // Import EmailAuthProvider from the native firebase/auth package
+        const { EmailAuthProvider } = require('@react-native-firebase/auth');
+        const credential = EmailAuthProvider.credential(internalEmail, password);
         await user.linkWithCredential(credential);
 
         return { success: true };
     } catch (error: any) {
-        // If the credential already exists, we might want to just update password or ignore
-        // But for fresh users it should be fine.
         return { success: false, message: error.message };
     }
 }
@@ -247,30 +248,30 @@ export async function signInUniversal(identifier: string, password: string): Pro
         let isPhone = false;
 
         if (isEmail(identifier)) {
-            userCredential = await auth().signInWithEmailAndPassword(identifier, password);
+            userCredential = await auth.signInWithEmailAndPassword(identifier, password);
         } else {
             // Assume phone
             isPhone = true;
             const formatted = formatPhoneNumber(identifier);
             const internalEmail = `${formatted}${INTERNAL_DOMAIN}`;
-            userCredential = await auth().signInWithEmailAndPassword(internalEmail, password);
+            userCredential = await auth.signInWithEmailAndPassword(internalEmail, password);
         }
 
         const user = userCredential.user;
 
         // Check suspension
         if (await checkSuspension(user.uid)) {
-            await auth().signOut();
+            await auth.signOut();
             return { success: false, error: 'account-suspended', message: 'Account is suspended.' };
         }
 
         // Check verification if email
-        // Note: Phone users are verified by default via OTP to get here, 
-        // unless they just signed in with password. 
+        // Note: Phone users are verified by default via OTP to get here,
+        // unless they just signed in with password.
         // Ideally we assume if they can sign in with password they are verified.
         // BUT for email, we strictly enforce it.
         if (!isPhone && !user.emailVerified) {
-            await auth().signOut();
+            await auth.signOut();
             return {
                 success: false,
                 error: 'email-not-verified',

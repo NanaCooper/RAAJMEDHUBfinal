@@ -93,6 +93,39 @@ function useProtectedRoute(session: AuthUser | null | undefined, isLoading: bool
       }
 
       // 2. Redirect to user type selection if needed.
+      // IMPORTANT: Protect admin/superadmin roles — they must NEVER be overwritten
+      // by the mobile app. These roles are set directly in the database and should
+      // remain intact regardless of what the mobile onboarding flow does.
+      const PROTECTED_ROLES = ['superadmin', 'admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'admin_capecoast', 'admin_koforidua', 'admin_takoradi'];
+      const isProtectedAdmin = user.role && PROTECTED_ROLES.includes(user.role);
+
+      if (isProtectedAdmin) {
+        // Admin accounts have no valid destination in the mobile app.
+        // Sign them out gracefully and show a clear message.
+        if (!inAuthGroup) {
+          Alert.alert(
+            'Admin Account Detected',
+            'This account is configured as an administrator. Please use the admin web portal instead. You will be signed out now.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  try {
+                    const authInst = await getAuthInstance();
+                    await signOut(authInst);
+                  } catch (e) {
+                    console.warn('Sign out failed:', e);
+                  }
+                  router.replace('/login');
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        }
+        return;
+      }
+
       if (!user.role || (user.role !== 'patient' && user.role !== 'doctor')) {
         const lastSegment = segments[segments.length - 1];
         const isAtUserTypeSelection = lastSegment === 'user-type-selection';
@@ -111,12 +144,7 @@ function useProtectedRoute(session: AuthUser | null | undefined, isLoading: bool
       // --- User is fully authenticated and configured ---
       const userType = user.role;
 
-      // 3. If a doctor has not selected a hospital yet and is trying to access a dashboard screen, redirect to doctor-hospital selection screen
-      if (userType === 'doctor' && !user.hospitalId && !inAuthGroup) {
-        console.log('Redirecting doctor to doctor-hospital selection screen');
-        router.replace('/doctor-hospital');
-        return;
-      }
+      // 3. (Removed hospital selection enforcement to keep onboarding neutral)
 
       const expectedGroup = `(${userType})`;
       const isSharedRoute = ['settings', 'appointments', 'booking', 'consultation', 'doctors', 'patients'].includes(segments[0] as string);
@@ -124,10 +152,7 @@ function useProtectedRoute(session: AuthUser | null | undefined, isLoading: bool
       // 4. If user is in an auth screen (login, signup) or oauthredirect, redirect them away to their dashboard.
       if (inAuthGroup || isOAuthRedirect) {
         const lastSegment = segments[segments.length - 1];
-        if (lastSegment === 'doctor-hospital' && !user.hospitalId) {
-          // Stay on doctor-hospital if they haven't chosen a hospital yet
-          return;
-        }
+
         if (lastSegment === 'user-type-selection') {
           // Stay on user-type-selection so they can change their role if they want to
           return;
@@ -199,7 +224,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userSnap.exists()) {
           const userData = userSnap.data() as UserData;
           console.log("Checking suspension for user:", currentUser.uid, userData);
-          // Check for suspension
           if (userData.accountStatus === 'suspended' || userData.isSuspended === true || userData.suspended === true) {
             console.log("User is suspended. Signing out.");
             Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
@@ -213,15 +237,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           setUser(finalUserData);
         } else {
-          // If the user exists in Auth but not Firestore, create a basic profile.
-          // This is common for social sign-ins on first login.
-          const newUser = {
-            email: currentUser.email,
-            createdAt: new Date().toISOString(),
-            profileComplete: false, // Explicitly set profile as incomplete
-          };
-          await setDoc(userRef, newUser);
-          setUser({ uid: currentUser.uid, ...newUser });
+          // No users doc — check if they exist in the doctors collection
+          // (doctors added from the admin web portal land here).
+          const doctorRef = doc(db, "doctors", currentUser.uid);
+          const doctorSnap = await getDoc(doctorRef);
+          if (doctorSnap.exists()) {
+            const doctorData = doctorSnap.data() as any;
+            console.log("[reloadUser] Found doctor record. Bootstrapping users doc.");
+            const bootstrapped: any = {
+              uid: currentUser.uid,
+              email: currentUser.email || doctorData.email || null,
+              fullName: doctorData.name || doctorData.fullName || currentUser.displayName || "",
+              role: 'doctor',
+              profileComplete: true,
+              specialty: doctorData.specialty || "",
+              branch: doctorData.branch || "",
+              hospitalName: doctorData.hospitalName || "",
+              phone: doctorData.phone || doctorData.contact || "",
+              createdAt: doctorData.createdAt || new Date().toISOString(),
+              _source: 'doctors',
+            };
+            // Write back to users collection so future lookups are fast
+            await setDoc(userRef, bootstrapped, { merge: true });
+            setUser(bootstrapped);
+          } else {
+            // Truly new user — start the onboarding flow
+            const newUser = {
+              email: currentUser.email,
+              createdAt: new Date().toISOString(),
+              profileComplete: false,
+            };
+            await setDoc(userRef, newUser);
+            setUser({ uid: currentUser.uid, ...newUser });
+          }
         }
       } catch (error) {
         console.error("Error in reloadUser:", error);
@@ -275,6 +323,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setIsLoading(true);
         const userRef = doc(db, "users", session.uid);
+
+        // Safety check: never overwrite a protected admin role.
+        // This prevents any mobile onboarding flow from clobbering admin accounts.
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const existingRole = snap.data()?.role as string | undefined;
+          const PROTECTED_ROLES = ['superadmin', 'admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'admin_capecoast', 'admin_koforidua', 'admin_takoradi'];
+          if (existingRole && PROTECTED_ROLES.includes(existingRole)) {
+            console.warn('[useAuth] Blocked attempt to overwrite protected role:', existingRole, '→', type);
+            setIsLoading(false);
+            Alert.alert(
+              'Permission Denied',
+              'This is an administrator account. The role cannot be changed from the mobile app.'
+            );
+            return;
+          }
+        }
+
         await setDoc(userRef, { role: type }, { merge: true });
         // After setting the type, reload the user data to get the updated profile
         await reloadUser();
@@ -319,13 +385,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               };
               setUser(finalUserData);
             } else {
-              const newUser = {
-                email: user.email,
-                createdAt: new Date().toISOString(),
-                profileComplete: false,
-              };
-              await setDoc(userRef, newUser);
-              setUser({ uid: user.uid, ...newUser });
+              // No users doc — check if they exist in the doctors collection
+              // (doctors added from the admin web portal land here).
+              const doctorRef = doc(db, "doctors", user.uid);
+              const doctorSnap = await getDoc(doctorRef);
+              if (doctorSnap.exists()) {
+                const doctorData = doctorSnap.data() as any;
+                console.log("[onAuthStateChanged] Found doctor record. Bootstrapping users doc.");
+                const bootstrapped: any = {
+                  uid: user.uid,
+                  email: user.email || doctorData.email || null,
+                  fullName: doctorData.name || doctorData.fullName || user.displayName || "",
+                  role: 'doctor',
+                  profileComplete: true,
+                  specialty: doctorData.specialty || "",
+                  branch: doctorData.branch || "",
+                  hospitalName: doctorData.hospitalName || "",
+                  phone: doctorData.phone || doctorData.contact || "",
+                  createdAt: doctorData.createdAt || new Date().toISOString(),
+                  _source: 'doctors',
+                };
+                // Write back so future logins are instant
+                await setDoc(userRef, bootstrapped, { merge: true });
+                setUser(bootstrapped);
+              } else {
+                const newUser = {
+                  email: user.email,
+                  createdAt: new Date().toISOString(),
+                  profileComplete: false,
+                };
+                await setDoc(userRef, newUser);
+                setUser({ uid: user.uid, ...newUser });
+              }
             }
           } catch (error) {
             console.error("Error fetching or initializing user profile in AuthStateChanged:", error);

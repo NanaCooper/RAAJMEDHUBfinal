@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { isEmail, validatePhoneNumber, signUpWithEmail } from "../../utils/authHelpers";
-import { getRemainingCooldown } from "../../utils/rateLimiter";
+import { getRemainingCooldown, recordVerificationSent } from "../../utils/rateLimiter";
 import { APP_NAME } from "../../constants/AppStrings";
 
 // --- 🏥 Premium Healthcare Theme ---
@@ -193,10 +193,19 @@ export default function RegisterScreen() {
     if (password !== confirm) { setError("Your passwords don't match. Please try again."); return; }
     if (!agreeTerms) { setError("Please accept the Terms & Privacy Policy to continue."); return; }
 
+    // Rate limit check — prevent rapid repeated sign-up attempts on same email
+    const cooldown = await getRemainingCooldown(email.trim().toLowerCase(), 'email');
+    if (cooldown > 0) {
+      setError(`Please wait ${cooldown}s before trying again.`);
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await signUpWithEmail(email, password);
       if (!result.success) throw new Error(result.message);
+      // Record this attempt so the cooldown is enforced going forward (bug fix)
+      await recordVerificationSent(email.trim().toLowerCase(), 'email');
       router.push({ pathname: "/verify-email", params: { email } });
     } catch (e: any) {
       setError(e.message);
@@ -223,7 +232,7 @@ export default function RegisterScreen() {
           {/* --- Brand Header --- */}
           <View style={styles.header}>
             <View style={styles.logoIcon}>
-              <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
+              <MaterialCommunityIcons name="office-building" size={32} color={COLORS.surface} />
             </View>
             <Text style={styles.appName}>{APP_NAME}<Text style={styles.dot}>.</Text></Text>
             <Text style={styles.tagline}>Join our trusted scheduling network</Text>

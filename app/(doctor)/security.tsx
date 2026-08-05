@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -17,6 +17,8 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SECURITY_DESCRIPTION } from '../../constants/AppStrings';
 import { updateUserPassword } from '../../services/users';
+import { useAuth } from '../../hooks/useAuth';
+import { canPerformAction, recordAction } from '../../utils/rateLimiter';
 
 const COLORS = {
   bg: "#F8FAFC",
@@ -26,10 +28,12 @@ const COLORS = {
   textSec: "#64748B",
   border: "#E2E8F0",
   success: "#10B981",
+  warning: "#F59E0B",
 };
 
 export default function DoctorSecurityScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -39,6 +43,40 @@ export default function DoctorSecurityScreen() {
     new: '',
     confirm: ''
   });
+
+  // Cooldown state for the update button
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tick cooldown down every second
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            if (cooldownRef.current) clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, [cooldown]);
+
+  // Check if there's already an active cooldown when the screen mounts
+  useEffect(() => {
+    const checkCooldown = async () => {
+      if (!session?.uid) return;
+      const result = await canPerformAction(session.uid, 'password_change');
+      if (!result.allowed) {
+        setCooldown(result.remainingSeconds);
+      }
+    };
+    checkCooldown();
+  }, [session?.uid]);
 
   const handleUpdatePassword = async () => {
     if (!passwordData.current || !passwordData.new || !passwordData.confirm) {
@@ -54,9 +92,30 @@ export default function DoctorSecurityScreen() {
       return;
     }
 
+    // Rate limit check
+    if (!session?.uid) {
+      Alert.alert("Error", "No active session found.");
+      return;
+    }
+
+    const rateLimitResult = await canPerformAction(session.uid, 'password_change');
+    if (!rateLimitResult.allowed) {
+      setCooldown(rateLimitResult.remainingSeconds);
+      Alert.alert(
+        "Please Wait",
+        `You recently changed your credentials. Please wait ${rateLimitResult.remainingSeconds}s before trying again.`
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       await updateUserPassword(passwordData.current, passwordData.new);
+
+      // Record this action to start the cooldown
+      await recordAction(session.uid, 'password_change');
+      setCooldown(60);
+
       Alert.alert("Success", "Professional credentials updated successfully.");
       setPasswordData({ current: '', new: '', confirm: '' });
       router.back();
@@ -66,6 +125,8 @@ export default function DoctorSecurityScreen() {
       setLoading(false);
     }
   };
+
+  const isDisabled = loading || cooldown > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -96,6 +157,7 @@ export default function DoctorSecurityScreen() {
                 onChangeText={t => setPasswordData(p => ({...p, current: t}))}
                 placeholder="Enter current password"
                 placeholderTextColor={COLORS.textSec}
+                editable={!isDisabled}
               />
               <TouchableOpacity onPress={() => setShowCurrent(!showCurrent)}>
                 <Feather name={showCurrent ? "eye-off" : "eye"} size={20} color={COLORS.textSec} />
@@ -111,6 +173,7 @@ export default function DoctorSecurityScreen() {
                 onChangeText={t => setPasswordData(p => ({...p, new: t}))}
                 placeholder="Minimum 6 characters"
                 placeholderTextColor={COLORS.textSec}
+                editable={!isDisabled}
               />
               <TouchableOpacity onPress={() => setShowNew(!showNew)}>
                 <Feather name={showNew ? "eye-off" : "eye"} size={20} color={COLORS.textSec} />
@@ -126,21 +189,36 @@ export default function DoctorSecurityScreen() {
                 onChangeText={t => setPasswordData(p => ({...p, confirm: t}))}
                 placeholder="Repeat new password"
                 placeholderTextColor={COLORS.textSec}
+                editable={!isDisabled}
               />
             </View>
 
             <TouchableOpacity 
-              style={[styles.saveBtn, loading && { opacity: 0.7 }]} 
+              style={[styles.saveBtn, isDisabled && styles.saveBtnDisabled]} 
               onPress={handleUpdatePassword}
-              disabled={loading}
+              disabled={isDisabled}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
+              ) : cooldown > 0 ? (
+                <>
+                  <Feather name="clock" size={18} color="#fff" />
+                  <Text style={[styles.saveBtnText, { marginLeft: 8 }]}>Wait {cooldown}s</Text>
+                </>
               ) : (
                 <Text style={styles.saveBtnText}>Update Credentials</Text>
               )}
             </TouchableOpacity>
           </View>
+
+          {cooldown > 0 && (
+            <View style={styles.cooldownNote}>
+              <Feather name="clock" size={14} color={COLORS.warning} />
+              <Text style={styles.cooldownText}>
+                Credential change cooldown: {cooldown}s remaining.
+              </Text>
+            </View>
+          )}
 
           <View style={styles.securityNote}>
             <Feather name="lock" size={14} color={COLORS.textSec} />
@@ -208,11 +286,12 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 16, color: COLORS.textMain },
   saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: COLORS.primary,
     height: 56,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginTop: 32,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
@@ -220,7 +299,16 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  saveBtnDisabled: { opacity: 0.6, shadowOpacity: 0 },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  cooldownNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 4,
+    gap: 6,
+  },
+  cooldownText: { fontSize: 13, color: COLORS.warning, fontWeight: '600' },
   securityNote: {
     flexDirection: 'row',
     marginTop: 30,

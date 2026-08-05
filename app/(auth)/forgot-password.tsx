@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,10 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { sendPasswordResetEmail } from '@react-native-firebase/auth';
+import { auth } from "../../utils/firebaseConfig";
 import { APP_NAME } from "../../constants/AppStrings";
+import { canSendVerification, recordVerificationSent } from "../../utils/rateLimiter";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -45,6 +48,37 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Countdown state so the user sees how long they must wait before resending
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tick the cooldown down every second
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            if (cooldownRef.current) clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, [cooldown]);
+
+  // Check if the user already has an active cooldown on mount (e.g. they navigated back)
+  useEffect(() => {
+    const check = async () => {
+      if (!email) return;
+      const result = await canSendVerification(email.trim().toLowerCase(), 'email');
+      if (!result.allowed) setCooldown(result.remainingSeconds);
+    };
+    check();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isValidEmail = (value: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase());
@@ -61,17 +95,27 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
+    // Rate limit check — prevent spamming reset emails to the same address
+    const rateLimitResult = await canSendVerification(email.trim().toLowerCase(), 'email');
+    if (!rateLimitResult.allowed) {
+      setCooldown(rateLimitResult.remainingSeconds);
+      setError(`You recently requested a reset link. Please wait ${rateLimitResult.remainingSeconds}s before trying again.`);
+      return;
+    }
+
     try {
       setLoading(true);
-      // mock network delay
-      await new Promise((res) => setTimeout(res, 900));
 
-      // Mock sending reset link (replace with real API call)
-      console.log("Send password reset link to:", email.trim());
+      // Real Firebase password reset
+      await sendPasswordResetEmail(auth, email.trim());
+
+      // Record the send so cooldown is enforced for subsequent attempts
+      await recordVerificationSent(email.trim().toLowerCase(), 'email');
+      setCooldown(60);
 
       Alert.alert(
         "Reset Link Sent",
-        `If ${email.trim()} is registered, you'll receive a reset link shortly.`,
+        `If ${email.trim()} is registered, you'll receive a reset link shortly. Check your spam folder if you don't see it.`,
         [
           {
             text: "Back to Sign In",
@@ -80,13 +124,31 @@ export default function ForgotPasswordScreen() {
         ],
         { cancelable: true }
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error("Reset error:", err);
-      setError("Unable to send reset link. Please try again later.");
+      // Firebase returns auth/user-not-found for unknown emails — we intentionally
+      // show a generic message to avoid leaking which accounts exist.
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email') {
+        // Still record cooldown even for unknown emails (prevents enumeration)
+        await recordVerificationSent(email.trim().toLowerCase(), 'email');
+        setCooldown(60);
+        Alert.alert(
+          "Reset Link Sent",
+          `If ${email.trim()} is registered, you'll receive a reset link shortly.`,
+          [{ text: "Back to Sign In", onPress: () => router.replace("/login") }],
+          { cancelable: true }
+        );
+      } else if (err.code === 'auth/too-many-requests') {
+        setError("Too many reset attempts. Please wait a few minutes and try again.");
+      } else {
+        setError("Unable to send reset link. Please check your connection and try again.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const isDisabled = !isValidEmail(email) || loading || cooldown > 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -105,7 +167,7 @@ export default function ForgotPasswordScreen() {
           {/* --- Brand Header --- */}
           <View style={styles.header}>
             <View style={styles.logoIcon}>
-              <MaterialCommunityIcons name="hospital-box" size={32} color={COLORS.surface} />
+              <MaterialCommunityIcons name="office-building" size={32} color={COLORS.surface} />
             </View>
             <Text style={styles.appName}>{APP_NAME}<Text style={styles.dot}>.</Text></Text>
             <Text style={styles.tagline}>Secure · Private · Trusted</Text>
@@ -146,15 +208,17 @@ export default function ForgotPasswordScreen() {
             </View>
 
             <TouchableOpacity
-              style={[
-                styles.primaryBtn,
-                (!isValidEmail(email) || loading) && styles.btnDisabled,
-              ]}
+              style={[styles.primaryBtn, isDisabled && styles.btnDisabled]}
               onPress={handleSendReset}
-              disabled={!isValidEmail(email) || loading}
+              disabled={isDisabled}
             >
               {loading ? (
                 <ActivityIndicator color="#FFF" />
+              ) : cooldown > 0 ? (
+                <>
+                  <Feather name="clock" size={20} color="#FFF" />
+                  <Text style={styles.primaryBtnText}>Resend in {cooldown}s</Text>
+                </>
               ) : (
                 <>
                   <Text style={styles.primaryBtnText}>Send Reset Link</Text>

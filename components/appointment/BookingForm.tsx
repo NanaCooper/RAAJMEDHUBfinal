@@ -80,7 +80,7 @@ const scanTypesConfig = [
         description: [
             'Remove jewelry, eyeglasses, and any metal objects.',
             'Tell your doctor if you are pregnant.',
-            'Wear a hospital gown if required.'
+            'Wear standard provided attire if required.'
         ]
     },
     {
@@ -130,7 +130,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     const [procedureLoading, setProcedureLoading] = useState(false);
     const [showProcedurePicker, setShowProcedurePicker] = useState(false);
     const [procedureQuery, setProcedureQuery] = useState('');
-    const [selectedProcedure, setSelectedProcedure] = useState<ProcedureItem | null>(null);
+    const [selectedProcedures, setSelectedProcedures] = useState<ProcedureItem[]>([]);
 
     // Fetch live minimum prices from Firestore
     useEffect(() => {
@@ -150,7 +150,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
         if (!isDoctorBooking) return;
         if (!session?.uid) return;
         const extractedProcedureName = (extractedData as any)?.procedure || (extractedData as any)?.specificProcedure || (extractedData as any)?.specificScan;
-        if (!extractedProcedureName || selectedProcedure) return;
+        if (!extractedProcedureName || selectedProcedures.length > 0) return;
 
         let active = true;
         setProcedureLoading(true);
@@ -161,11 +161,11 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                 const needle = extractedProcedureName.toString().toLowerCase().trim();
                 const match = items.find((p) => p.name.toLowerCase().trim() === needle) ||
                     items.find((p) => p.name.toLowerCase().includes(needle) || needle.includes(p.name.toLowerCase()));
-                if (match) setSelectedProcedure(match);
+                if (match) setSelectedProcedures([match]);
             })
             .finally(() => { if (active) setProcedureLoading(false); });
         return () => { active = false; };
-    }, [isDoctorBooking, extractedData, selectedProcedure, session?.uid]);
+    }, [isDoctorBooking, extractedData, selectedProcedures, session?.uid]);
 
     const filteredProcedureOptions = useMemo(() => {
         const q = procedureQuery.trim().toLowerCase();
@@ -250,9 +250,11 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
         setPreviewScan(null);
     };
 
-    const deriveScanTypesForDoctor = (procedure: ProcedureItem | null) => {
-        const label = procedure?.name || procedure?.category || 'Procedure';
-        return [{ id: 'procedure', name: label }];
+    const deriveScanTypesForDoctor = (procedures: ProcedureItem[]) => {
+        return procedures.map(p => ({
+            id: 'procedure',
+            name: p.name || p.category || 'Procedure'
+        }));
     };
 
     const onConfirm: SubmitHandler<any> = async (values) => {
@@ -260,12 +262,12 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             return Alert.alert("Incomplete", "Please select at least one scan type.");
         }
 
-        if (isDoctorBooking && !selectedProcedure) {
-            return Alert.alert("Incomplete", "Please select a procedure.");
+        if (isDoctorBooking && selectedProcedures.length === 0) {
+            return Alert.alert("Incomplete", "Please select at least one procedure.");
         }
 
         const selectedScanObjects = isDoctorBooking
-            ? deriveScanTypesForDoctor(selectedProcedure)
+            ? deriveScanTypesForDoctor(selectedProcedures)
             : scanTypesConfig.filter(s => selectedScans.includes(s.id));
         const isForOther = !isDoctorBooking && bookingFor === 'other';
 
@@ -298,10 +300,10 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             },
             referral: isDoctorBooking ? `Dr. ${user?.fullName || user?.firstName || 'Doctor'}` : values.referral,
             specificScan: values.specificScan,
-            specificProcedure: isDoctorBooking ? (selectedProcedure?.name || '') : undefined,
-            procedureId: isDoctorBooking ? (selectedProcedure?.id || '') : undefined,
-            procedurePriceGhs: isDoctorBooking ? (selectedProcedure?.price ?? null) : undefined,
-            procedureCategory: isDoctorBooking ? (selectedProcedure?.category || null) : undefined,
+            specificProcedure: isDoctorBooking ? (selectedProcedures.map(p => p.name).join(', ')) : undefined,
+            procedureId: isDoctorBooking ? (selectedProcedures.map(p => p.id).join(',')) : undefined,
+            procedurePriceGhs: isDoctorBooking ? selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0) : undefined,
+            procedureCategory: isDoctorBooking ? (selectedProcedures.map(p => p.category).filter(Boolean).join(', ')) : undefined,
             notes: values.notes,
             isAiBooking: !!extractedData,
             createdByRole: isDoctorBooking ? 'doctor' : 'patient'
@@ -534,14 +536,14 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                                 <Text style={styles.inputLabel}>Procedure</Text>
                                 <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <View style={{ flex: 1 }}>
-                                        <Text style={styles.inputValue} numberOfLines={1}>
-                                            {selectedProcedure ? selectedProcedure.name : (procedureLoading ? 'Loading procedures…' : 'Select Procedure')}
+                                        <Text style={styles.inputValue}>
+                                            {selectedProcedures.length > 0 
+                                                ? selectedProcedures.map(p => p.name).join(', ') 
+                                                : (procedureLoading ? 'Loading procedures…' : 'Select Procedures')}
                                         </Text>
-                                        {selectedProcedure && (
+                                        {selectedProcedures.length > 0 && (
                                             <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
-                                                {selectedProcedure.price != null
-                                                    ? `GHS ${Number(selectedProcedure.price).toLocaleString()}`
-                                                    : 'Price not set'}
+                                                {`GHS ${selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0).toLocaleString()}`}
                                             </Text>
                                         )}
                                     </View>
@@ -552,7 +554,12 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                             <Modal visible={showProcedurePicker} transparent animationType="fade">
                                 <View style={styles.modalOverlay}>
                                     <View style={[styles.modalContent, { maxHeight: '85%' }]}>
-                                        <Text style={styles.modalHeader}>Select Procedure</Text>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                            <Text style={[styles.modalHeader, { marginBottom: 0 }]}>Select Procedures</Text>
+                                            <TouchableOpacity onPress={() => setShowProcedurePicker(false)} style={{ padding: 8 }}>
+                                                <Text style={{ color: COLORS.primary, fontWeight: '600', fontSize: 16 }}>Done</Text>
+                                            </TouchableOpacity>
+                                        </View>
 
                                         <View style={{ backgroundColor: COLORS.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 }}>
                                             <TextInput
@@ -571,13 +578,16 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                                             keyExtractor={(item) => item.id}
                                             keyboardShouldPersistTaps="handled"
                                             renderItem={({ item }) => {
-                                                const active = selectedProcedure?.id === item.id;
+                                                const active = selectedProcedures.some(p => p.id === item.id);
                                                 return (
                                                     <TouchableOpacity
                                                         style={styles.modalItem}
                                                         onPress={() => {
-                                                            setSelectedProcedure(item);
-                                                            setShowProcedurePicker(false);
+                                                            setSelectedProcedures(prev => 
+                                                                prev.some(p => p.id === item.id)
+                                                                    ? prev.filter(p => p.id !== item.id)
+                                                                    : [...prev, item]
+                                                            );
                                                         }}
                                                     >
                                                         <View style={{ flex: 1 }}>
@@ -655,7 +665,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                             <Controller control={control} name="referral" render={({ field: { onChange, value } }) => (
                                 <TextInput
                                     style={[styles.inputField, errors.referral && { borderColor: COLORS.error, borderWidth: 1 }]}
-                                    placeholder="e.g. Korle Bu Teaching Hospital"
+                                    placeholder="e.g. Central City Facility"
                                     value={value}
                                     onChangeText={onChange}
                                     placeholderTextColor={COLORS.textSub}
@@ -686,7 +696,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                         <Controller control={control} name="notes" render={({ field: { onChange, value } }) => (
                             <TextInput
                                 style={[styles.inputField, { height: 120, textAlignVertical: 'top' }]}
-                                placeholder="Clinical indication or symptoms..."
+                                placeholder="Primary reason for visit..."
                                 multiline
                                 value={value}
                                 onChangeText={onChange}

@@ -75,6 +75,34 @@ const FAQItem = ({ question, answer }: any) => {
 export default function FAQsScreen() {
   const router = useRouter();
 
+  if (Platform.OS === 'android') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="dark" />
+        
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/(patient)/settings')}>
+            <Feather name="arrow-left" size={20} color={COLORS.textMain} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Help & Support</Text>
+          <View style={{ width: 44 }} />
+        </View>
+
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+            <Feather name="help-circle" size={36} color="#4F46E5" />
+          </View>
+          <Text style={{ fontSize: 24, fontWeight: '800', color: '#1E293B', textAlign: 'center', marginBottom: 12 }}>
+            Help Desk Coming Soon
+          </Text>
+          <Text style={{ fontSize: 15, color: '#64748B', textAlign: 'center', lineHeight: 24 }}>
+            Our online support center and FAQs are being updated. For any immediate assistance, please contact us directly.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />

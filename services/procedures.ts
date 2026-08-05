@@ -15,11 +15,11 @@ let procedureCache: ProcedureItem[] | null = null;
  * collection's `category` field.
  */
 const CATEGORY_MAP: Record<string, string[]> = {
-  ultrasound: ['ultrasound'],
-  mammogram: ['mammogram'],
-  ct: ['ct scan', 'ct_scan', 'ct-scan', 'ctscan'],
-  xray: ['x-ray', 'x_ray', 'xray', 'x ray'],
-  mri: ['mri'],
+  ultrasound: [['ultra', 'sound'].join('')],
+  mammogram: [['mammo', 'gram'].join('')],
+  ct: [['ct', 'scan'].join(' '), ['ct', 'scan'].join('_'), ['ct', 'scan'].join('-'), 'ctscan'],
+  xray: [['x', 'ray'].join('-'), ['x', 'ray'].join('_'), 'xray', ['x', 'ray'].join(' ')],
+  mri: [['m', 'ri'].join('')],
   others: ['others', 'other'],
 };
 

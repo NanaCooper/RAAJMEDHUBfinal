@@ -16,6 +16,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { subscribeToAppointments } from '../../services/appointments';
 import { db, doc, getDoc } from '../../utils/firebaseConfig';
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { isAndroidBuild } from "../../constants/AppStrings";
 
 // --- 🎨 Unified Premium Theme ---
 const COLORS = {
@@ -208,8 +209,12 @@ export default function MyPatients() {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <MaterialCommunityIcons name="account-group-outline" size={48} color={COLORS.textSec} />
-              <Text style={styles.emptyText}>No patients found</Text>
-              <Text style={styles.emptySub}>Patients will appear here after appointments.</Text>
+              <Text style={styles.emptyText}>{isAndroidBuild ? "No clients found" : "No patients found"}</Text>
+              <Text style={styles.emptySub}>
+                {isAndroidBuild 
+                  ? "Clients will appear here after scheduled sessions." 
+                  : "Patients will appear here after appointments."}
+              </Text>
             </View>
           }
         />

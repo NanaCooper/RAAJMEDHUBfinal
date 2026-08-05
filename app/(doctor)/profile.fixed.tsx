@@ -26,7 +26,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import dayjs from "dayjs";
+import { DOC_PROFESSIONAL_LABEL, isAndroidBuild, DR_PREFIX } from "../../constants/AppStrings";
 import { listHospitals, upsertHospital, HospitalOption } from "../../services/hospitals";
+import { canPerformAction, recordAction } from "../../utils/rateLimiter";
 
 // Enable LayoutAnimation on Android for the legacy renderer only.
 const isNewArchitecture =
@@ -122,6 +124,32 @@ export default function DoctorProfile(): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  // Save cooldown — prevents rapid repeated Firestore writes
+  const [saveCooldown, setSaveCooldown] = useState(0);
+  const saveCooldownRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (saveCooldown > 0) {
+      saveCooldownRef.current = setInterval(() => {
+        setSaveCooldown((prev) => {
+          if (prev <= 1) { if (saveCooldownRef.current) clearInterval(saveCooldownRef.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => { if (saveCooldownRef.current) clearInterval(saveCooldownRef.current); };
+  }, [saveCooldown]);
+
+  // Restore any active cooldown on mount
+  useEffect(() => {
+    const check = async () => {
+      if (!session?.uid) return;
+      const result = await canPerformAction(session.uid, 'profile_save');
+      if (!result.allowed) setSaveCooldown(result.remainingSeconds);
+    };
+    check();
+  }, [session?.uid]);
 
   const snackAnim = useRef(new Animated.Value(0)).current;
 
@@ -253,6 +281,15 @@ export default function DoctorProfile(): React.ReactElement {
       return;
     }
 
+    // Rate limit check — 15s cooldown between profile saves
+    if (!session?.uid) { setError("No session found."); return; }
+    const rateLimitResult = await canPerformAction(session.uid, 'profile_save');
+    if (!rateLimitResult.allowed) {
+      setSaveCooldown(rateLimitResult.remainingSeconds);
+      setError(`Please wait ${rateLimitResult.remainingSeconds}s before saving again.`);
+      return;
+    }
+
     setLoading(true);
     console.log('[doctor-profile] Save started', {
       uid: session?.uid,
@@ -291,7 +328,7 @@ export default function DoctorProfile(): React.ReactElement {
       } else if (customHospitalName.trim()) {
         const region = customHospitalRegion === 'Other' ? customHospitalRegionOther.trim() : customHospitalRegion;
         if (!region) {
-          setError('Please enter your hospital region.');
+          setError('Please enter your facility region.');
           setLoading(false);
           return;
         }
@@ -338,6 +375,10 @@ export default function DoctorProfile(): React.ReactElement {
       }
       await reloadUser();
       
+      // Record action to start the 15s cooldown
+      await recordAction(session.uid, 'profile_save');
+      setSaveCooldown(15);
+
       setSavedMsg("Profile updated");
       setHospitalId(nextHospitalId);
       setHospitalName(nextHospitalName || '');
@@ -444,10 +485,10 @@ export default function DoctorProfile(): React.ReactElement {
               </View>
             </View>
             
-            <Text style={styles.profileName}>Dr. {fullName || "Doctor"}</Text>
+            <Text style={styles.profileName}>{DR_PREFIX}{fullName || "Doctor"}</Text>
             <View style={styles.roleBadge}>
               <View style={styles.roleDot} />
-              <Text style={styles.profileRole}>{specialization ? specialization.toUpperCase() : "MEDICAL PROFESSIONAL"}</Text>
+              <Text style={styles.profileRole}>{specialization ? specialization.toUpperCase() : DOC_PROFESSIONAL_LABEL}</Text>
             </View>
           </View>
 
@@ -480,13 +521,13 @@ export default function DoctorProfile(): React.ReactElement {
             </View>
           </View>
 
-          {/* --- Editable Clinical Profile --- */}
+          {/* --- Editable Professional Profile --- */}
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
                <View style={styles.cardIconWrapper}>
                   <Feather name="activity" size={16} color={COLORS.primary} />
                </View>
-               <Text style={styles.cardTitle}>Clinical Information</Text>
+               <Text style={styles.cardTitle}>Professional Information</Text>
             </View>
 
             <View style={styles.inputGroup}>
@@ -499,12 +540,14 @@ export default function DoctorProfile(): React.ReactElement {
                   onFocus={() => setFocusedInput('fullName')}
                   onBlur={() => setFocusedInput(null)}
                   style={styles.inputText}
-                  placeholder="Dr. Full Name"
+                  placeholder={`${DR_PREFIX}Full Name`}
                   placeholderTextColor={COLORS.textSec}
                 />
               </View>
             </View>
 
+            {!isAndroidBuild && (
+              <>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Primary Specialization</Text>
               <View style={[styles.inputContainer, { borderColor: getBorderColor('spec') }]}>
@@ -522,7 +565,7 @@ export default function DoctorProfile(): React.ReactElement {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Hospital Assignment</Text>
+              <Text style={styles.label}>Facility Assignment</Text>
               <View style={styles.hospitalStatusBox}>
                   <Feather name="map-pin" size={16} color={COLORS.primary} style={{ marginRight: 8 }} />
                   <Text style={styles.hospitalStatusText} numberOfLines={1}>
@@ -530,7 +573,7 @@ export default function DoctorProfile(): React.ReactElement {
                       ? `Selected: ${selectedHospital.name}`
                       : hospitalName 
                         ? `${hospitalName}${hospitalRegion ? `, ${hospitalRegion}` : ''}`
-                        : 'No hospital assigned'}
+                        : 'No facility assigned'}
                   </Text>
               </View>
               
@@ -542,7 +585,7 @@ export default function DoctorProfile(): React.ReactElement {
                   onFocus={() => setFocusedInput('hosp')}
                   onBlur={() => setFocusedInput(null)}
                   style={styles.inputText}
-                  placeholder="Search to assign hospital..."
+                  placeholder="Search to assign facility..."
                   placeholderTextColor={COLORS.textSec}
                 />
               </View>
@@ -568,7 +611,7 @@ export default function DoctorProfile(): React.ReactElement {
               )}
 
               <View style={styles.customHospitalSection}>
-                <Text style={styles.subLabel}>Not listed? Add a custom hospital</Text>
+                <Text style={styles.subLabel}>Not listed? Add a custom facility</Text>
                 <View style={[styles.inputContainer, { borderColor: getBorderColor('customHosp') }]}>
                    <Feather name="plus-square" size={18} color={getIconColor('customHosp')} style={styles.inputIconPrefix} />
                    <TextInput
@@ -581,7 +624,7 @@ export default function DoctorProfile(): React.ReactElement {
                      onFocus={() => setFocusedInput('customHosp')}
                      onBlur={() => setFocusedInput(null)}
                      style={styles.inputText}
-                     placeholder="Enter hospital name"
+                     placeholder="Enter facility name"
                      placeholderTextColor={COLORS.textSec}
                    />
                 </View>
@@ -622,6 +665,8 @@ export default function DoctorProfile(): React.ReactElement {
                 )}
               </View>
             </View>
+            </>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Qualifications</Text>
@@ -633,7 +678,7 @@ export default function DoctorProfile(): React.ReactElement {
                   onFocus={() => setFocusedInput('qual')}
                   onBlur={() => setFocusedInput(null)}
                   style={[styles.inputText, styles.textArea]}
-                  placeholder="e.g. MD, Ph.D in Internal Medicine"
+                  placeholder="e.g. Master in General Practice"
                   multiline
                   placeholderTextColor={COLORS.textSec}
                 />
@@ -704,22 +749,24 @@ export default function DoctorProfile(): React.ReactElement {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Professional Biography</Text>
-              <View style={[styles.inputContainer, styles.textAreaContainer, { borderColor: getBorderColor('bio') }]}>
-                <Feather name="align-left" size={18} color={getIconColor('bio')} style={[styles.inputIconPrefix, { marginTop: 2 }]} />
-                <TextInput
-                  value={bio}
-                  onChangeText={setBio}
-                  onFocus={() => setFocusedInput('bio')}
-                  onBlur={() => setFocusedInput(null)}
-                  style={[styles.inputText, styles.textArea]}
-                  placeholder="Tell patients about your background and experience..."
-                  multiline
-                  placeholderTextColor={COLORS.textSec}
-                />
+            {!isAndroidBuild && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Professional Biography</Text>
+                <View style={[styles.inputContainer, styles.textAreaContainer, { borderColor: getBorderColor('bio') }]}>
+                  <Feather name="align-left" size={18} color={getIconColor('bio')} style={[styles.inputIconPrefix, { marginTop: 2 }]} />
+                  <TextInput
+                    value={bio}
+                    onChangeText={setBio}
+                    onFocus={() => setFocusedInput('bio')}
+                    onBlur={() => setFocusedInput(null)}
+                    style={[styles.inputText, styles.textArea]}
+                    placeholder="Tell patients about your background and experience..."
+                    multiline
+                    placeholderTextColor={COLORS.textSec}
+                  />
+                </View>
               </View>
-            </View>
+            )}
           </View>
 
           {/* --- Action Area --- */}
@@ -734,13 +781,20 @@ export default function DoctorProfile(): React.ReactElement {
              )}
              
              <TouchableOpacity
-               style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
+               style={[styles.saveBtn, (!canSave || saveCooldown > 0) && styles.saveBtnDisabled]}
                onPress={handleSave}
-               disabled={!canSave}
+               disabled={!canSave || saveCooldown > 0}
                activeOpacity={0.8}
              >
                {loading ? (
                  <ActivityIndicator color="#fff" />
+               ) : saveCooldown > 0 ? (
+                 <>
+                   <Feather name="clock" size={20} color={COLORS.textSec} style={{ marginRight: 10 }} />
+                   <Text style={[styles.saveBtnText, styles.saveBtnTextDisabled]}>
+                      Wait {saveCooldown}s
+                   </Text>
+                 </>
                ) : (
                  <>
                    <Feather name="save" size={20} color={!canSave ? COLORS.textSec : "#fff"} style={{ marginRight: 10 }} />

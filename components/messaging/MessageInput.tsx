@@ -7,6 +7,8 @@ export default function MessageInput({ onSend, onTyping, onAttach }: { onSend: (
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<any[]>([]);
   const typingRef = useRef<any>(null);
+  // 1-second send debounce — prevents accidental double-sends from rapid button taps
+  const lastSentRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
@@ -26,12 +28,19 @@ export default function MessageInput({ onSend, onTyping, onAttach }: { onSend: (
   const send = () => {
     const trimmed = text.trim();
     if (!trimmed && attachments.length === 0) return;
+
+    // Debounce: block if less than 1 second since last send
+    const now = Date.now();
+    if (now - lastSentRef.current < 1000) return;
+    lastSentRef.current = now;
+
     const payload = { text: trimmed || undefined, attachments: attachments.length ? attachments : undefined };
     Promise.resolve(onSend(payload)).catch(() => null);
     setText('');
     setAttachments([]);
     if (onTyping) onTyping(false);
   };
+
 
   const pickImage = async () => {
     // Use new ImagePicker.MediaType when available (avoids deprecation warning),

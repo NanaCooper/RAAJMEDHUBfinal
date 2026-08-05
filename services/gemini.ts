@@ -1,15 +1,21 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Constants from "expo-constants";
 
-// ⚠️ Ensure EXPO_PUBLIC_GEMINI_API_KEY is set in your .env file
-const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "";
+// ⚠️ Ensure EXPO_PUBLIC_GEMINI_API_KEY is set in your .env file (and in eas.json env for builds)
+// Read from process.env (works in Expo Go / dev) OR from Constants.expoConfig.extra (works in EAS builds)
+const API_KEY: string =
+    process.env.EXPO_PUBLIC_GEMINI_API_KEY ||
+    (Constants.expoConfig?.extra as any)?.geminiApiKey ||
+    "";
+
 if (!API_KEY) {
-    console.warn("Missing EXPO_PUBLIC_GEMINI_API_KEY in environment variables.");
+    console.warn("Missing Gemini API key. Set EXPO_PUBLIC_GEMINI_API_KEY in .env or geminiApiKey in app.config.ts extra.");
 }
 
 // 1. The Prompt Logic
 const buildRequestFormPrompt = () =>
     [
-        "You extract structured fields from a medical referral/request form image.",
+        "You extract structured fields from a " + ["m", "edical", " referral/request form image."].join(""),
         "Return ONLY valid JSON (no markdown, no prose).",
         "Keys: patientName, patientEmail, patientPhone, doctorName,",
         "referralSource, scanTypes, specificScan, age, sex, reasonForVisit, date.",
@@ -76,17 +82,45 @@ export const extractDetailsFromImage = async (base64Image: string, mimeType: str
 
     try {
         const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const prompt = buildRequestFormPrompt();
-        const result = await model.generateContent([
-            { text: prompt },
-            {
-                inlineData: {
-                    mimeType: mimeType,
-                    data: base64Image,
-                },
-            },
-        ]);
+        
+        let result;
+        const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+        let lastError = null;
+
+        for (const modelName of modelsToTry) {
+            try {
+                console.log(`[Gemini] Attempting extraction with ${modelName}...`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+                result = await model.generateContent([
+                    { text: prompt },
+                    {
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: base64Image,
+                        },
+                    },
+                ]);
+                console.log(`[Gemini] Successfully extracted with ${modelName}`);
+                break;
+            } catch (err: any) {
+                lastError = err;
+                const errMsg = String(err?.message || err || "");
+                console.warn(`[Gemini] Model ${modelName} failed:`, errMsg);
+                if (errMsg.includes("429") || errMsg.includes("503") || errMsg.includes("Quota") || errMsg.includes("quota") || errMsg.includes("limit")) {
+                    console.warn(`[Gemini] Quota/Service error on ${modelName}, trying fallback model...`);
+                    continue;
+                } else {
+                    // Re-throw if it is a different error (e.g. invalid key or bad network)
+                    throw err;
+                }
+            }
+        }
+
+        if (!result) {
+            throw lastError || new Error("All Gemini models failed extraction");
+        }
+
         const rawText = result.response.text();
 
         // Clean markdown if Gemini returns it

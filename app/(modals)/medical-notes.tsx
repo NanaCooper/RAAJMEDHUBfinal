@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { saveMedicalRecord, getMedicalRecordByAppointmentId } from '../../services/medical-records';
 import { getAppointment } from '../../services/appointments';
+import { MED_NOTES_LABEL, DIAGNOSIS_LABEL, TREATMENT_LABEL } from '../../constants/AppStrings';
 
 export default function MedicalNotesModal() {
   const router = useRouter();
@@ -83,7 +84,7 @@ export default function MedicalNotesModal() {
         return;
     }
     if (!diagnosis.trim() && !treatment.trim()) {
-        Alert.alert("Validation", "Please enter at least a diagnosis or treatment plan.");
+        Alert.alert("Validation", "Please enter the required information.");
         return;
     }
 
@@ -125,26 +126,26 @@ export default function MedicalNotesModal() {
 
       <View style={styles.card}>
         <ScrollView>
-          <Text style={styles.title}>Medical Notes</Text>
+          <Text style={styles.title}>{MED_NOTES_LABEL}</Text>
           {appointmentId && <Text style={styles.subtitle}>For Appointment ID: {appointmentId.substring(0, 8)}...</Text>}
 
-          <Text style={styles.label}>Diagnosis</Text>
+          <Text style={styles.label}>{DIAGNOSIS_LABEL}</Text>
           <TextInput 
             value={diagnosis} 
             onChangeText={setDiagnosis} 
             style={[styles.input, { height: 80 }]} 
             multiline 
-            placeholder="Enter diagnosis..."
+            placeholder={`Enter ${DIAGNOSIS_LABEL.toLowerCase()}...`}
             textAlignVertical="top"
           />
 
-          <Text style={styles.label}>Treatment Plan</Text>
+          <Text style={styles.label}>{TREATMENT_LABEL}</Text>
           <TextInput 
             value={treatment} 
             onChangeText={setTreatment} 
             style={[styles.input, { height: 100 }]} 
             multiline 
-            placeholder="Enter treatment plan..."
+            placeholder={`Enter ${TREATMENT_LABEL.toLowerCase()}...`}
             textAlignVertical="top"
           />
 
