@@ -14,13 +14,11 @@ import {
     FlatList,
 } from "react-native";
 import { fetchMinPricesPerCategory, listAllProcedures, ProcedureItem, ProcedureMinPrices } from '../../services/procedures';
-import { Calendar } from 'react-native-calendars';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { useRouter } from 'expo-router';
 import * as yup from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { Feather } from "@expo/vector-icons";
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../hooks/useAuth';
 import ScaleButton from '../ui/ScaleButton';
@@ -168,16 +166,33 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     }, [isDoctorBooking, extractedData, selectedProcedures, session?.uid]);
 
     const filteredProcedureOptions = useMemo(() => {
+        let filtered = procedureOptions;
+        
+        if (selectedScans.length > 0) {
+            filtered = filtered.filter(p => {
+                const categoryStr = (p.category || '').toLowerCase();
+                const nameStr = p.name.toLowerCase();
+                return selectedScans.some(scanId => {
+                    if (scanId === 'ct') return categoryStr.includes('ct') || nameStr.includes('ct');
+                    if (scanId === 'mri') return categoryStr.includes('mri') || nameStr.includes('mri');
+                    if (scanId === 'xray') return categoryStr.includes('x') || categoryStr.includes('ray') || nameStr.includes('x-ray') || nameStr.includes('xray');
+                    if (scanId === 'ultrasound') return categoryStr.includes('ultra') || nameStr.includes('ultra');
+                    if (scanId === 'mammogram') return categoryStr.includes('mammo') || nameStr.includes('mammo');
+                    return false;
+                });
+            });
+        }
+
         const q = procedureQuery.trim().toLowerCase();
-        if (!q) return procedureOptions;
-        const words = q.split(/\s+/).filter(Boolean);
-        return procedureOptions
-            .filter((p) => {
+        if (q) {
+            const words = q.split(/\s+/).filter(Boolean);
+            filtered = filtered.filter((p) => {
                 const hay = `${p.name} ${p.category || ''}`.toLowerCase();
                 return words.every((w) => hay.includes(w));
-            })
-            .slice(0, 200);
-    }, [procedureOptions, procedureQuery]);
+            });
+        }
+        return filtered.slice(0, 200);
+    }, [procedureOptions, procedureQuery, selectedScans]);
 
     /** Returns a formatted price range string e.g. "GHS 200 – 950" or "GHS 200".
      *  Always returns a plain string — safe to use directly as a React child. */
@@ -188,7 +203,6 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
         return hi !== null ? `GHS ${lo} \u2013 ${hi}` : `GHS ${lo}`;
     };
 
-    // Dynamic Schema
     const formSchema = useMemo(() => {
         const needsPatientFields = isDoctorBooking || bookingFor === 'other';
         return yup.object().shape({
@@ -198,7 +212,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             notes: yup.string().optional(),
             patientFirstName: needsPatientFields ? yup.string().required('First Name is required') : yup.string().optional(),
             patientLastName: needsPatientFields ? yup.string().required('Last Name is required') : yup.string().optional(),
-            patientPhone: needsPatientFields ? yup.string().required('Phone is required') : yup.string().optional(),
+            patientPhone: yup.string().required('Valid phone number is required').min(9, 'Must be a valid phone number'),
             patientAge: needsPatientFields ? yup.string().required('Age is required') : yup.string().optional(),
         });
     }, [isDoctorBooking, bookingFor]);
@@ -220,12 +234,12 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             notes: extractedData?.reason || extractedData?.notes || '',
             patientFirstName: firstName,
             patientLastName: lastName,
-            patientPhone: extractedData?.phone || '',
+            patientPhone: extractedData?.phone || user?.phone || '',
             patientAge: extractedData?.age || '',
         };
-    }, [extractedData]);
+    }, [extractedData, user?.phone]);
 
-    const { control, handleSubmit, setValue, formState: { errors } } = useForm({
+    const { control, handleSubmit, setValue, formState: { errors } } = useForm<any>({
         defaultValues,
         resolver: yupResolver(formSchema)
     });
@@ -258,17 +272,18 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     };
 
     const onConfirm: SubmitHandler<any> = async (values) => {
-        if (!isDoctorBooking && selectedScans.length === 0) {
-            return Alert.alert("Incomplete", "Please select at least one scan type.");
+        if (!isDoctorBooking && selectedScans.length === 0 && selectedProcedures.length === 0) {
+            return Alert.alert("Incomplete", "Please select at least one scan category or specific procedure.");
         }
 
         if (isDoctorBooking && selectedProcedures.length === 0) {
             return Alert.alert("Incomplete", "Please select at least one procedure.");
         }
 
-        const selectedScanObjects = isDoctorBooking
-            ? deriveScanTypesForDoctor(selectedProcedures)
-            : scanTypesConfig.filter(s => selectedScans.includes(s.id));
+        const selectedScanObjects = selectedScans.length > 0
+            ? scanTypesConfig.filter(s => selectedScans.includes(s.id))
+            : deriveScanTypesForDoctor(selectedProcedures);
+            
         const isForOther = !isDoctorBooking && bookingFor === 'other';
 
         const appointmentData = {
@@ -294,16 +309,16 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             } : {
                 firstName: user?.firstName || user?.fullName?.split(' ')[0] || session?.email?.split('@')[0] || 'Patient',
                 lastName: user?.lastName || user?.fullName?.split(' ').slice(1).join(' ') || '',
-                phone: user?.phone || '',
+                phone: values.patientPhone,
                 age: user?.age || '',
                 sex: user?.sex || '',
             },
             referral: isDoctorBooking ? `Dr. ${user?.fullName || user?.firstName || 'Doctor'}` : values.referral,
             specificScan: values.specificScan,
-            specificProcedure: isDoctorBooking ? (selectedProcedures.map(p => p.name).join(', ')) : undefined,
-            procedureId: isDoctorBooking ? (selectedProcedures.map(p => p.id).join(',')) : undefined,
-            procedurePriceGhs: isDoctorBooking ? selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0) : undefined,
-            procedureCategory: isDoctorBooking ? (selectedProcedures.map(p => p.category).filter(Boolean).join(', ')) : undefined,
+            specificProcedure: selectedProcedures.length > 0 ? (selectedProcedures.map(p => p.name).join(', ')) : undefined,
+            procedureId: selectedProcedures.length > 0 ? (selectedProcedures.map(p => p.id).join(',')) : undefined,
+            procedurePriceGhs: selectedProcedures.length > 0 ? selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0) : undefined,
+            procedureCategory: selectedProcedures.length > 0 ? (selectedProcedures.map(p => p.category).filter(Boolean).join(', ')) : undefined,
             notes: values.notes,
             isAiBooking: !!extractedData,
             createdByRole: isDoctorBooking ? 'doctor' : 'patient'
@@ -354,7 +369,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                 )}
 
                 {/* Patient Details - shown when booking for someone else OR in doctor mode */}
-                {(isDoctorBooking || bookingFor === 'other') && (
+                {(isDoctorBooking || bookingFor === 'other') ? (
                     <View style={styles.sectionCard}>
                         <Text style={styles.sectionTitle}>
                             {isDoctorBooking ? 'Patient Details' : "Patient's Details"}
@@ -423,8 +438,16 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                             </View>
                         </Modal>
                     </View>
+                ) : (
+                    <View style={styles.sectionCard}>
+                        <Text style={styles.sectionTitle}>Contact Information</Text>
+                        <Text style={[styles.inputLabel, { width: '100%', marginBottom: 6 }]}>Phone Number (Required)</Text>
+                        <Controller control={control} name="patientPhone" render={({ field: { onChange, value } }) => (
+                            <TextInput style={[styles.inputField, { marginBottom: 4 }]} value={value} onChangeText={onChange} placeholder="05XXXXXXXX" keyboardType="phone-pad" placeholderTextColor={COLORS.textSub} />
+                        )} />
+                        {errors.patientPhone && <Text style={{ color: COLORS.error, fontSize: 11, marginTop: 4 }}>{errors.patientPhone.message as string}</Text>}
+                    </View>
                 )}
-
 
 
                 {/* Scan Types (Patients only) */}
@@ -519,115 +542,113 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                 <View style={styles.sectionCard}>
                     <Text style={styles.sectionTitle}>Details</Text>
 
-                    {/* Procedure (Doctor only) */}
-                    {isDoctorBooking && (
-                        <>
-                            <TouchableOpacity
-                                style={styles.inputField}
-                                onPress={async () => {
-                                    setShowProcedurePicker(true);
-                                    if (procedureOptions.length > 0 || procedureLoading) return;
-                                    setProcedureLoading(true);
-                                    const items = await listAllProcedures();
-                                    setProcedureOptions(items);
-                                    setProcedureLoading(false);
-                                }}
-                            >
-                                <Text style={styles.inputLabel}>Procedure</Text>
-                                <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.inputValue}>
-                                            {selectedProcedures.length > 0 
-                                                ? selectedProcedures.map(p => p.name).join(', ') 
-                                                : (procedureLoading ? 'Loading procedures…' : 'Select Procedures')}
+                    {/* Procedure (For all users) */}
+                    <>
+                        <TouchableOpacity
+                            style={styles.inputField}
+                            onPress={async () => {
+                                setShowProcedurePicker(true);
+                                if (procedureOptions.length > 0 || procedureLoading) return;
+                                setProcedureLoading(true);
+                                const items = await listAllProcedures();
+                                setProcedureOptions(items);
+                                setProcedureLoading(false);
+                            }}
+                        >
+                            <Text style={styles.inputLabel}>Procedure</Text>
+                            <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.inputValue}>
+                                        {selectedProcedures.length > 0 
+                                            ? selectedProcedures.map(p => p.name).join(', ') 
+                                            : (procedureLoading ? 'Loading procedures…' : 'Select Procedures')}
+                                    </Text>
+                                    {selectedProcedures.length > 0 && (
+                                        <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                                            {`GHS ${selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0).toLocaleString()}`}
                                         </Text>
-                                        {selectedProcedures.length > 0 && (
-                                            <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
-                                                {`GHS ${selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0).toLocaleString()}`}
-                                            </Text>
-                                        )}
-                                    </View>
-                                    <Feather name="chevron-down" size={18} color={COLORS.textSub} />
+                                    )}
                                 </View>
-                            </TouchableOpacity>
+                                <Feather name="chevron-down" size={18} color={COLORS.textSub} />
+                            </View>
+                        </TouchableOpacity>
 
-                            <Modal visible={showProcedurePicker} transparent animationType="fade">
-                                <View style={styles.modalOverlay}>
-                                    <View style={[styles.modalContent, { maxHeight: '85%' }]}>
-                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                            <Text style={[styles.modalHeader, { marginBottom: 0 }]}>Select Procedures</Text>
-                                            <TouchableOpacity onPress={() => setShowProcedurePicker(false)} style={{ padding: 8 }}>
-                                                <Text style={{ color: COLORS.primary, fontWeight: '600', fontSize: 16 }}>Done</Text>
-                                            </TouchableOpacity>
-                                        </View>
-
-                                        <View style={{ backgroundColor: COLORS.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 }}>
-                                            <TextInput
-                                                value={procedureQuery}
-                                                onChangeText={setProcedureQuery}
-                                                placeholder="Search procedures…"
-                                                placeholderTextColor={COLORS.textSub}
-                                                style={{ fontSize: 15, color: COLORS.textMain, fontWeight: '600' }}
-                                                autoCapitalize="none"
-                                                autoCorrect={false}
-                                            />
-                                        </View>
-
-                                        <FlatList
-                                            data={filteredProcedureOptions}
-                                            keyExtractor={(item) => item.id}
-                                            keyboardShouldPersistTaps="handled"
-                                            renderItem={({ item }) => {
-                                                const active = selectedProcedures.some(p => p.id === item.id);
-                                                return (
-                                                    <TouchableOpacity
-                                                        style={styles.modalItem}
-                                                        onPress={() => {
-                                                            setSelectedProcedures(prev => 
-                                                                prev.some(p => p.id === item.id)
-                                                                    ? prev.filter(p => p.id !== item.id)
-                                                                    : [...prev, item]
-                                                            );
-                                                        }}
-                                                    >
-                                                        <View style={{ flex: 1 }}>
-                                                            <Text style={styles.modalItemText} numberOfLines={1}>{item.name}</Text>
-                                                            <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
-                                                                {item.price != null
-                                                                    ? `GHS ${Number(item.price).toLocaleString()}`
-                                                                    : 'Price not set'}
-                                                            </Text>
-                                                        </View>
-                                                        {active ? (
-                                                            <Feather name="check" size={18} color={COLORS.primary} />
-                                                        ) : (
-                                                            <Feather name="chevron-right" size={18} color={COLORS.textSub} />
-                                                        )}
-                                                    </TouchableOpacity>
-                                                );
-                                            }}
-                                            ListEmptyComponent={
-                                                <View style={{ paddingVertical: 18, alignItems: 'center' }}>
-                                                    <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textSub }}>
-                                                        {procedureLoading ? 'Loading…' : 'No procedures found'}
-                                                    </Text>
-                                                </View>
-                                            }
-                                        />
-
-                                        <TouchableOpacity
-                                            style={styles.modalClose}
-                                            onPress={() => {
-                                                setShowProcedurePicker(false);
-                                            }}
-                                        >
-                                            <Text style={styles.modalCloseText}>Close</Text>
+                        <Modal visible={showProcedurePicker} transparent animationType="fade">
+                            <View style={styles.modalOverlay}>
+                                <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                        <Text style={[styles.modalHeader, { marginBottom: 0 }]}>Select Procedures</Text>
+                                        <TouchableOpacity onPress={() => setShowProcedurePicker(false)} style={{ padding: 8 }}>
+                                            <Text style={{ color: COLORS.primary, fontWeight: '600', fontSize: 16 }}>Done</Text>
                                         </TouchableOpacity>
                                     </View>
+
+                                    <View style={{ backgroundColor: COLORS.bg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 }}>
+                                        <TextInput
+                                            value={procedureQuery}
+                                            onChangeText={setProcedureQuery}
+                                            placeholder="Search procedures…"
+                                            placeholderTextColor={COLORS.textSub}
+                                            style={{ fontSize: 15, color: COLORS.textMain, fontWeight: '600' }}
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                        />
+                                    </View>
+
+                                    <FlatList
+                                        data={filteredProcedureOptions}
+                                        keyExtractor={(item) => item.id}
+                                        keyboardShouldPersistTaps="handled"
+                                        renderItem={({ item }) => {
+                                            const active = selectedProcedures.some(p => p.id === item.id);
+                                            return (
+                                                <TouchableOpacity
+                                                    style={styles.modalItem}
+                                                    onPress={() => {
+                                                        setSelectedProcedures(prev => 
+                                                            prev.some(p => p.id === item.id)
+                                                                ? prev.filter(p => p.id !== item.id)
+                                                                : [...prev, item]
+                                                        );
+                                                    }}
+                                                >
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={styles.modalItemText} numberOfLines={1}>{item.name}</Text>
+                                                        <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                                                            {item.price != null
+                                                                ? `GHS ${Number(item.price).toLocaleString()}`
+                                                                : 'Price not set'}
+                                                        </Text>
+                                                    </View>
+                                                    {active ? (
+                                                        <Feather name="check" size={18} color={COLORS.primary} />
+                                                    ) : (
+                                                        <Feather name="chevron-right" size={18} color={COLORS.textSub} />
+                                                    )}
+                                                </TouchableOpacity>
+                                            );
+                                        }}
+                                        ListEmptyComponent={
+                                            <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+                                                <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textSub }}>
+                                                    {procedureLoading ? 'Loading…' : 'No procedures found'}
+                                                </Text>
+                                            </View>
+                                        }
+                                    />
+
+                                    <TouchableOpacity
+                                        style={styles.modalClose}
+                                        onPress={() => {
+                                            setShowProcedurePicker(false);
+                                        }}
+                                    >
+                                        <Text style={styles.modalCloseText}>Close</Text>
+                                    </TouchableOpacity>
                                 </View>
-                            </Modal>
-                        </>
-                    )}
+                            </View>
+                        </Modal>
+                    </>
 
                     {/* Branch */}
                     <TouchableOpacity style={styles.inputField} onPress={() => setShowBranchPicker(true)}>
@@ -671,24 +692,10 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                                     placeholderTextColor={COLORS.textSub}
                                 />
                             )} />
-                            {errors.referral && <Text style={{ color: COLORS.error, fontSize: 11 }}>{errors.referral.message}</Text>}
+                            {errors.referral && <Text style={{ color: COLORS.error, fontSize: 11 }}>{errors.referral.message as string}</Text>}
                         </View>
                     )}
 
-                    {/* Specific Scan Field */}
-                    <View style={{ marginBottom: 12 }}>
-                        <Text style={[styles.inputLabel, { width: '100%', marginBottom: 6 }]}>Specific Scan Details <Text style={{ fontWeight: '400', fontSize: 11 }}>(Optional)</Text></Text>
-                        <Controller control={control} name="specificScan" render={({ field: { onChange, value } }) => (
-                            <TextInput
-                                style={[styles.inputField, { height: 100, textAlignVertical: 'top' }]}
-                                placeholder="e.g. Head CT Scan with Contrast"
-                                value={value}
-                                onChangeText={onChange}
-                                placeholderTextColor={COLORS.textSub}
-                                multiline
-                            />
-                        )} />
-                    </View>
 
                     {/* Reason Field */}
                     <View>

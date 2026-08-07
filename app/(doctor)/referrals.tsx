@@ -121,7 +121,6 @@ export default function ReferralsScreen() {
   // Original Logic + New Time-Based Grouping
   const {
     pendingTotal,
-    completedTotal,
     pendingReferrals,
     completedReferrals,
     totalsByTime
@@ -390,27 +389,41 @@ export default function ReferralsScreen() {
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
 
                 {/* Financial Status Banner */}
-                <View style={[styles.statusBanner, {
-                  backgroundColor:
-                    (selectedAppointment as any).activationStatus === 'PENDING' ? COLORS.warningSoft :
-                    selectedAppointment.status === 'completed' ? COLORS.successSoft :
-                      selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.dangerSoft :
-                        COLORS.warningSoft,
-                }]}>
-                  <Feather
-                    name={(selectedAppointment as any).activationStatus === 'PENDING' ? "clock" : selectedAppointment.status === 'completed' ? "check-circle" : selectedAppointment.status === 'cancelled' ? "x-circle" : "clock"}
-                    size={16}
-                    color={(selectedAppointment as any).activationStatus === 'PENDING' ? COLORS.warning : selectedAppointment.status === 'completed' ? COLORS.success : selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.danger : COLORS.warning}
-                  />
-                  <Text style={[styles.statusBannerText, {
-                    color:
-                      (selectedAppointment as any).activationStatus === 'PENDING' ? COLORS.warning :
-                      selectedAppointment.status === 'completed' ? COLORS.success :
-                        selectedAppointment.status === 'cancelled' || selectedAppointment.status === 'denied' ? COLORS.danger : COLORS.warning,
-                  }]}>
-                    {(selectedAppointment as any).activationStatus === 'PENDING' ? 'AWAITING ARRIVAL' : selectedAppointment.status === 'completed' ? 'PAYOUT CONFIRMED' : selectedAppointment.status === 'cancelled' ? 'CANCELLED' : 'PAYMENT PENDING'}
-                  </Text>
-                </View>
+                {(() => {
+                  const statusKey = normalizeStatus(selectedAppointment.status);
+                  const isComp = COMPLETED_STATUSES.has(statusKey);
+                  const isCanc = CANCELLED_STATUSES.has(statusKey);
+                  const isPendAct = (selectedAppointment as any).activationStatus === 'PENDING';
+
+                  let bgColor = COLORS.warningSoft;
+                  let iconColor = COLORS.warning;
+                  let iconName = 'clock';
+                  let textStr = 'PAYMENT PENDING';
+
+                  if (isPendAct) {
+                    bgColor = COLORS.warningSoft;
+                    iconColor = COLORS.warning;
+                    iconName = 'clock';
+                    textStr = 'AWAITING ARRIVAL';
+                  } else if (isComp) {
+                    bgColor = COLORS.successSoft;
+                    iconColor = COLORS.success;
+                    iconName = 'check-circle';
+                    textStr = 'PAYOUT CONFIRMED';
+                  } else if (isCanc) {
+                    bgColor = COLORS.dangerSoft;
+                    iconColor = COLORS.danger;
+                    iconName = 'x-circle';
+                    textStr = 'CANCELLED';
+                  }
+
+                  return (
+                    <View style={[styles.statusBanner, { backgroundColor: bgColor }]}>
+                      <Feather name={iconName as any} size={16} color={iconColor} />
+                      <Text style={[styles.statusBannerText, { color: iconColor }]}>{textStr}</Text>
+                    </View>
+                  );
+                })()}
 
                 {/* Patient Info */}
                 <View style={styles.detailCard}>

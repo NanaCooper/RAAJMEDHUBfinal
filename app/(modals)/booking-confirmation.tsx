@@ -115,9 +115,16 @@ export default function BookingConfirmationModal() {
   const handleConfirm = async () => {
     console.log("--- [booking-confirmation.tsx] handleConfirm triggered (FINAL CHECK) ---");
 
+    if (isLoading) {
+      console.log("[LOG] handleConfirm: Ignored duplicate tap.");
+      return;
+    }
+    setIsLoading(true);
+
     if (!appointmentData) {
       console.error("[LOG] handleConfirm: Failed. appointmentData is null or undefined.");
       Alert.alert("Error", "Missing appointment data. Please try again.");
+      setIsLoading(false);
       return;
     }
 
@@ -129,26 +136,60 @@ export default function BookingConfirmationModal() {
           "Booking Already Submitted",
           `Your last booking was just submitted. Please wait ${rateLimitResult.remainingSeconds}s before submitting again to avoid duplicates.`
         );
+        setIsLoading(false);
         return;
       }
     }
 
     console.log("[LOG] handleConfirm: Received appointment data:", JSON.stringify(appointmentData, null, 2));
 
-    setIsLoading(true);
     try {
       // The startAt is now an ISO string, so we can parse it directly
-      const isDoctorCreatedBooking = appointmentData?.createdByRole === 'doctor' || !!appointmentData?.doctorId;
-      const appointmentToSave = {
-        ...appointmentData,
-        startAt: dayjs(appointmentData.startAt).toDate(),
-        activationStatus: isDoctorCreatedBooking ? "PENDING" : "ACTIVATED",
-      };
-      console.log("[LOG] handleConfirm: Final object being sent to createAppointment:", JSON.stringify(appointmentToSave, null, 2));
+      // Fix Bug 3: Gating is strictly based on whether the creator is a doctor.
+      const isDoctorCreated = appointmentData?.createdByRole === 'doctor';
+      const activationStatus = isDoctorCreated ? "PENDING" : "ACTIVATED";
 
-      console.log("--- [booking-confirmation.tsx] Attempting to call createAppointment... ---");
-      const result = await createAppointment(appointmentToSave as any);
-      console.log("[LOG] handleConfirm: Successfully created appointment. Firestore response:", result);
+      const scanTypesArr: any[] = Array.isArray(appointmentData?.scanTypes)
+        ? appointmentData.scanTypes
+        : appointmentData?.scanType
+          ? [appointmentData.scanType]
+          : [];
+
+      let results: any[] = [];
+
+      // Fix Bug 1: Create separate appointments for multi-procedure bookings
+      if (scanTypesArr.length > 0) {
+        const promises = scanTypesArr.map(async (scan: any) => {
+          const scanName = scan?.name || scan?.id || 'Procedure';
+          const appointmentToSave = {
+            ...appointmentData,
+            startAt: dayjs(appointmentData.startAt).toDate(),
+            activationStatus,
+            procedureName: scanName,
+            scanType: scanName,
+            specificProcedure: scanName // Override concatenated string
+          };
+          console.log(`[LOG] handleConfirm: Sending appointment for ${scanName}`);
+          return createAppointment(appointmentToSave as any);
+        });
+
+        console.log("--- [booking-confirmation.tsx] Attempting to call createAppointment (batch)... ---");
+        results = await Promise.all(promises);
+      } else {
+        // Fallback for general appointments without specific scan types
+        const appointmentToSave = {
+          ...appointmentData,
+          startAt: dayjs(appointmentData.startAt).toDate(),
+          activationStatus,
+        };
+        console.log("[LOG] handleConfirm: Final object being sent to createAppointment:", JSON.stringify(appointmentToSave, null, 2));
+        console.log("--- [booking-confirmation.tsx] Attempting to call createAppointment... ---");
+        const res = await createAppointment(appointmentToSave as any);
+        results = [res];
+      }
+
+      console.log("[LOG] handleConfirm: Successfully created appointment(s).");
+      const result = results[0]; // Use the first result for notifications and tracking
 
       // Record the booking action to start the 30s cooldown
       if (session?.uid) {
@@ -156,33 +197,26 @@ export default function BookingConfirmationModal() {
       }
 
       // --- Doctor Referrals (payout tracking) ---
-      const isDoctorCreated = appointmentToSave?.createdByRole === 'doctor' || !!appointmentToSave?.doctorId;
-      if (isDoctorCreated && appointmentToSave?.doctorId && result?.id) {
+      // Still need to check if there is a referring doctor attached to pay them
+      if (isDoctorCreated && appointmentData?.doctorId && result?.id) {
         try {
-          const patientName = `${appointmentToSave?.patientDetails?.firstName || ''} ${appointmentToSave?.patientDetails?.lastName || ''}`.trim() || 'Patient';
-          const selectedProcedureName =
-            (appointmentToSave as any)?.specificProcedure ||
-            (appointmentToSave as any)?.procedureName ||
-            '';
-
+          const patientName = `${appointmentData?.patientDetails?.firstName || ''} ${appointmentData?.patientDetails?.lastName || ''}`.trim() || 'Patient';
+          
           const specificDetails =
-            (appointmentToSave as any)?.specificProcedure ||
-            (appointmentToSave as any)?.specificScan ||
-            (appointmentToSave as any)?.specificScanDetails ||
+            appointmentData?.specificProcedure ||
+            appointmentData?.specificScan ||
+            appointmentData?.specificScanDetails ||
             '';
-
-          const scanTypesArr: any[] = Array.isArray((appointmentToSave as any)?.scanTypes)
-            ? (appointmentToSave as any).scanTypes
-            : (appointmentToSave as any)?.scanType
-              ? [(appointmentToSave as any).scanType]
-              : [];
 
           const matchedKeys = new Set<string>();
           const createdItems: { label: string; amountGhs: number }[] = [];
 
           // 1. Process explicit scan types (best for price-based 10% fallback)
           if (scanTypesArr.length > 0) {
-            for (const s of scanTypesArr) {
+            // We'll link the referrals to the respective appointment documents if possible
+            for (let i = 0; i < scanTypesArr.length; i++) {
+              const s = scanTypesArr[i];
+              const appointmentIdForReferral = results[i]?.id || result.id;
               const scanName = s?.name || s?.id || 'Procedure';
               const textToMatch = `${scanName} ${specificDetails}`.trim();
               
@@ -205,8 +239,8 @@ export default function BookingConfirmationModal() {
               if (amount > 0 && !matchedKeys.has(key)) {
                 matchedKeys.add(key);
                 await createReferral({
-                  doctorId: appointmentToSave.doctorId,
-                  appointmentId: result.id,
+                  doctorId: appointmentData.doctorId,
+                  appointmentId: appointmentIdForReferral,
                   patientName,
                   procedureKey: key,
                   procedureLabel: label,
@@ -218,11 +252,12 @@ export default function BookingConfirmationModal() {
           } 
           
           // 2. Fallback: If no scan types but we have a specific procedure name
+          const selectedProcedureName = appointmentData?.specificProcedure || appointmentData?.procedureName || '';
           if (createdItems.length === 0 && selectedProcedureName) {
             const match = inferReferralProcedure(selectedProcedureName);
             if (match) {
               await createReferral({
-                doctorId: appointmentToSave.doctorId,
+                doctorId: appointmentData.doctorId,
                 appointmentId: result.id,
                 patientName,
                 procedureKey: match.key,
@@ -252,13 +287,14 @@ export default function BookingConfirmationModal() {
         await sendRequestSubmittedNotification(result.id || '');
       }
 
-      // Schedule reminders
-      if (result.id && appointmentToSave.startAt) {
-        await scheduleAppointmentReminders(
-          result.id,
-          appointmentToSave.startAt
-        );
-      }
+      // Schedule reminders for all created appointments
+      const reminderPromises = results.map(res => {
+        if (res.id && appointmentData.startAt) {
+          return scheduleAppointmentReminders(res.id, dayjs(appointmentData.startAt).toDate());
+        }
+        return Promise.resolve();
+      });
+      await Promise.all(reminderPromises);
 
       setIsConfirmed(true);
       console.log("--- [booking-confirmation.tsx] Booking Confirmation Succeeded ---");
