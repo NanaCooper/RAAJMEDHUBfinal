@@ -275,21 +275,37 @@ export default function ReferralsScreen() {
               </View>
             </View>
           ) : (
-            // --- Swipeable Horizontal Cards for Completed ---
-            <View style={styles.horizontalCardsWrapper}>
+            // --- Unified Summary Card & Filter Pills for Completed ---
+            <View style={{ marginBottom: 20 }}>
+              <View style={styles.summaryCardSingle}>
+                <View style={styles.summaryTopRow}>
+                  <View style={[styles.summaryIconRing, { backgroundColor: COLORS.successSoft }]}>
+                    <Feather name="check-circle" size={18} color={COLORS.success} />
+                  </View>
+                  <View style={styles.summaryBadge}>
+                    <Text style={styles.summaryNote}>Confirmed Payouts</Text>
+                  </View>
+                </View>
+
+                <View style={styles.summaryBalanceRow}>
+                  <Text style={styles.summaryCurrency}>GHS</Text>
+                  <Text style={styles.summaryValue}>
+                    {totalsByTime[timeFilter].toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                  </Text>
+                </View>
+              </View>
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalCardsScroll}
-                decelerationRate="fast"
-                snapToInterval={140 + 12} // Card width + gap
+                contentContainerStyle={{ gap: 10 }}
               >
                 {[
-                  { id: 'day', label: 'Today', amount: totalsByTime.day },
-                  { id: 'week', label: 'This Week', amount: totalsByTime.week },
-                  { id: 'month', label: 'This Month', amount: totalsByTime.month },
-                  { id: 'year', label: 'This Year', amount: totalsByTime.year },
-                  { id: 'all', label: 'All Time', amount: totalsByTime.all },
+                  { id: 'day', label: 'Today' },
+                  { id: 'week', label: 'This Week' },
+                  { id: 'month', label: 'This Month' },
+                  { id: 'year', label: 'This Year' },
+                  { id: 'all', label: 'All Time' },
                 ].map((filter) => {
                   const isActive = timeFilter === filter.id;
                   return (
@@ -297,26 +313,13 @@ export default function ReferralsScreen() {
                       key={filter.id}
                       activeOpacity={0.8}
                       onPress={() => handleFilterChange(filter.id as TimeFilter)}
-                      style={[styles.timeCard, isActive && styles.timeCardActive]}
+                      style={[styles.filterPill, isActive && styles.filterPillActive]}
                     >
-                      <View style={styles.timeCardHeader}>
-                        <Feather
-                          name={isActive ? "check-circle" : "bar-chart-2"}
-                          size={14}
-                          color={isActive ? COLORS.success : COLORS.textSub}
-                        />
-                        <Text style={[styles.timeCardLabel, isActive && styles.timeCardLabelActive]}>
-                          {filter.label}
-                        </Text>
-                      </View>
-                      <View style={styles.timeCardAmountRow}>
-                        <Text style={[styles.timeCardCurrency, isActive && styles.timeCardCurrencyActive]}>GHS</Text>
-                        <Text style={[styles.timeCardAmount, isActive && styles.timeCardAmountActive]} numberOfLines={1}>
-                          {filter.amount.toFixed(2)}
-                        </Text>
-                      </View>
+                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                        {filter.label}
+                      </Text>
                     </TouchableOpacity>
-                  )
+                  );
                 })}
               </ScrollView>
             </View>
@@ -612,67 +615,28 @@ const styles = StyleSheet.create({
   summaryCurrency: { fontSize: 15, fontWeight: '700', color: COLORS.textSub, marginTop: 4, marginRight: 4 },
   summaryValue: { fontSize: 28, fontWeight: '800', color: COLORS.textMain, letterSpacing: -0.5 },
 
-  // Swipeable Time Cards (Completed)
-  horizontalCardsWrapper: {
-    marginHorizontal: -16,
-    marginBottom: 20,
-  },
-  horizontalCardsScroll: {
+  // Filter Pills (Completed)
+  filterPill: {
     paddingHorizontal: 16,
-    gap: 12,
-  },
-  timeCard: {
-    width: 140,
-    backgroundColor: COLORS.surface,
+    paddingVertical: 8,
     borderRadius: 20,
-    padding: 16,
-    borderWidth: 1.5,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOW,
     shadowOpacity: 0.02,
   },
-  timeCardActive: {
-    borderColor: COLORS.success,
-    backgroundColor: COLORS.successSoft,
+  filterPillActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
-  timeCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 6,
-  },
-  timeCardLabel: {
-    fontSize: 12,
+  filterPillText: {
+    fontSize: 13,
     fontWeight: '700',
     color: COLORS.textSub,
-    textTransform: 'uppercase',
   },
-  timeCardLabelActive: {
-    color: COLORS.success,
-  },
-  timeCardAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  timeCardCurrency: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSub,
-    marginTop: 2,
-    marginRight: 4,
-  },
-  timeCardCurrencyActive: {
-    color: COLORS.success,
-  },
-  timeCardAmount: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: COLORS.textMain,
-    letterSpacing: -0.5,
-    flex: 1,
-  },
-  timeCardAmountActive: {
-    color: COLORS.success,
+  filterPillTextActive: {
+    color: '#FFFFFF',
   },
 
   // List Rows
