@@ -548,9 +548,8 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                             style={styles.inputField}
                             onPress={async () => {
                                 setShowProcedurePicker(true);
-                                if (procedureOptions.length > 0 || procedureLoading) return;
                                 setProcedureLoading(true);
-                                const items = await listAllProcedures();
+                                const items = await listAllProcedures(true);
                                 setProcedureOptions(items);
                                 setProcedureLoading(false);
                             }}
