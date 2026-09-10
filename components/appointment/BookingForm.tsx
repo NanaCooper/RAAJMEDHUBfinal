@@ -10,10 +10,9 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
-    ActivityIndicator,
     FlatList,
 } from "react-native";
-import { fetchMinPricesPerCategory, listAllProcedures, ProcedureItem, ProcedureMinPrices } from '../../services/procedures';
+import { listAllProcedures, ProcedureItem } from '../../services/procedures';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { useRouter } from 'expo-router';
 import * as yup from 'yup';
@@ -63,65 +62,20 @@ interface Props {
     } | null;
 }
 
-// Updated Config
-const scanTypesConfig = [
-    {
-        id: 'ct', name: 'CT Scan', icon: 'layers', duration: '20 min', price: 950,
-        description: [
-            'Wear comfortable, loose-fitting clothing.',
-            'You may be asked to remove hairpins, jewelry, eyeglasses, hearing aids and any removable dental work.',
-            'Do not eat or drink for a few hours before if contrast material is used.'
-        ]
-    },
-    {
-        id: 'xray', name: 'X-Ray', icon: 'image', duration: '10 min', price: 250,
-        description: [
-            'Remove jewelry, eyeglasses, and any metal objects.',
-            'Tell your doctor if you are pregnant.',
-            'Wear standard provided attire if required.'
-        ]
-    },
-    {
-        id: 'mri', name: 'MRI', icon: 'disc', duration: '45 min', price: 1800,
-        description: [
-            'Eat and take medications as usual unless told otherwise.',
-            'Remove all metal items, jewelry, and watches.',
-            'Inform staff if you have a pacemaker or metal implants.'
-        ]
-    },
-    {
-        id: 'ultrasound', name: 'Ultrasound', icon: 'activity', duration: '30 min', price: 400,
-        description: [
-            'For abdominal scans: Fast for 8-12 hours.',
-            'For pelvic scans: Drink plenty of water 1 hour before and do not empty your bladder.',
-            'Wear loose clothing.'
-        ]
-    },
-    {
-        id: 'mammogram', name: 'Mammogram', icon: 'aperture', duration: '25 min', price: 350,
-        description: [
-            'Do not wear deodorant, talcum powder, or lotion under your arms or on your breasts.',
-            'Describe any breast symptoms to the technologist.',
-            'Bring prior mammogram images if available.'
-        ]
-    },
-];
+// Removed hardcoded scanTypesConfig in favor of dynamic Firestore procedure picker
 
 export default function BookingForm({ onCancel, extractedData, isDoctorBooking = false }: Props) {
     const router = useRouter();
     const { session, user } = useAuth();
 
-    // State
-    const [selectedScans, setSelectedScans] = useState<string[]>([]);
-    const [minPrices, setMinPrices] = useState<ProcedureMinPrices>({});
-    const [pricesLoading, setPricesLoading] = useState(true);
+    // UI State
     const [bookingFor, setBookingFor] = useState<'me' | 'other'>('me');
     const [patientSex, setPatientSex] = useState<string>('');
 
     // UI State
     const [showBranchPicker, setShowBranchPicker] = useState(false);
     const [showSexPicker, setShowSexPicker] = useState(false);
-    const [previewScan, setPreviewScan] = useState<any>(null); // For showing description/price
+    // UI State
 
     // Procedures (doctor-only)
     const [procedureOptions, setProcedureOptions] = useState<ProcedureItem[]>([]);
@@ -130,18 +84,7 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     const [procedureQuery, setProcedureQuery] = useState('');
     const [selectedProcedures, setSelectedProcedures] = useState<ProcedureItem[]>([]);
 
-    // Fetch live minimum prices from Firestore
-    useEffect(() => {
-        // Avoid Firestore reads before auth is ready.
-        if (!session?.uid) return;
-        let active = true;
-        setPricesLoading(true);
-        fetchMinPricesPerCategory()
-            .then((prices) => { if (active) setMinPrices(prices); })
-            .catch(() => { /* silently fall back to hardcoded prices */ })
-            .finally(() => { if (active) setPricesLoading(false); });
-        return () => { active = false; };
-    }, [session?.uid]);
+
 
     // Prefill procedure (when extracted) by best-effort name match
     useEffect(() => {
@@ -168,21 +111,6 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     const filteredProcedureOptions = useMemo(() => {
         let filtered = procedureOptions;
         
-        if (selectedScans.length > 0) {
-            filtered = filtered.filter(p => {
-                const categoryStr = (p.category || '').toLowerCase();
-                const nameStr = p.name.toLowerCase();
-                return selectedScans.some(scanId => {
-                    if (scanId === 'ct') return categoryStr.includes('ct') || nameStr.includes('ct');
-                    if (scanId === 'mri') return categoryStr.includes('mri') || nameStr.includes('mri');
-                    if (scanId === 'xray') return categoryStr.includes('x') || categoryStr.includes('ray') || nameStr.includes('x-ray') || nameStr.includes('xray');
-                    if (scanId === 'ultrasound') return categoryStr.includes('ultra') || nameStr.includes('ultra');
-                    if (scanId === 'mammogram') return categoryStr.includes('mammo') || nameStr.includes('mammo');
-                    return false;
-                });
-            });
-        }
-
         const q = procedureQuery.trim().toLowerCase();
         if (q) {
             const words = q.split(/\s+/).filter(Boolean);
@@ -192,16 +120,9 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
             });
         }
         return filtered.slice(0, 200);
-    }, [procedureOptions, procedureQuery, selectedScans]);
+    }, [procedureOptions, procedureQuery]);
 
-    /** Returns a formatted price range string e.g. "GHS 200 – 950" or "GHS 200".
-     *  Always returns a plain string — safe to use directly as a React child. */
-    const getPriceText = (scan: typeof scanTypesConfig[0]): string => {
-        const liveRange = minPrices[scan.id];
-        const lo: number = (liveRange?.min != null) ? liveRange.min : scan.price;
-        const hi: number | null = (liveRange?.max != null && liveRange.max !== liveRange.min) ? liveRange.max : null;
-        return hi !== null ? `GHS ${lo} \u2013 ${hi}` : `GHS ${lo}`;
-    };
+
 
     const formSchema = useMemo(() => {
         const needsPatientFields = isDoctorBooking || bookingFor === 'other';
@@ -244,25 +165,11 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
         resolver: yupResolver(formSchema)
     });
 
-    // Auto-select scans
-    useMemo(() => {
-        if (extractedData?.scanTypes && Array.isArray(extractedData.scanTypes)) {
-            const matches: string[] = [];
-            extractedData.scanTypes.forEach((type: string) => {
-                const lowerType = type.toLowerCase();
-                const matchedScan = scanTypesConfig.find(s => lowerType.includes(s.name.toLowerCase()) || lowerType.includes(s.id));
-                if (matchedScan) matches.push(matchedScan.id);
-            });
-            if (matches.length > 0) setSelectedScans(prev => prev.length === 0 ? matches : prev);
-        }
-    }, [extractedData]);
 
 
 
-    const toggleScanSelection = (id: string) => {
-        setSelectedScans(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
-        setPreviewScan(null);
-    };
+
+
 
     const deriveScanTypesForDoctor = (procedures: ProcedureItem[]) => {
         return procedures.map(p => ({
@@ -272,17 +179,11 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
     };
 
     const onConfirm: SubmitHandler<any> = async (values) => {
-        if (!isDoctorBooking && selectedScans.length === 0 && selectedProcedures.length === 0) {
-            return Alert.alert("Incomplete", "Please select at least one scan category or specific procedure.");
-        }
-
-        if (isDoctorBooking && selectedProcedures.length === 0) {
+        if (selectedProcedures.length === 0) {
             return Alert.alert("Incomplete", "Please select at least one procedure.");
         }
 
-        const selectedScanObjects = selectedScans.length > 0
-            ? scanTypesConfig.filter(s => selectedScans.includes(s.id))
-            : deriveScanTypesForDoctor(selectedProcedures);
+        const selectedScanObjects = deriveScanTypesForDoctor(selectedProcedures);
             
         const isForOther = !isDoctorBooking && bookingFor === 'other';
 
@@ -450,94 +351,6 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                 )}
 
 
-                {/* Scan Types (Patients only) */}
-                {!isDoctorBooking && (
-                    <View style={styles.sectionNoCard}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                            <Text style={[styles.sectionTitle, { marginBottom: 0, marginLeft: 4 }]}>Examination Type</Text>
-                            <Text style={{ fontSize: 12, color: COLORS.textSub, marginLeft: 8 }}>(Tap for info)</Text>
-                        </View>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 10 }}>
-                            {scanTypesConfig.map(scan => {
-                                const isSelected = selectedScans.includes(scan.id);
-                                return (
-                                    <ScaleButton key={scan.id} style={[styles.scanCard, isSelected && styles.scanCardSelected]} onPress={() => setPreviewScan(scan)}>
-                                        <View style={[styles.scanIcon, isSelected && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                                            <Feather name={scan.icon as any} size={20} color={isSelected ? '#FFF' : COLORS.primary} />
-                                        </View>
-                                        <Text style={[styles.scanName, isSelected && { color: '#FFF' }]}>{scan.name}</Text>
-                                        {pricesLoading ? (
-                                            <ActivityIndicator size="small" color={isSelected ? 'rgba(255,255,255,0.7)' : COLORS.primary} style={{ marginTop: 4 }} />
-                                        ) : (
-                                            <Text style={[styles.scanStartingFrom, isSelected && { color: 'rgba(255,255,255,0.85)' }]}>
-                                                {getPriceText(scan)}
-                                            </Text>
-                                        )}
-                                        {isSelected && (
-                                            <View style={{ position: 'absolute', top: 10, right: 10 }}>
-                                                <Feather name="check-circle" size={16} color="#FFF" />
-                                            </View>
-                                        )}
-                                    </ScaleButton>
-                                )
-                            })}
-                        </ScrollView>
-                    </View>
-                )}
-
-                {/* Scan Info Modal */}
-                <Modal visible={!!previewScan} transparent animationType="fade">
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            {previewScan && (
-                                <>
-                                    <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                                        <View style={{ width: 56, height: 56, borderRadius: 20, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                                            <Feather name={previewScan.icon} size={28} color={COLORS.primary} />
-                                        </View>
-                                        <Text style={styles.modalHeader}>{previewScan.name}</Text>
-                                        <Text style={{ fontSize: 13, color: COLORS.textSub, fontWeight: '500', marginBottom: 2 }}>Price range</Text>
-                                        <Text style={{ fontSize: 20, fontWeight: '800', color: COLORS.primary }}>
-                                            {getPriceText(previewScan)}
-                                        </Text>
-                                    </View>
-
-                                    <View style={{ padding: 16, backgroundColor: COLORS.bg, borderRadius: 16, marginBottom: 20 }}>
-                                        <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textSub, marginBottom: 8 }}>PREPARATION</Text>
-                                        <View style={{ gap: 6 }}>
-                                            {Array.isArray(previewScan.description) ? (
-                                                previewScan.description.map((point: string, i: number) => (
-                                                    <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
-                                                        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.textSub, marginTop: 8 }} />
-                                                        <Text style={{ fontSize: 14, color: COLORS.textMain, lineHeight: 20, flex: 1 }}>{point}</Text>
-                                                    </View>
-                                                ))
-                                            ) : (
-                                                <Text style={{ fontSize: 14, color: COLORS.textMain, lineHeight: 20 }}>{previewScan.description}</Text>
-                                            )}
-                                        </View>
-                                    </View>
-
-                                    <View style={{ gap: 10 }}>
-                                        <TouchableOpacity
-                                            style={[styles.modalBtn, { backgroundColor: COLORS.primary }]}
-                                            onPress={() => toggleScanSelection(previewScan.id)}
-                                        >
-                                            <Text style={styles.modalBtnText}>
-                                                {selectedScans.includes(previewScan.id) ? 'Remove Selection' : 'Select This Scan'}
-                                            </Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={[styles.modalBtn, { backgroundColor: 'transparent' }]} onPress={() => setPreviewScan(null)}>
-                                            <Text style={[styles.modalBtnText, { color: COLORS.textSub }]}>Close</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </>
-                            )}
-                        </View>
-                    </View>
-                </Modal>
-
-
                 {/* Details */}
                 <View style={styles.sectionCard}>
                     <Text style={styles.sectionTitle}>Details</Text>
@@ -559,12 +372,12 @@ export default function BookingForm({ onCancel, extractedData, isDoctorBooking =
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.inputValue}>
                                         {selectedProcedures.length > 0 
-                                            ? selectedProcedures.map(p => p.name).join(', ') 
+                                            ? selectedProcedures.map(p => `${p.name} (GHS ${p.price || 0})`).join(', ') 
                                             : (procedureLoading ? 'Loading procedures…' : 'Select Procedures')}
                                     </Text>
                                     {selectedProcedures.length > 0 && (
                                         <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
-                                            {`GHS ${selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0).toLocaleString()}`}
+                                            {`Total: GHS ${selectedProcedures.reduce((sum, p) => sum + (Number(p.price) || 0), 0).toLocaleString()}`}
                                         </Text>
                                     )}
                                 </View>

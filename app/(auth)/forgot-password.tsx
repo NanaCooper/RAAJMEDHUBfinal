@@ -18,7 +18,14 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { sendPasswordResetEmail } from '@react-native-firebase/auth';
 import { auth } from "../../utils/firebaseConfig";
 import { APP_NAME } from "../../constants/AppStrings";
-import { canSendVerification, recordVerificationSent } from "../../utils/rateLimiter";
+import { canSendVerification, recordVerificationSent, getRemainingCooldown } from "../../utils/rateLimiter";
+import {
+  isEmail,
+  formatPhoneNumber,
+  sendPhoneVerificationCode,
+  verifyPhoneCode,
+  resetPasswordWithPhoneSession,
+} from "../../utils/authHelpers";
 
 // --- 🏥 Premium Healthcare Theme ---
 const COLORS = {
@@ -43,14 +50,24 @@ const SHADOW = {
   elevation: 4,
 };
 
+type Step = "identifier" | "otp" | "newPassword";
+
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+
+  const [step, setStep] = useState<Step>("identifier");
+  const [identifier, setIdentifier] = useState(""); // Email or Phone
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Countdown state so the user sees how long they must wait before resending
   const [cooldown, setCooldown] = useState(0);
-  const cooldownRef = useRef<NodeJS.Timeout | null>(null);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Phone OTP flow state
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [otpCode, setOtpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   // Tick the cooldown down every second
   useEffect(() => {
@@ -73,8 +90,9 @@ export default function ForgotPasswordScreen() {
   // Check if the user already has an active cooldown on mount (e.g. they navigated back)
   useEffect(() => {
     const check = async () => {
-      if (!email) return;
-      const result = await canSendVerification(email.trim().toLowerCase(), 'email');
+      if (!identifier) return;
+      const key = isEmail(identifier) ? identifier.trim().toLowerCase() : formatPhoneNumber(identifier);
+      const result = await canSendVerification(key, isEmail(identifier) ? 'email' : 'phone');
       if (!result.allowed) setCooldown(result.remainingSeconds);
     };
     check();
@@ -83,19 +101,7 @@ export default function ForgotPasswordScreen() {
   const isValidEmail = (value: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase());
 
-  const handleSendReset = async () => {
-    setError(null);
-
-    if (!email) {
-      setError("Please enter the email address associated with your account.");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    // Rate limit check — prevent spamming reset emails to the same address
+  const handleSendEmailReset = async (email: string) => {
     const rateLimitResult = await canSendVerification(email.trim().toLowerCase(), 'email');
     if (!rateLimitResult.allowed) {
       setCooldown(rateLimitResult.remainingSeconds);
@@ -105,23 +111,14 @@ export default function ForgotPasswordScreen() {
 
     try {
       setLoading(true);
-
-      // Real Firebase password reset
       await sendPasswordResetEmail(auth, email.trim());
-
-      // Record the send so cooldown is enforced for subsequent attempts
       await recordVerificationSent(email.trim().toLowerCase(), 'email');
       setCooldown(60);
 
       Alert.alert(
         "Reset Link Sent",
         `If ${email.trim()} is registered, you'll receive a reset link shortly. Check your spam folder if you don't see it.`,
-        [
-          {
-            text: "Back to Sign In",
-            onPress: () => router.replace("/login"),
-          },
-        ],
+        [{ text: "Back to Sign In", onPress: () => router.replace("/login") }],
         { cancelable: true }
       );
     } catch (err: any) {
@@ -129,7 +126,6 @@ export default function ForgotPasswordScreen() {
       // Firebase returns auth/user-not-found for unknown emails — we intentionally
       // show a generic message to avoid leaking which accounts exist.
       if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email') {
-        // Still record cooldown even for unknown emails (prevents enumeration)
         await recordVerificationSent(email.trim().toLowerCase(), 'email');
         setCooldown(60);
         Alert.alert(
@@ -148,12 +144,132 @@ export default function ForgotPasswordScreen() {
     }
   };
 
-  const isDisabled = !isValidEmail(email) || loading || cooldown > 0;
+  const handleSendPhoneOtp = async (phone: string) => {
+    const formatted = formatPhoneNumber(phone);
+    const rateLimitResult = await canSendVerification(formatted, 'phone');
+    if (!rateLimitResult.allowed) {
+      setCooldown(rateLimitResult.remainingSeconds);
+      setError(`You recently requested a code. Please wait ${rateLimitResult.remainingSeconds}s before trying again.`);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await sendPhoneVerificationCode(formatted);
+      if (!result.success || !result.confirmationResult) {
+        setError(result.message || "Unable to send verification code.");
+        return;
+      }
+      setConfirmationResult(result.confirmationResult);
+      const remaining = await getRemainingCooldown(formatted, 'phone');
+      setCooldown(remaining || 60);
+      setStep("otp");
+    } catch (err: any) {
+      console.error("Phone reset error:", err);
+      setError("Unable to send verification code. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSend = async () => {
+    setError(null);
+
+    if (!identifier) {
+      setError("Please enter the email or phone number associated with your account.");
+      return;
+    }
+
+    if (isEmail(identifier)) {
+      if (!isValidEmail(identifier)) {
+        setError("Please enter a valid email address.");
+        return;
+      }
+      await handleSendEmailReset(identifier);
+    } else {
+      await handleSendPhoneOtp(identifier);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpCode.length !== 6 || !confirmationResult) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await verifyPhoneCode(confirmationResult, otpCode);
+      if (!result.success || !result.user) {
+        setError(result.message || "Invalid code. Please try again.");
+        return;
+      }
+      // signInWithPhoneNumber on an already-registered number signs back into that
+      // SAME account. A phone number with no prior account lands here with only a
+      // 'phone' provider and no linked password — that's not a valid reset target.
+      const hasPasswordProvider = result.user.providerData.some((p: any) => p.providerId === 'password');
+      if (!hasPasswordProvider) {
+        await auth.signOut();
+        setError("No account was found registered with this phone number.");
+        setStep("identifier");
+        setConfirmationResult(null);
+        setOtpCode("");
+        return;
+      }
+      setStep("newPassword");
+    } catch (err: any) {
+      console.error("OTP verify error:", err);
+      setError("Invalid code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetNewPassword = async () => {
+    setError(null);
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await resetPasswordWithPhoneSession(newPassword);
+      if (!result.success) {
+        setError(result.message || "Failed to update password.");
+        return;
+      }
+      Alert.alert(
+        "Password Updated",
+        "Your password has been changed. Please sign in with your new password.",
+        [{ text: "Back to Sign In", onPress: () => router.replace("/login") }],
+        { cancelable: true }
+      );
+    } catch (err: any) {
+      console.error("Set new password error:", err);
+      setError("Failed to update password. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (cooldown > 0) return;
+    setError(null);
+    if (isEmail(identifier)) {
+      await handleSendEmailReset(identifier);
+    } else {
+      await handleSendPhoneOtp(identifier);
+    }
+  };
+
+  const isDisabled = !identifier.trim() || loading || (step === 'identifier' && cooldown > 0);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -175,72 +291,191 @@ export default function ForgotPasswordScreen() {
 
           {/* --- Reset Card --- */}
           <View style={styles.card}>
-            <Text style={styles.title}>Forgot Password</Text>
-            <Text style={styles.subtitle}>
-              Enter your email and we will send a secure link to reset your password.
-            </Text>
+            {step === "identifier" && (
+              <>
+                <Text style={styles.title}>Forgot Password</Text>
+                <Text style={styles.subtitle}>
+                  Enter your email or phone number. Email accounts get a reset link;
+                  phone accounts get a verification code by SMS.
+                </Text>
 
-            {error && (
-              <View style={styles.errorContainer}>
-                <Feather name="alert-circle" size={16} color={COLORS.danger} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Feather name="alert-circle" size={16} color={COLORS.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Email or Phone Number</Text>
+                  <View style={[styles.inputContainer, error ? styles.inputError : null]}>
+                    <Feather name={isEmail(identifier) ? "mail" : "phone"} size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="you@medicare.com or +233XXXXXXXXX"
+                      placeholderTextColor="#ADB5BD"
+                      autoCapitalize="none"
+                      autoComplete="email"
+                      value={identifier}
+                      onChangeText={setIdentifier}
+                      editable={!loading}
+                      returnKeyType="send"
+                      onSubmitEditing={handleSend}
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, isDisabled && styles.btnDisabled]}
+                  onPress={handleSend}
+                  disabled={isDisabled}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : cooldown > 0 ? (
+                    <>
+                      <Feather name="clock" size={20} color="#FFF" />
+                      <Text style={styles.primaryBtnText}>Resend in {cooldown}s</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.primaryBtnText}>{isEmail(identifier) ? "Send Reset Link" : "Send Code"}</Text>
+                      <Feather name="send" size={20} color="#FFF" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
             )}
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
-              <View style={[styles.inputContainer, error ? styles.inputError : null]}>
-                <Feather name="mail" size={20} color={COLORS.textSec} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="you@medicare.com"
-                  placeholderTextColor="#ADB5BD"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  value={email}
-                  onChangeText={setEmail}
-                  editable={!loading}
-                  returnKeyType="send"
-                  onSubmitEditing={handleSendReset}
-                />
-              </View>
-            </View>
+            {step === "otp" && (
+              <>
+                <Text style={styles.title}>Enter Verification Code</Text>
+                <Text style={styles.subtitle}>
+                  We sent a 6-digit code to {formatPhoneNumber(identifier)}.
+                </Text>
 
-            <TouchableOpacity
-              style={[styles.primaryBtn, isDisabled && styles.btnDisabled]}
-              onPress={handleSendReset}
-              disabled={isDisabled}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : cooldown > 0 ? (
-                <>
-                  <Feather name="clock" size={20} color="#FFF" />
-                  <Text style={styles.primaryBtnText}>Resend in {cooldown}s</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.primaryBtnText}>Send Reset Link</Text>
-                  <Feather name="send" size={20} color="#FFF" />
-                </>
-              )}
-            </TouchableOpacity>
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Feather name="alert-circle" size={16} color={COLORS.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Verification Code</Text>
+                  <View style={styles.inputContainer}>
+                    <Feather name="key" size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                    <TextInput
+                      style={[styles.input, styles.otpInput]}
+                      placeholder="123456"
+                      placeholderTextColor="#ADB5BD"
+                      keyboardType="number-pad"
+                      value={otpCode}
+                      onChangeText={(t) => { if (t.length <= 6 && /^\d*$/.test(t)) setOtpCode(t); }}
+                      editable={!loading}
+                      maxLength={6}
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, (otpCode.length !== 6 || loading) && styles.btnDisabled]}
+                  onPress={handleVerifyOtp}
+                  disabled={otpCode.length !== 6 || loading}
+                >
+                  {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>Verify Code</Text>}
+                </TouchableOpacity>
+
+                <View style={styles.resendContainer}>
+                  <Text style={styles.resendLabel}>Didn't receive the code?</Text>
+                  <TouchableOpacity onPress={handleResend} disabled={cooldown > 0 || loading}>
+                    <Text style={[styles.resendLink, cooldown > 0 && styles.disabledLink]}>
+                      {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend Code"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {step === "newPassword" && (
+              <>
+                <Text style={styles.title}>Set New Password</Text>
+                <Text style={styles.subtitle}>Phone verified. Choose a new password.</Text>
+
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Feather name="alert-circle" size={16} color={COLORS.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>New Password</Text>
+                  <View style={styles.inputContainer}>
+                    <Feather name="lock" size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="New password"
+                      placeholderTextColor="#ADB5BD"
+                      secureTextEntry
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      editable={!loading}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Confirm New Password</Text>
+                  <View style={styles.inputContainer}>
+                    <Feather name="lock" size={20} color={COLORS.textSec} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm new password"
+                      placeholderTextColor="#ADB5BD"
+                      secureTextEntry
+                      value={confirmNewPassword}
+                      onChangeText={setConfirmNewPassword}
+                      editable={!loading}
+                      returnKeyType="send"
+                      onSubmitEditing={handleSetNewPassword}
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, loading && styles.btnDisabled]}
+                  onPress={handleSetNewPassword}
+                  disabled={loading}
+                >
+                  {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>Update Password</Text>}
+                </TouchableOpacity>
+              </>
+            )}
 
             <TouchableOpacity
               style={styles.secondaryBtn}
-              onPress={() => router.replace("/login")}
+              onPress={() => {
+                if (step !== "identifier") {
+                  setStep("identifier");
+                  setError(null);
+                  setOtpCode("");
+                  setConfirmationResult(null);
+                } else {
+                  router.replace("/login");
+                }
+              }}
               disabled={loading}
             >
               <Feather name="arrow-left" size={20} color={COLORS.primary} />
-              <Text style={styles.secondaryBtnText}>Back to Sign In</Text>
+              <Text style={styles.secondaryBtnText}>{step === "identifier" ? "Back to Sign In" : "Start Over"}</Text>
             </TouchableOpacity>
           </View>
 
           {/* --- Footer --- */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>
-              If you do not receive an email within a few minutes, check your spam folder or contact support.
+              If you do not receive a code or email within a few minutes, check your spam folder or contact support.
             </Text>
           </View>
 
@@ -301,6 +536,7 @@ const styles = StyleSheet.create({
   },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 16, color: COLORS.textMain, height: '100%' },
+  otpInput: { letterSpacing: 8, fontWeight: '700' },
 
   // --- Error ---
   errorContainer: {
@@ -339,6 +575,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   secondaryBtnText: { color: COLORS.primary, fontWeight: '600', fontSize: 15 },
+
+  // --- Resend ---
+  resendContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 8 },
+  resendLabel: { color: COLORS.textSec, fontSize: 13 },
+  resendLink: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
+  disabledLink: { color: COLORS.textSec },
 
   // --- Footer ---
   footer: { marginTop: 32, paddingHorizontal: 16 },

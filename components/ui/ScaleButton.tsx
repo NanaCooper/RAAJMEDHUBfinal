@@ -6,9 +6,10 @@ interface ScaleButtonProps {
     style?: StyleProp<ViewStyle>;
     children: React.ReactNode;
     disabled?: boolean;
+    onLongPress?: () => void;
 }
 
-export default function ScaleButton({ onPress, style, children, disabled }: ScaleButtonProps) {
+export default function ScaleButton({ onPress, onLongPress, style, children, disabled }: ScaleButtonProps) {
     const scale = useRef(new Animated.Value(1)).current;
 
     const onPressIn = () => {
@@ -24,6 +25,7 @@ export default function ScaleButton({ onPress, style, children, disabled }: Scal
             onPressIn={onPressIn}
             onPressOut={onPressOut}
             onPress={onPress}
+            onLongPress={onLongPress}
             disabled={disabled}
         >
             <Animated.View style={[style, { transform: [{ scale }] }]}>

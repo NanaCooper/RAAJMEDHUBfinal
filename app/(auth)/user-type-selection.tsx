@@ -5,11 +5,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Alert,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from "@expo/vector-icons";
-import { useAuth } from "../../hooks/useAuth";
+import { useAuth, isAccountAdmin } from "../../hooks/useAuth";
 import { useRouter } from "expo-router";
 import { APP_NAME } from "../../constants/AppStrings";
 
@@ -37,9 +38,32 @@ const SHADOW = {
 };
 
 export default function UserTypeSelection() {
-  const { setUserType, reloadUser } = useAuth();
+  const { setUserType, reloadUser, user, session, signOut } = useAuth();
   const router = useRouter();
   const [selection, setSelection] = useState<"patient" | "doctor" | null>(null);
+
+  React.useEffect(() => {
+    if (user && isAccountAdmin(user, session?.email)) {
+      Alert.alert(
+        'Access Denied',
+        'You cannot open the app on mobile. Administrator accounts must use the web portal.',
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              try {
+                await signOut();
+              } catch (e) {
+                console.warn('Sign out failed:', e);
+              }
+              router.replace('/login');
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    }
+  }, [user, session, router, signOut]);
 
   const handleContinue = async () => {
     if (!selection) return;

@@ -1,12 +1,12 @@
-import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import firebaseAuth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import {
     auth,
     db,
     doc,
-    setDoc,
     getDoc
 } from './firebaseConfig';
 import { canSendVerification, recordVerificationSent } from './rateLimiter';
+import { withTimeout } from './withTimeout';
 
 // Internal domain for phone-based accounts to allow password linking
 const INTERNAL_DOMAIN = '@medicare.internal';
@@ -100,7 +100,7 @@ async function checkSuspension(uid: string): Promise<boolean> {
             if (snap.exists() && snap.data().suspended === true) {
                 return true;
             }
-        } catch (e) {
+        } catch (_e) {
             // Ignore read errors, proceed
         }
     }
@@ -159,7 +159,7 @@ export async function checkEmailVerificationStatus(): Promise<{ verified: boolea
         if (!user) return { verified: false };
         await user.reload();
         return { verified: user.emailVerified, user };
-    } catch (e) {
+    } catch (_e) {
         return { verified: false };
     }
 }
@@ -183,7 +183,11 @@ export async function sendPhoneVerificationCode(
             };
         }
 
-        const confirmation = await auth.signInWithPhoneNumber(formatted);
+        // Bounded: on native, this triggers a Play Integrity (Android) / silent-push (iOS)
+        // device-attestation handshake before Firebase will actually dispatch the SMS. If
+        // that handshake's underlying config is missing, this promise can hang forever with
+        // no error — which looks exactly like "the code never arrives" from the UI.
+        const confirmation = await withTimeout(auth.signInWithPhoneNumber(formatted), 20000, 'Sending verification code');
         await recordVerificationSent(formatted, 'phone');
 
         return {
@@ -204,7 +208,7 @@ export async function verifyPhoneCode(
     code: string
 ): Promise<AuthResponse> {
     try {
-        const result = await confirmationResult.confirm(code);
+        const result = await withTimeout<any>(confirmationResult.confirm(code), 20000, 'Verifying code');
         return {
             success: true,
             user: result.user
@@ -229,14 +233,43 @@ export async function linkPhoneWithPassword(
         const formatted = formatPhoneNumber(phoneNumber);
         const internalEmail = `${formatted}${INTERNAL_DOMAIN}`;
 
-        // Import EmailAuthProvider from the native firebase/auth package
-        const { EmailAuthProvider } = require('@react-native-firebase/auth');
-        const credential = EmailAuthProvider.credential(internalEmail, password);
+        // Use the EmailAuthProvider from the native firebase/auth package
+        const credential = firebaseAuth.EmailAuthProvider.credential(internalEmail, password);
         await user.linkWithCredential(credential);
 
         return { success: true };
     } catch (error: any) {
         return { success: false, message: error.message };
+    }
+}
+
+// --- Password Reset (Phone Accounts) ---
+// Phone-registered accounts have a synthetic '@medicare.internal' email that can never
+// receive mail, so Firebase's normal email reset link doesn't work for them. Instead we
+// re-verify phone ownership via OTP — signInWithPhoneNumber on an already-registered
+// number signs back into that SAME account (phone numbers are unique per Firebase
+// project) — then set a new password directly on the freshly-authenticated session.
+export async function resetPasswordWithPhoneSession(newPassword: string): Promise<AuthResponse> {
+    try {
+        const user = auth.currentUser;
+        if (!user) {
+            return { success: false, message: 'Your verification session expired. Please verify your phone again.' };
+        }
+
+        // Guard: a phone number with no prior account would land here with only a
+        // 'phone' provider and no linked password — reject that instead of treating
+        // it as a valid reset (which would otherwise silently create a new account).
+        const hasPasswordProvider = user.providerData.some((p: FirebaseAuthTypes.UserInfo) => p.providerId === 'password');
+        if (!hasPasswordProvider) {
+            await auth.signOut();
+            return { success: false, error: 'auth/user-not-found', message: 'No account was found registered with this phone number.' };
+        }
+
+        await withTimeout(user.updatePassword(newPassword), 20000, 'Updating password');
+        await auth.signOut();
+        return { success: true, message: 'Password updated! Please sign in with your new password.' };
+    } catch (error: any) {
+        return { success: false, error: error.code, message: getAuthErrorMessage(error) };
     }
 }
 
@@ -259,10 +292,36 @@ export async function signInUniversal(identifier: string, password: string): Pro
 
         const user = userCredential.user;
 
-        // Check suspension
-        if (await checkSuspension(user.uid)) {
-            await auth.signOut();
-            return { success: false, error: 'account-suspended', message: 'Account is suspended.' };
+        // Check suspension and admin
+        try {
+            const ref = doc(db, 'users', user.uid);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const userData = snap.data();
+                if (userData.suspended === true || userData.isSuspended === true || userData.accountStatus === 'suspended') {
+                    await auth.signOut();
+                    return { success: false, error: 'account-suspended', message: 'Account is suspended.' };
+                }
+                const role = (userData.role || '').toString().toLowerCase();
+                const ADMIN_ROLES = ['admin', 'superadmin', 'administrator', 'reception', 'receptionist', 'frontdesk', 'staff', 'marketer', 'admin_capecoast', 'admin_koforidua', 'admin_takoradi'];
+                const ADMIN_EMAILS = ['embidadzie@gmail.com', 'raajctscan@gmail.com', 'raajmedhub@gmail.com'];
+                const mail = (user.email || userData.email || '').toString().toLowerCase();
+                if (ADMIN_EMAILS.includes(mail) || ADMIN_ROLES.some(r => role === r || role.includes('admin') || role.includes('desk') || role.includes('reception')) || userData.isAdmin === true || userData.isStaff === true) {
+                    await auth.signOut();
+                    return { success: false, error: 'admin-mobile-blocked', message: 'You cannot open the app on mobile. Administrator accounts must use the web portal.' };
+                }
+            } else {
+                if (await checkSuspension(user.uid)) {
+                    await auth.signOut();
+                    return { success: false, error: 'account-suspended', message: 'Account is suspended.' };
+                }
+            }
+        } catch (_e) {
+            // Fallback suspension check if reading users doc fails
+            if (await checkSuspension(user.uid)) {
+                await auth.signOut();
+                return { success: false, error: 'account-suspended', message: 'Account is suspended.' };
+            }
         }
 
         // Check verification if email

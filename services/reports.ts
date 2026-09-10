@@ -51,7 +51,7 @@ function normaliseReport(id: string, data: any): Report {
     fileUrl: data.fileUrl || data.reportUrl || undefined,
     reportUrl: data.reportUrl || data.fileUrl || undefined,
     // Web portal marks availability via `sharedWithPatient`; map to status
-    status: data.status || (data.sharedWithPatient ? 'ready' : 'processing'),
+    status: data.status || ((data.fileUrl || data.reportUrl) ? 'ready' : 'processing'),
     title: data.title || data.scanType || data.category || 'Report',
     category: data.category || data.scanType || 'Other',
   } as Report;
@@ -160,7 +160,7 @@ export async function getDoctorReports(doctorName: string, doctorId: string): Pr
     apptSnap.docs.forEach((d: any) => {
       const data = d.data();
       // Ensure it was actually for this doctor if we want to be strict, but the ID match is enough
-      if (data.reportUrl && data.sharedWithPatient) {
+      if (data.reportUrl) {
         if (!results.find(r => r.appointmentId === d.id)) {
           results.push(reportFromAppointment(d.id, data));
         }
@@ -304,7 +304,7 @@ export function subscribeToDoctorReportNotifications(
       if (change.type === 'added' || change.type === 'modified') {
         const data = change.doc.data();
         const id = change.doc.id;
-        if (data.reportUrl && data.sharedWithPatient && !notifiedReportIds.has(`doctor_appt_${id}`)) {
+        if (data.reportUrl && !notifiedReportIds.has(`doctor_appt_${id}`)) {
           const updatedAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(0);
           const isRecent = (Date.now() - updatedAt.getTime()) < 120000;
           if (isRecent || change.type === 'modified') {
@@ -336,7 +336,7 @@ export function subscribeToDoctorReportNotifications(
           if (change.type === 'added' || change.type === 'modified') {
             const data = change.doc.data();
             const id = change.doc.id;
-            const status = data.status || (data.sharedWithPatient ? 'ready' : 'processing');
+            const status = data.status || ((data.fileUrl || data.reportUrl) ? 'ready' : 'processing');
             if (status === 'ready' && (data.fileUrl || data.reportUrl) && !notifiedReportIds.has(`doctor_reports_${id}`)) {
               const updatedAt = data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(0);
               const isRecent = (Date.now() - updatedAt.getTime()) < 120000;

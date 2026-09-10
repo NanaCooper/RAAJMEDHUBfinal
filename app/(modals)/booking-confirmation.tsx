@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from "expo-router";
 import dayjs from "dayjs";
 import { createAppointment } from "../../services/appointments";
-import { createReferral, inferReferralProcedure } from "../../services/referrals";
+import { createReferral, inferReferralProcedure, loadProcedureCommissions, lookupProcedureCommission } from "../../services/referrals";
 import { 
   sendRequestSubmittedNotification, 
   scheduleAppointmentReminders,
@@ -91,6 +91,7 @@ export default function BookingConfirmationModal() {
 
   // Animation and hardware back press handling
   useEffect(() => {
+    loadProcedureCommissions();
     console.log("--- [booking-confirmation.tsx] Mount/Update Effect ---", { isLoading, isConfirmed });
     Animated.spring(scaleAnim, {
       toValue: 1,
@@ -144,6 +145,9 @@ export default function BookingConfirmationModal() {
     console.log("[LOG] handleConfirm: Received appointment data:", JSON.stringify(appointmentData, null, 2));
 
     try {
+      // Ensure commissions are loaded before doing any calculations
+      await loadProcedureCommissions();
+
       // The startAt is now an ISO string, so we can parse it directly
       // Fix Bug 3: Gating is strictly based on whether the creator is a doctor.
       const isDoctorCreated = appointmentData?.createdByRole === 'doctor';
@@ -230,10 +234,16 @@ export default function BookingConfirmationModal() {
                 label = match.label;
                 key = match.key;
               } else {
-                // Fallback to 7% of actual price
-                const price = Number(s?.price) || Number(s?.priceGhs) || 0;
-                amount = Math.round(price * 0.07);
-                label = scanName;
+                const commissionMatch = lookupProcedureCommission(textToMatch, branch);
+                if (commissionMatch) {
+                  amount = commissionMatch.commissionGhs;
+                  label = scanName;
+                } else {
+                  // Fallback to 7% of actual price
+                  const price = Number(s?.price) || Number(s?.priceGhs) || 0;
+                  amount = Math.round(price * 0.07);
+                  label = scanName;
+                }
               }
 
               if (amount > 0 && !matchedKeys.has(key)) {
@@ -255,17 +265,33 @@ export default function BookingConfirmationModal() {
           const selectedProcedureName = appointmentData?.specificProcedure || appointmentData?.procedureName || '';
           if (createdItems.length === 0 && selectedProcedureName) {
             const match = inferReferralProcedure(selectedProcedureName);
+            const textToMatch = selectedProcedureName.trim();
+            const commissionMatch = lookupProcedureCommission(textToMatch, branch);
+            
+            let amount = 0;
+            let finalLabel = selectedProcedureName;
+            let finalKey = 'general';
+
             if (match) {
-              await createReferral({
-                doctorId: appointmentData.doctorId,
-                appointmentId: result.id,
-                patientName,
-                procedureKey: match.key,
-                procedureLabel: match.label,
-                amountGhs: match.amountGhs,
-              } as any);
-              createdItems.push({ label: match.label, amountGhs: match.amountGhs });
+               amount = match.amountGhs;
+               finalLabel = match.label;
+               finalKey = match.key;
+            } else if (commissionMatch) {
+               amount = commissionMatch.commissionGhs;
+            } else {
+               const price = Number(appointmentData?.priceGhs) || 0;
+               if (price > 0) amount = Math.round(price * 0.07);
             }
+
+            await createReferral({
+              doctorId: appointmentData.doctorId,
+              appointmentId: result.id,
+              patientName,
+              procedureKey: finalKey,
+              procedureLabel: finalLabel,
+              amountGhs: amount,
+            } as any);
+            createdItems.push({ label: finalLabel, amountGhs: amount });
           }
 
           if (createdItems.length > 0) {

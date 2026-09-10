@@ -116,6 +116,7 @@ export default function BookingScreen() {
     const appointmentData = {
       patientId: session.uid,
       doctorId,
+      doctorName: doctor.fullName || doctor.name || '',
       startAt: null, // Pending scheduling
       status: 'pending',
       notes: values.notes,
@@ -133,6 +134,7 @@ export default function BookingScreen() {
         age,
       }
     };
+
 
     console.log('Confirm booking payload:', appointmentData);
     // open booking-confirmation modal and pass details

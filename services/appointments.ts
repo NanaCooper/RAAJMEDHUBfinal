@@ -1,4 +1,4 @@
-import { db, collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from '../utils/firebaseConfig';
+import { db, auth, collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from '../utils/firebaseConfig';
 import type { Appointment } from '../types/appointment';
 import {
   scheduleAppointmentReminders,
@@ -75,6 +75,42 @@ export async function deleteAppointment(appointmentId: string) {
     return true;
   } catch (err) {
     console.error('deleteAppointment error', err);
+    throw err;
+  }
+}
+
+export async function deleteAppointmentWithReferrals(appointmentId: string) {
+  try {
+    // 1. Delete all referrals with this appointmentId
+    const referralsCol = collection(db, 'referrals');
+    const q1 = query(referralsCol, where('appointmentId', '==', appointmentId));
+    
+    let snaps;
+    try {
+      snaps = await getDocs(q1);
+    } catch (e: any) {
+      // If it fails (likely permission denied because doctors must filter by their own ID)
+      const user = auth?.currentUser;
+      if (user?.uid) {
+        const q2 = query(referralsCol, where('appointmentId', '==', appointmentId), where('doctorId', '==', user.uid));
+        snaps = await getDocs(q2);
+      } else {
+        throw e;
+      }
+    }
+    
+    // We run the deletions concurrently
+    if (snaps && snaps.docs) {
+      const deletePromises = snaps.docs.map((d: any) => deleteDoc(doc(db, 'referrals', d.id)));
+      await Promise.all(deletePromises);
+    }
+    
+    // 2. Delete the appointment itself
+    await deleteAppointment(appointmentId);
+    
+    return true;
+  } catch (err) {
+    console.error('deleteAppointmentWithReferrals error', err);
     throw err;
   }
 }

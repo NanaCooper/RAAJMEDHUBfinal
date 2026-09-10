@@ -5,13 +5,12 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur'; // If available, otherwise falls back to View
 import { useAuth } from '../../hooks/useAuth';
-import { extractDetailsFromImage } from '../../services/gemini';
+import { extractDetailsFromImageLocal } from '../../services/localOcr';
 // --- THEME ENGINE ---
 const COLORS = {
     primary: "#4338CA",    // Indigo 700 (Deep/Royal)
@@ -143,77 +142,64 @@ export default function UploadRequestForm() {
 
     const processImage = async (uri: string) => {
         setIsAnalyzing(true);
-        setAnalyzingStep(1); // Uploading
+        setAnalyzingStep(1); // Reading
 
         try {
-            // Simulate steps for UX
-            setTimeout(() => setAnalyzingStep(2), 2000); // Extracting
+            // Simulate UX step transition
+            setTimeout(() => setAnalyzingStep(2), 1500); // Extracting
 
-            const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
+            // On-device OCR — no API key, no network required
+            const extracted = await extractDetailsFromImageLocal(uri);
 
-            // Call the client-side Gemini function
-            const extracted = await extractDetailsFromImage(base64);
+            // Success block
+            setAnalyzingStep(3); // Success
+            if (Platform.OS !== 'web') Vibration.vibrate(50);
 
-            if (extracted) {
-                // Success block
-                setAnalyzingStep(3); // Success
-                if (Platform.OS !== 'web') Vibration.vibrate(50);
-
-                // Calculate age from profile if needed
-                let profileAge = user?.age;
-                if (!profileAge && user?.dateOfBirth) {
-                    const birthDate = new Date(user.dateOfBirth);
-                    const today = new Date();
-                    let age = today.getFullYear() - birthDate.getFullYear();
-                    const m = today.getMonth() - birthDate.getMonth();
-                    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                        age--;
-                    }
-                    profileAge = age.toString();
+            // Calculate age from profile if needed
+            let profileAge = user?.age;
+            if (!profileAge && user?.dateOfBirth) {
+                const birthDate = new Date(user.dateOfBirth);
+                const today = new Date();
+                let age = today.getFullYear() - birthDate.getFullYear();
+                const m = today.getMonth() - birthDate.getMonth();
+                if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                    age--;
                 }
-
-                const finalData = {
-                    ...extracted,
-                    // Override personalized fields if 'For Me'
-                    patientName: patientType === 'me'
-                        ? (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : (user?.displayName || 'Me'))
-                        : extracted.patientName,
-                    age: patientType === 'me' ? (profileAge || extracted.age) : extracted.age,
-                    sex: patientType === 'me' ? (user?.gender || extracted.sex) : extracted.sex,
-
-                    // Map new prompts to keys expected by UI
-                    reason: extracted.reasonForVisit || extracted.reason,
-                    procedure: extracted.specificScan || extracted.specifications,
-                    referral: extracted.referralSource || extracted.referral,
-
-                    // Critical: Map serviceType to scanTypes array for BookingForm auto-selection
-                    scanTypes: Array.isArray(extracted.serviceType)
-                        ? extracted.serviceType
-                        : (extracted.serviceType ? [extracted.serviceType] : (extracted.scanTypes || [])),
-                };
-
-                setTimeout(() => {
-                    Alert.alert("Scan Successful", "Request details extracted.", [
-                        {
-                            text: "Proceed",
-                            onPress: () => router.push({
-                                pathname: '/(patient)/review-request',
-                                params: {
-                                    extractedData: JSON.stringify(finalData),
-                                    imageUri: uploadedImage
-                                }
-                            })
-                        }
-                    ]);
-                }, 500);
+                profileAge = age.toString();
             }
+
+            const finalData = {
+                patientName: patientType === 'me'
+                    ? (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : (user?.displayName || 'Me'))
+                    : extracted.patientName,
+                age:      patientType === 'me' ? (profileAge || extracted.age) : extracted.age,
+                sex:      patientType === 'me' ? (user?.gender || extracted.sex) : extracted.sex,
+                phone:    extracted.patientPhone,
+                reason:   extracted.reasonForVisit,
+                referral: extracted.referralSource,
+                scanTypes: extracted.scanTypes,
+                specificScan: extracted.specificScan,
+                doctorName:  extracted.doctorName,
+                date:        extracted.date,
+            };
+
+            setTimeout(() => {
+                Alert.alert("Scan Complete", "Request details extracted. Please verify before booking.", [
+                    {
+                        text: "Proceed",
+                        onPress: () => router.push({
+                            pathname: '/(patient)/review-request',
+                            params: {
+                                extractedData: JSON.stringify(finalData),
+                                imageUri: uploadedImage
+                            }
+                        })
+                    }
+                ]);
+            }, 500);
         } catch (error: any) {
-            console.error(error);
-            if (error.message === "GEMINI_API_KEY_MISSING") {
-                Alert.alert("Configuration Error", "AI service is not configured. Please contact support.");
-            } else {
-                Alert.alert("Scan Failed", "Please try again with a clearer image or check your connection.");
-            }
+            console.error('[UploadRequest] OCR error:', error);
+            Alert.alert("Scan Failed", "Couldn't read the form. Please try a clearer photo or enter details manually.");
             setUploadedImage(null);
         } finally {
             setTimeout(() => {

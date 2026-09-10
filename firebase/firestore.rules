@@ -128,55 +128,66 @@ service cloud.firestore {
         || isAdmin()
       );
 
-      // TEMP: Allow owners to update their own user document to unblock profile saves.
-      // Once confirmed working, we can reintroduce field-level restrictions.
-      allow update: if isAdmin() || isBranchAdmin()
-        || (isSignedIn() && request.auth.uid == userId);
+      // Owners can update their own profile, but never role/department/organization/adminBranch
+      // once a role is already set — this is what stops an admin account from being
+      // accidentally reassigned to 'patient'/'doctor' by the mobile app's onboarding flow.
+      allow update: if (isAdmin() || isBranchAdmin() || isAdminByRole() || (isSignedIn() && request.auth.uid == userId && !isChangingProtectedField()))
+        && !(
+          resource.data.role in ['admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'superadmin', 'admin_koforidua', 'admin_takoradi', 'admin_capecoast'] 
+          && request.resource.data.role in ['patient', 'doctor', 'Patient', 'Doctor', 'PATIENT', 'DOCTOR']
+        );
 
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
     match /appointments/{appointmentId} {
-      allow get: if isAdmin() || isBranchAdmin() ||
+      allow get: if isAdmin() || isAdminByRole() || isBranchAdmin() ||
         (isDoctor() && resource.data.doctorId == request.auth.uid) ||
         (isSignedIn() && resource.data.patientId == request.auth.uid);
-      allow list: if isAdmin() || isBranchAdmin() || isDoctor() || isPatient();
-      
+      allow list: if isSignedIn();
       allow create: if isSignedIn() && (
         isAdmin() ||
+        isAdminByRole() ||
         isBranchAdmin() ||
         (isPatient() && request.resource.data.patientId == request.auth.uid) ||
         (isDoctor() && request.resource.data.doctorId == request.auth.uid)
       );
 
       allow update: if isAdmin() ||
+        isAdminByRole() ||
         (isBranchAdmin() && isBranchMatch(resource.data)) ||
         (isSignedIn() &&
           isAppointmentParticipant(resource.data) &&
           request.resource.data.patientId == resource.data.patientId &&
           request.resource.data.doctorId == resource.data.doctorId
         );
-      
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isAdminByRole() || isBranchAdmin() || 
+        (isDoctor() && resource.data.doctorId == request.auth.uid) || 
+        (isPatient() && resource.data.patientId == request.auth.uid);
     }
 
     match /doctors/{doctorId} {
       allow read: if isSignedIn();
-      allow create: if isAdmin() || isBranchAdmin() || isAdminByRole() || (isDoctor() && request.auth.uid == doctorId);
-      allow update: if isAdmin() || isBranchAdmin() || (isDoctor() && request.auth.uid == doctorId);
+      allow create: if isAdmin() || isAdminByRole() || isBranchAdmin() || (isDoctor() && request.auth.uid == doctorId);
+      allow update: if isAdmin() || isAdminByRole() || isBranchAdmin() || (isDoctor() && request.auth.uid == doctorId);
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == doctorId);
     }
 
     match /patients/{patientId} {
-      allow read: if isAdmin() || isBranchAdmin() || isDoctor() || request.auth.uid == patientId;
-      allow create: if isAdmin() || isBranchAdmin() || isDoctor() || (isSignedIn() && patientId == request.auth.uid);
-      allow update: if isAdmin() || isBranchAdmin() || isDoctor() || (isPatient() && patientId == request.auth.uid);
+      allow read: if isAdmin() || isAdminByRole() || isBranchAdmin() || isDoctor() || request.auth.uid == patientId;
+      allow create: if isAdmin() || isAdminByRole() || isBranchAdmin() || isDoctor() || (isSignedIn() && patientId == request.auth.uid);
+      allow update: if isAdmin() || isAdminByRole() || isBranchAdmin() || isDoctor() || (isPatient() && patientId == request.auth.uid);
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == patientId);
     }
 
     match /procedures/{procedureId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isAdminByRole();
+    }
+
+    match /procedure_commissions/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAdminByRole();
     }
 
     match /reports/{reportId} {
@@ -225,7 +236,7 @@ service cloud.firestore {
 
     match /services/{serviceId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isBranchAdmin() || isAdminByRole();
     }
 
     match /hospitals/{hospitalId} {
@@ -235,8 +246,8 @@ service cloud.firestore {
     }
 
     match /adminNotes/{noteId} {
-      allow read: if isAdmin() || isBranchAdmin();
-      allow create: if isDoctor();
+      allow read: if isAdmin() || isBranchAdmin() || isAdminByRole();
+      allow create: if isDoctor() || isAdminByRole();
       allow update, delete: if isAdmin();
     }
 
@@ -249,14 +260,16 @@ service cloud.firestore {
     }
 
     match /activity/{activityId} {
-      allow read: if isAdmin() || isBranchAdmin();
+      allow read: if isAdmin() || isBranchAdmin() || isAdminByRole();
       allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
-        match /referrals/{referralId} {
-      allow read: if isAdmin() || isBranchAdmin() || (isDoctor() && resource.data.doctorId == request.auth.uid);
-      allow create: if isAdmin() || isBranchAdmin() || (isDoctor() && request.resource.data.doctorId == request.auth.uid);
-      allow update, delete: if isAdmin();
+
+    match /referrals/{referralId} {
+      allow read: if isAdmin() || isBranchAdmin() || isAdminByRole() || (isDoctor() && resource.data.doctorId == request.auth.uid);
+      allow create: if isAdmin() || isBranchAdmin() || isAdminByRole() || (isDoctor() && request.resource.data.doctorId == request.auth.uid);
+      allow update: if isAdmin() || isBranchAdmin() || isAdminByRole();
+      allow delete: if isAdmin() || isBranchAdmin() || isAdminByRole() || (isDoctor() && resource.data.doctorId == request.auth.uid);
     }
   }
 }

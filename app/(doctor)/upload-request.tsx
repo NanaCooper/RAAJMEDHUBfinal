@@ -5,13 +5,12 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur'; // If available, otherwise falls back to View
 import { useAuth } from '../../hooks/useAuth';
-import { extractDetailsFromImage } from '../../services/gemini';
+import { extractDetailsFromImageLocal } from '../../services/localOcr';
 // --- THEME ENGINE ---
 const COLORS = {
     primary: "#4338CA",    // Indigo 700 (Deep/Royal)
@@ -143,51 +142,48 @@ export default function UploadRequestForm() {
 
     const processImage = async (uri: string) => {
         setIsAnalyzing(true);
-        setAnalyzingStep(1); // Uploading
+        setAnalyzingStep(1); // Reading
 
         try {
-            // Simulate steps for UX
-            setTimeout(() => setAnalyzingStep(2), 2000); // Extracting
+            // Simulate UX step transition
+            setTimeout(() => setAnalyzingStep(2), 1500); // Extracting
 
-            const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
+            // On-device OCR — no API key, no network required
+            const extracted = await extractDetailsFromImageLocal(uri);
 
-            // Call the REAL Gemini Cloud Function
-            // Note: We need to ensure scanMedicalRequest is imported from services/gemini
-            // If it was mocked in the previous file content, we should revert to the real import
-            // For now, I will assume the function is available as `scanMedicalRequest`
-            const extracted: any = await extractDetailsFromImage(base64);
+            setAnalyzingStep(3); // Success
+            if (Platform.OS !== 'web') Vibration.vibrate(50);
 
-            if (extracted) {
-                setAnalyzingStep(3); // Success
-                if (Platform.OS !== 'web') Vibration.vibrate(50);
-                const finalData = {
-                    ...extracted,
-                    patientName: extracted.patientName,
-                    // Always 'someone', so trust extracted name or user will edit
-                };
+            const finalData = {
+                patientName:    extracted.patientName,
+                age:            extracted.age,
+                sex:            extracted.sex,
+                patientPhone:   extracted.patientPhone,
+                doctorName:     extracted.doctorName,
+                referralSource: extracted.referralSource,
+                scanTypes:      extracted.scanTypes,
+                specificScan:   extracted.specificScan,
+                reasonForVisit: extracted.reasonForVisit,
+                date:           extracted.date,
+            };
 
-                setTimeout(() => {
-                    Alert.alert("Scan Successful", "Request details extracted.", [
-                        {
-                            text: "Proceed",
-                            onPress: () => router.push({
-                                pathname: '/(doctor)/appointments',
-                                params: {
-                                    tab: 'book',
-                                    extractedData: JSON.stringify(finalData) // Pass full object
-                                }
-                            })
-                        }
-                    ]);
-                }, 500);
-            }
+            setTimeout(() => {
+                Alert.alert("Scan Complete", "Request details extracted. Please verify before booking.", [
+                    {
+                        text: "Proceed",
+                        onPress: () => router.push({
+                            pathname: '/(doctor)/appointments',
+                            params: {
+                                tab: 'book',
+                                extractedData: JSON.stringify(finalData)
+                            }
+                        })
+                    }
+                ]);
+            }, 500);
         } catch (error: any) {
-            console.error(error);
-            if (error.message === "GEMINI_API_KEY_MISSING") {
-                Alert.alert("Configuration Error", "AI service is not configured. Please contact support.");
-            } else {
-                Alert.alert("Scan Failed", "Please try again with a clearer image or check your connection.");
-            }
+            console.error('[UploadRequest] OCR error:', error);
+            Alert.alert("Scan Failed", "Couldn't read the form. Please try a clearer photo or enter details manually.");
             setUploadedImage(null);
         } finally {
             setTimeout(() => {
@@ -212,11 +208,11 @@ export default function UploadRequestForm() {
                     </TouchableOpacity>
                     <View>
                         <Text style={styles.headerTitle}>Scan Request</Text>
-                        <Text style={styles.headerSub}>AI-Powered Extraction</Text>
+                        <Text style={styles.headerSub}>On-Device Extraction</Text>
                     </View>
                     <View style={styles.headerBadge}>
                         <Ionicons name="sparkles" size={14} color={COLORS.primaryLight} />
-                        <Text style={styles.badgeText}>Gemini AI</Text>
+                        <Text style={styles.badgeText}>On-Device OCR</Text>
                     </View>
                 </View>
 
@@ -275,13 +271,13 @@ export default function UploadRequestForm() {
                                                 )}
                                                 <View style={styles.hudContent}>
                                                     <Text style={styles.hudTitle}>
-                                                        {analyzingStep === 1 ? 'Uploading...' :
+                                                        {analyzingStep === 1 ? 'Reading Image...' :
                                                             analyzingStep === 2 ? 'Extracting Data...' :
                                                                 'Complete!'}
                                                     </Text>
                                                     <Text style={styles.hudSub}>
-                                                        {analyzingStep === 1 ? 'Securing connection' :
-                                                            analyzingStep === 2 ? 'Gemini AI processing' :
+                                                        {analyzingStep === 1 ? 'Preparing on-device OCR' :
+                                                            analyzingStep === 2 ? 'Reading on device...' :
                                                                 'Redirecting you now'}
                                                     </Text>
                                                 </View>

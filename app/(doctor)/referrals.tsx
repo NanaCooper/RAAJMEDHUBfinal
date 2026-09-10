@@ -9,16 +9,18 @@ import {
   ScrollView,
   Platform,
   UIManager,
-  LayoutAnimation
+  LayoutAnimation,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useAuth } from '../../hooks/useAuth';
-import { subscribeToAppointments } from '../../services/appointments';
-import { calculateReferralPayout } from '../../services/referrals';
+import { subscribeToAppointments, deleteAppointmentWithReferrals } from '../../services/appointments';
+import { calculateReferralPayout, loadProcedureCommissions } from '../../services/referrals';
 import type { Appointment } from '../../types/appointment';
 import { APPOINTMENTS_COMING_SOON } from '../../constants/AppStrings';
 
@@ -82,7 +84,7 @@ const COMPLETED_STATUSES = new Set([
 ]);
 const CANCELLED_STATUSES = new Set(['cancelled', 'denied']);
 
-type TimeFilter = 'day' | 'week' | 'month' | 'year' | 'all';
+type TimeFilter = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
 export default function ReferralsScreen() {
   const { session } = useAuth();
@@ -93,8 +95,14 @@ export default function ReferralsScreen() {
   const [showInfo, setShowInfo] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
 
-  // New State for Completed Time Filter
+  // New State for Flexible Month & Custom Date Range Filtering
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [selectedMonth, setSelectedMonth] = useState<dayjs.Dayjs>(dayjs());
+  const [customStart, setCustomStart] = useState<dayjs.Dayjs>(dayjs().startOf('month'));
+  const [customEnd, setCustomEnd] = useState<dayjs.Dayjs>(dayjs().endOf('month'));
+  const [showPickerModal, setShowPickerModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState<'start' | 'end' | null>(null);
+  const [pickerYear, setPickerYear] = useState(dayjs().year());
 
   const animateLayout = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -110,15 +118,50 @@ export default function ReferralsScreen() {
     setTimeFilter(filter);
   };
 
+  const handleDeleteReferral = (item: any) => {
+    Alert.alert(
+      "Delete Referral",
+      "Are you sure you want to delete this referral? This will also delete the associated appointment. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // item.id is the appointment id
+              await deleteAppointmentWithReferrals(item.id);
+            } catch (error) {
+              console.error("Failed to delete referral", error);
+              Alert.alert("Error", "Failed to delete referral.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const [commissionsReady, setCommissionsReady] = useState(false);
+
   useEffect(() => {
     if (!session?.uid) return;
-    const unsub = subscribeToAppointments(session.uid, 'doctor', setItems, (err) => {
-      console.log('[referrals] subscribe error', err);
+
+    let unsub: any;
+    
+    // Load dynamic procedure commissions first
+    loadProcedureCommissions().then(() => {
+      setCommissionsReady(true);
+      unsub = subscribeToAppointments(session.uid, 'doctor', setItems, (err) => {
+        console.log('[referrals] subscribe error', err);
+      });
     });
-    return () => unsub && unsub();
+
+    return () => {
+      if (unsub) unsub();
+    };
   }, [session?.uid]);
 
-  // Original Logic + New Time-Based Grouping
+  // Original Logic + Dynamic Time & Custom Range Filtering
   const {
     pendingTotal,
     pendingReferrals,
@@ -164,16 +207,20 @@ export default function ReferralsScreen() {
     const pendingSum = pending.reduce((sum, r) => sum + (Number(r.amountGhs) || 0), 0);
     const completedSum = completed.reduce((sum, r) => sum + (Number(r.amountGhs) || 0), 0);
 
-    // Calculate totals for our new horizontal swipe cards
     const now = dayjs();
-    let dayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0;
+    let dayTotal = 0, weekTotal = 0, monthTotal = 0, yearTotal = 0, customTotal = 0;
 
     completed.forEach((r) => {
       const amt = Number(r.amountGhs) || 0;
-      if (dayjs(r._createdAt).isSame(now, 'day')) dayTotal += amt;
-      if (dayjs(r._createdAt).isSame(now, 'week')) weekTotal += amt;
-      if (dayjs(r._createdAt).isSame(now, 'month')) monthTotal += amt;
-      if (dayjs(r._createdAt).isSame(now, 'year')) yearTotal += amt;
+      const d = dayjs(r._createdAt);
+      if (d.isSame(now, 'day')) dayTotal += amt;
+      if (d.isSame(now, 'week')) weekTotal += amt;
+      if (d.isSame(selectedMonth, 'month')) monthTotal += amt;
+      if (d.isSame(now, 'year')) yearTotal += amt;
+      if ((d.isSame(customStart, 'day') || d.isAfter(customStart, 'day')) &&
+          (d.isSame(customEnd, 'day') || d.isBefore(customEnd, 'day'))) {
+        customTotal += amt;
+      }
     });
 
     return {
@@ -181,16 +228,33 @@ export default function ReferralsScreen() {
       completedTotal: completedSum,
       pendingReferrals: pending,
       completedReferrals: completed,
-      totalsByTime: { day: dayTotal, week: weekTotal, month: monthTotal, year: yearTotal, all: completedSum }
+      totalsByTime: {
+        all: completedSum,
+        day: dayTotal,
+        week: weekTotal,
+        month: monthTotal,
+        year: yearTotal,
+        custom: customTotal,
+      }
     };
-  }, [items]);
+  }, [items, selectedMonth, customStart, customEnd]);
 
-  // Filter completed referrals based on selected swipe card
+  // Filter completed referrals based on selected time filter (including custom month & date range)
   const displayedCompleted = useMemo(() => {
     if (timeFilter === 'all') return completedReferrals;
+    if (timeFilter === 'month') {
+      return completedReferrals.filter(r => dayjs(r._createdAt).isSame(selectedMonth, 'month'));
+    }
+    if (timeFilter === 'custom') {
+      return completedReferrals.filter(r => {
+        const d = dayjs(r._createdAt);
+        return (d.isSame(customStart, 'day') || d.isAfter(customStart, 'day')) &&
+               (d.isSame(customEnd, 'day') || d.isBefore(customEnd, 'day'));
+      });
+    }
     const now = dayjs();
     return completedReferrals.filter(r => dayjs(r._createdAt).isSame(now, timeFilter));
-  }, [completedReferrals, timeFilter]);
+  }, [completedReferrals, timeFilter, selectedMonth, customStart, customEnd]);
 
   if (APPOINTMENTS_COMING_SOON) {
     return (
@@ -283,14 +347,26 @@ export default function ReferralsScreen() {
                     <Feather name="check-circle" size={18} color={COLORS.success} />
                   </View>
                   <View style={styles.summaryBadge}>
-                    <Text style={styles.summaryNote}>Confirmed Payouts</Text>
+                    <Text style={styles.summaryNote}>
+                      {timeFilter === 'month'
+                        ? `Payouts (${selectedMonth.format('MMMM YYYY')})`
+                        : timeFilter === 'custom'
+                        ? `Payouts (${customStart.format('MMM D')} - ${customEnd.format('MMM D')})`
+                        : timeFilter === 'day'
+                        ? 'Today’s Payouts'
+                        : timeFilter === 'week'
+                        ? 'This Week’s Payouts'
+                        : timeFilter === 'year'
+                        ? 'This Year’s Payouts'
+                        : 'Confirmed Payouts'}
+                    </Text>
                   </View>
                 </View>
 
                 <View style={styles.summaryBalanceRow}>
                   <Text style={styles.summaryCurrency}>GHS</Text>
                   <Text style={styles.summaryValue}>
-                    {totalsByTime[timeFilter].toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                    {(totalsByTime[timeFilter] || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
                   </Text>
                 </View>
               </View>
@@ -298,26 +374,61 @@ export default function ReferralsScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 10 }}
+                contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
               >
                 {[
+                  { id: 'all', label: 'All Time' },
                   { id: 'day', label: 'Today' },
                   { id: 'week', label: 'This Week' },
-                  { id: 'month', label: 'This Month' },
+                  {
+                    id: 'month',
+                    label: timeFilter === 'month' ? selectedMonth.format('MMM YYYY') : 'Month',
+                    icon: 'calendar',
+                    hasDropdown: true,
+                    onPress: () => {
+                      setPickerYear(selectedMonth.year());
+                      setTimeFilter('month');
+                      setShowPickerModal(true);
+                    }
+                  },
                   { id: 'year', label: 'This Year' },
-                  { id: 'all', label: 'All Time' },
+                  {
+                    id: 'custom',
+                    label: timeFilter === 'custom' ? `${customStart.format('MMM D')} - ${customEnd.format('MMM D')}` : 'Custom Range',
+                    icon: 'sliders',
+                    hasDropdown: true,
+                    onPress: () => {
+                      setShowPickerModal(true);
+                    }
+                  },
                 ].map((filter) => {
                   const isActive = timeFilter === filter.id;
                   return (
                     <TouchableOpacity
                       key={filter.id}
                       activeOpacity={0.8}
-                      onPress={() => handleFilterChange(filter.id as TimeFilter)}
+                      onPress={filter.onPress || (() => handleFilterChange(filter.id as TimeFilter))}
                       style={[styles.filterPill, isActive && styles.filterPillActive]}
                     >
+                      {filter.icon && (
+                        <Feather
+                          name={filter.icon as any}
+                          size={13}
+                          color={isActive ? '#FFFFFF' : COLORS.textSub}
+                          style={{ marginRight: 5 }}
+                        />
+                      )}
                       <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
                         {filter.label}
                       </Text>
+                      {filter.hasDropdown && (
+                        <Feather
+                          name="chevron-down"
+                          size={13}
+                          color={isActive ? '#FFFFFF' : COLORS.textSub}
+                          style={{ marginLeft: 4 }}
+                        />
+                      )}
                     </TouchableOpacity>
                   );
                 })}
@@ -331,6 +442,7 @@ export default function ReferralsScreen() {
             style={styles.rowCard}
             activeOpacity={0.7}
             onPress={() => setSelectedAppointment(items.find(a => a.id === item.id) || null)}
+            onLongPress={() => handleDeleteReferral(item)}
           >
             <View style={styles.rowAvatar}>
               <Text style={styles.rowAvatarText}>{(item.patientName?.charAt(0) || 'P').toUpperCase()}</Text>
@@ -367,7 +479,13 @@ export default function ReferralsScreen() {
               <Feather name={activeTab === 'pending' ? "inbox" : "award"} size={22} color={COLORS.textSub} />
             </View>
             <Text style={styles.emptyTitle}>
-              {activeTab === 'pending' ? 'No pending referrals' : `No completed payouts for ${timeFilter}`}
+              {activeTab === 'pending'
+                ? 'No pending referrals'
+                : timeFilter === 'month'
+                ? `No payouts for ${selectedMonth.format('MMMM YYYY')}`
+                : timeFilter === 'custom'
+                ? `No payouts between ${customStart.format('MMM D')} and ${customEnd.format('MMM D')}`
+                : `No completed payouts for ${timeFilter}`}
             </Text>
             <Text style={styles.emptySub}>
               {activeTab === 'pending' ? 'New patient referrals will appear here.' : 'Completed procedures will move here for payout.'}
@@ -390,7 +508,6 @@ export default function ReferralsScreen() {
 
             {selectedAppointment && (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-
                 {/* Financial Status Banner */}
                 {(() => {
                   const statusKey = normalizeStatus(selectedAppointment.status);
@@ -480,6 +597,125 @@ export default function ReferralsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* --- Flexible Month & Custom Date Range Modal --- */}
+      <Modal visible={showPickerModal} transparent animationType="slide" onRequestClose={() => setShowPickerModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalDragHandle} />
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Select Period or Month</Text>
+              <TouchableOpacity onPress={() => setShowPickerModal(false)} style={styles.closeBtn}>
+                <Feather name="x" size={20} color={COLORS.textMain} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Year Navigator for Month Selection */}
+            <View style={styles.yearNavigator}>
+              <TouchableOpacity
+                onPress={() => setPickerYear(y => y - 1)}
+                style={styles.yearArrowBtn}
+                activeOpacity={0.7}
+              >
+                <Feather name="chevron-left" size={20} color={COLORS.textMain} />
+              </TouchableOpacity>
+              <Text style={styles.yearText}>{pickerYear}</Text>
+              <TouchableOpacity
+                onPress={() => setPickerYear(y => y + 1)}
+                style={styles.yearArrowBtn}
+                activeOpacity={0.7}
+              >
+                <Feather name="chevron-right" size={20} color={COLORS.textMain} />
+              </TouchableOpacity>
+            </View>
+
+            {/* 12-Month Grid */}
+            <View style={styles.monthGrid}>
+              {Array.from({ length: 12 }).map((_, i) => {
+                const monthDate = dayjs().year(pickerYear).month(i);
+                const isSelected = timeFilter === 'month' && selectedMonth.isSame(monthDate, 'month');
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    style={[
+                      styles.monthCell,
+                      isSelected && styles.monthCellSelected
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setSelectedMonth(monthDate);
+                      setTimeFilter('month');
+                      setShowPickerModal(false);
+                    }}
+                  >
+                    <Text style={[styles.monthCellText, isSelected && styles.monthCellTextSelected]}>
+                      {monthDate.format('MMM')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.modalDivider} />
+
+            {/* Custom Range Picker Controls */}
+            <Text style={styles.customRangeTitle}>Custom Date Range</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+              <TouchableOpacity
+                style={styles.datePickerBtn}
+                activeOpacity={0.7}
+                onPress={() => setShowDatePicker('start')}
+              >
+                <Text style={styles.datePickerLabel}>START DATE</Text>
+                <View style={styles.datePickerValRow}>
+                  <Feather name="calendar" size={13} color={COLORS.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.datePickerValText}>{customStart.format('MMM DD, YYYY')}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.datePickerBtn}
+                activeOpacity={0.7}
+                onPress={() => setShowDatePicker('end')}
+              >
+                <Text style={styles.datePickerLabel}>END DATE</Text>
+                <View style={styles.datePickerValRow}>
+                  <Feather name="calendar" size={13} color={COLORS.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.datePickerValText}>{customEnd.format('MMM DD, YYYY')}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.applyRangeBtn}
+              activeOpacity={0.8}
+              onPress={() => {
+                setTimeFilter('custom');
+                setShowPickerModal(false);
+              }}
+            >
+              <Feather name="check" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.applyRangeBtnText}>Apply Custom Range</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* DatePicker for start/end dates */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={(showDatePicker === 'start' ? customStart : customEnd).toDate()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowDatePicker(null);
+            if (date) {
+              if (showDatePicker === 'start') setCustomStart(dayjs(date));
+              else setCustomEnd(dayjs(date));
+            }
+          }}
+        />
+      )}
 
       {/* --- Info Modal --- */}
       <Modal visible={showInfo} transparent animationType="fade" onRequestClose={() => setShowInfo(false)}>
@@ -585,14 +821,14 @@ const styles = StyleSheet.create({
 
   listContent: { paddingHorizontal: 16, paddingBottom: 30, paddingTop: 8 },
 
-  // Wallet Summary Card (Pending)
+  // Wallet Summary Card (Pending & Completed)
   summaryCardSingle: {
     backgroundColor: COLORS.surface,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 18,
-    marginBottom: 20,
+    marginBottom: 14,
     ...CARD_SHADOW,
   },
   summaryTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -617,7 +853,9 @@ const styles = StyleSheet.create({
 
   // Filter Pills (Completed)
   filterPill: {
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: COLORS.surface,
@@ -631,7 +869,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   filterPillText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSub,
   },
@@ -700,6 +938,79 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.surface,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border
   },
+
+  yearNavigator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surface,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 16,
+  },
+  yearArrowBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yearText: { fontSize: 16, fontWeight: '800', color: COLORS.textMain },
+
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  monthCell: {
+    width: '23%',
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  monthCellSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  monthCellText: { fontSize: 13, fontWeight: '700', color: COLORS.textMain },
+  monthCellTextSelected: { color: '#FFFFFF' },
+
+  modalDivider: { height: 1, backgroundColor: COLORS.border, marginBottom: 16 },
+
+  customRangeTitle: { fontSize: 13, fontWeight: '800', color: COLORS.textSub, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  datePickerBtn: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  datePickerLabel: { fontSize: 10, fontWeight: '800', color: COLORS.textSub, marginBottom: 4, letterSpacing: 0.5 },
+  datePickerValRow: { flexDirection: 'row', alignItems: 'center' },
+  datePickerValText: { fontSize: 13, fontWeight: '700', color: COLORS.textMain },
+
+  applyRangeBtn: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CARD_SHADOW,
+    shadowOpacity: 0.2,
+    marginTop: 4,
+  },
+  applyRangeBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 
   statusBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,

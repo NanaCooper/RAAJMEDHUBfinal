@@ -2,14 +2,24 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import ScaleButton from '../ui/ScaleButton';
-import { scanMedicalRequest } from '../../services/gemini';
+import { extractDetailsFromImageLocal } from '../../services/localOcr';
 
 interface Props {
     onCancel: () => void;
-    onSuccess: (notes: string) => void;
+    onSuccess: (extractedData: {
+        patientName?: string;
+        age?: string;
+        phone?: string;
+        scanTypes?: string[];
+        specificScan?: string;
+        notes?: string;
+        reason?: string;
+        referral?: string;
+        sex?: string;
+        doctorName?: string;
+    }) => void;
 }
 
 const COLORS = {
@@ -39,11 +49,11 @@ export default function UploadRequestForm({ onCancel, onSuccess }: Props) {
             if (mode === 'camera') {
                 const { status } = await ImagePicker.requestCameraPermissionsAsync();
                 if (status !== 'granted') return Alert.alert("Permission Denied", "Camera access is required.");
-                result = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: true });
+                result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
             } else {
                 const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
                 if (status !== 'granted') return Alert.alert("Permission Denied", "Gallery access is required.");
-                result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+                result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
             }
 
             if (!result.canceled) {
@@ -52,39 +62,51 @@ export default function UploadRequestForm({ onCancel, onSuccess }: Props) {
                 setIsAnalyzing(true);
 
                 try {
-                    // Convert image to Base64
-                    const base64 = await FileSystem.readAsStringAsync(imageUri, {
-                        encoding: 'base64',
-                    });
-
-                    // Call the Cloud Function
-                    const response: any = await scanMedicalRequest(base64);
+                    // Run 100% on-device OCR — no API key, no network required
+                    const extracted = await extractDetailsFromImageLocal(imageUri);
 
                     setIsAnalyzing(false);
 
-                    if (response.success && response.data) {
-                        const data = response.data;
-                        // Format the extracted data into notes
-                        let notes = 'Extracted from medical form:\n\n';
-                        if (data.patientName) notes += `Patient: ${data.patientName}\n`;
-                        if (data.age) notes += `Age: ${data.age}\n`;
-                        if (data.dateOfBirth) notes += `DOB: ${data.dateOfBirth}\n`;
-                        if (data.scanType) notes += `Scan Type: ${data.scanType}\n`;
-                        if (data.urgency) notes += `Urgency: ${data.urgency}\n`;
-                        if (data.notes) notes += `\nNotes: ${data.notes}`;
+                    // Map to the shape BookingForm expects
+                    const hasData =
+                        extracted.patientName ||
+                        extracted.scanTypes.length > 0 ||
+                        extracted.specificScan ||
+                        extracted.reasonForVisit;
 
-                        Alert.alert("Analysis Complete", "We've extracted the details from your form.");
-                        onSuccess(notes);
+                    if (hasData) {
+                        Alert.alert(
+                            "Scan Complete",
+                            "We've extracted the details from your form. Please review and confirm.",
+                        );
+                        onSuccess({
+                            patientName: extracted.patientName || undefined,
+                            age:         extracted.age || undefined,
+                            phone:       extracted.patientPhone || undefined,
+                            sex:         extracted.sex || undefined,
+                            scanTypes:   extracted.scanTypes.length > 0 ? extracted.scanTypes : undefined,
+                            specificScan: extracted.specificScan || undefined,
+                            reason:      extracted.reasonForVisit || undefined,
+                            referral:    extracted.referralSource || undefined,
+                            doctorName:  extracted.doctorName || undefined,
+                        });
                     } else {
-                        throw new Error('Failed to extract data');
+                        // OCR found no useful text — still allow manual entry
+                        Alert.alert(
+                            "Couldn't Read Form",
+                            "We couldn't extract details automatically. The image has been attached — please fill in the details manually.",
+                        );
+                        onSuccess({});
                     }
                 } catch (error: any) {
                     setIsAnalyzing(false);
-                    console.error('Scanning error:', error);
+                    console.error('[UploadRequestForm] OCR error:', error);
                     Alert.alert(
-                        "Scanning Failed",
-                        error.message || "Could not analyze the form. Please try again or enter details manually."
+                        "Scan Failed",
+                        "Could not read the form. The image is attached — please enter the details manually.",
                     );
+                    // Still call onSuccess with empty data so the user can proceed
+                    onSuccess({});
                 }
             }
         } catch (e) {
@@ -104,8 +126,8 @@ export default function UploadRequestForm({ onCancel, onSuccess }: Props) {
                 {isAnalyzing ? (
                     <View style={styles.analyzingState}>
                         <ActivityIndicator size="large" color={COLORS.primary} />
-                        <Text style={styles.analyzingText}>Scanning Document...</Text>
-                        <Text style={styles.analyzingSub}>Extracting referral details</Text>
+                        <Text style={styles.analyzingText}>Reading Form...</Text>
+                        <Text style={styles.analyzingSub}>Extracting referral details on device</Text>
                     </View>
                 ) : uploadedImage ? (
                     <Image source={{ uri: uploadedImage }} style={styles.previewImage} />
@@ -116,6 +138,7 @@ export default function UploadRequestForm({ onCancel, onSuccess }: Props) {
                         </View>
                         <Text style={styles.uploadTitle}>Upload Referral</Text>
                         <Text style={styles.uploadDesc}>Take a photo of your doctor's note for auto-filling.</Text>
+                        <Text style={styles.uploadNote}>Works offline — no internet required</Text>
                     </View>
                 )}
             </View>
@@ -142,10 +165,11 @@ const styles = StyleSheet.create({
     backLink: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
     backLinkText: { marginLeft: 8, color: COLORS.primary, fontWeight: '600' },
     uploadCard: { flex: 1, backgroundColor: '#fff', borderRadius: 30, borderWidth: 2, borderColor: '#EEF2FF', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
-    uploadPlaceholder: { alignItems: 'center' },
+    uploadPlaceholder: { alignItems: 'center', paddingHorizontal: 32 },
     iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.primarySoft, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
     uploadTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textMain },
-    uploadDesc: { fontSize: 14, color: COLORS.textSub, textAlign: 'center', marginTop: 8, maxWidth: 200 },
+    uploadDesc: { fontSize: 14, color: COLORS.textSub, textAlign: 'center', marginTop: 8, maxWidth: 220 },
+    uploadNote: { fontSize: 12, color: '#10B981', textAlign: 'center', marginTop: 6, fontWeight: '600' },
     uploadActions: { flexDirection: 'row', gap: 16 },
     actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16, gap: 8, overflow: 'hidden' },
     btnOutline: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' },
@@ -155,5 +179,5 @@ const styles = StyleSheet.create({
     previewImage: { width: '100%', height: '100%', borderRadius: 28, resizeMode: 'cover' },
     analyzingState: { alignItems: 'center' },
     analyzingText: { marginTop: 16, fontSize: 18, fontWeight: '700', color: COLORS.textMain },
-    analyzingSub: { color: COLORS.textSub },
+    analyzingSub: { color: COLORS.textSub, marginTop: 4, textAlign: 'center', paddingHorizontal: 24 },
 });

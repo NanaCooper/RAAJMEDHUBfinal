@@ -9,7 +9,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../hooks/useAuth';
-import { subscribeToAppointments, updateAppointment } from '../../services/appointments';
+import { subscribeToAppointments, updateAppointment, deleteAppointmentWithReferrals } from '../../services/appointments';
 import ScaleButton from '../../components/ui/ScaleButton';
 import BookingForm from '../../components/appointment/BookingForm';
 import { APPOINTMENTS_COMING_SOON, APPOINTMENTS_COMING_SOON_TITLE, APPOINTMENTS_COMING_SOON_BODY } from '../../constants/AppStrings';
@@ -167,6 +167,28 @@ export default function Appointments() {
     router.push('/(doctor)/upload-request');
   };
 
+  const handleDeleteAppointment = (appointment: any) => {
+    Alert.alert(
+      "Delete Appointment",
+      "Are you sure you want to delete this appointment? This will also delete any associated referrals. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAppointmentWithReferrals(appointment.id);
+            } catch (error) {
+              console.error("Failed to delete appointment", error);
+              Alert.alert("Error", "Failed to delete appointment.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   // --- RENDERERS ---
 
   const renderAppointmentCard = ({ item }: { item: any }) => {
@@ -188,6 +210,7 @@ export default function Appointments() {
       <ScaleButton
         style={[styles.card, isPast && { opacity: 0.7 }]}
         onPress={() => setSelectedAppointment(item)}
+        onLongPress={() => handleDeleteAppointment(item)}
       >
         {/* Gradient Accent */}
         <LinearGradient
@@ -234,7 +257,7 @@ export default function Appointments() {
           </View>
 
           {item.reportReady && (
-            <View style={{ flexDirection: 'row', items: 'center', gap: 4, backgroundColor: '#F3E8FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', marginTop: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3E8FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', marginTop: 8 }}>
               <Feather name="check-circle" size={11} color="#7E22CE" />
               <Text style={{ fontSize: 10, fontWeight: '800', color: '#7E22CE' }}>REPORT READY</Text>
             </View>

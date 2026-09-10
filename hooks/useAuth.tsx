@@ -11,6 +11,25 @@ interface UserData {
   [key: string]: any;
 }
 
+export const ADMIN_ROLES = [
+  'admin', 'superadmin', 'administrator', 'reception', 'receptionist', 
+  'frontdesk', 'staff', 'marketer', 'admin_capecoast', 'admin_koforidua', 'admin_takoradi'
+];
+
+export const ADMIN_EMAILS = [
+  'embidadzie@gmail.com', 'raajctscan@gmail.com', 'raajmedhub@gmail.com'
+];
+
+export function isAccountAdmin(data: any, email?: string | null): boolean {
+  if (!data) return false;
+  const role = (data.role || '').toString().trim().toLowerCase();
+  const mail = (email || data.email || '').toString().trim().toLowerCase();
+  if (ADMIN_EMAILS.includes(mail)) return true;
+  if (ADMIN_ROLES.some(r => role === r || role.includes('admin') || role.includes('desk') || role.includes('reception'))) return true;
+  if (data.isAdmin === true || data.isStaff === true) return true;
+  return false;
+}
+
 interface AuthContextType {
   signIn: (email?: string, password?: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -96,33 +115,30 @@ function useProtectedRoute(session: AuthUser | null | undefined, isLoading: bool
       // IMPORTANT: Protect admin/superadmin roles — they must NEVER be overwritten
       // by the mobile app. These roles are set directly in the database and should
       // remain intact regardless of what the mobile onboarding flow does.
-      const PROTECTED_ROLES = ['superadmin', 'admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'admin_capecoast', 'admin_koforidua', 'admin_takoradi'];
-      const isProtectedAdmin = user.role && PROTECTED_ROLES.includes(user.role);
+      const isProtectedAdmin = isAccountAdmin(user, session?.email);
 
       if (isProtectedAdmin) {
         // Admin accounts have no valid destination in the mobile app.
         // Sign them out gracefully and show a clear message.
-        if (!inAuthGroup) {
-          Alert.alert(
-            'Admin Account Detected',
-            'This account is configured as an administrator. Please use the admin web portal instead. You will be signed out now.',
-            [
-              {
-                text: 'OK',
-                onPress: async () => {
-                  try {
-                    const authInst = await getAuthInstance();
-                    await signOut(authInst);
-                  } catch (e) {
-                    console.warn('Sign out failed:', e);
-                  }
-                  router.replace('/login');
-                },
+        Alert.alert(
+          'Access Denied',
+          'You cannot open the app on mobile. Administrator accounts must use the web portal.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                try {
+                  const authInst = await getAuthInstance();
+                  await signOut(authInst);
+                } catch (e) {
+                  console.warn('Sign out failed:', e);
+                }
+                router.replace('/login');
               },
-            ],
-            { cancelable: false }
-          );
-        }
+            },
+          ],
+          { cancelable: false }
+        );
         return;
       }
 
@@ -230,6 +246,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await signOutUser();
             return;
           }
+          if (isAccountAdmin(userData, currentUser.email)) {
+            console.log("Admin account detected in reloadUser. Signing out.");
+            Alert.alert('Access Denied', 'You cannot open the app on mobile. Administrator accounts must use the web portal.');
+            await signOutUser();
+            return;
+          }
           const finalUserData = {
             uid: currentUser.uid,
             ...(userData as any),
@@ -328,10 +350,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // This prevents any mobile onboarding flow from clobbering admin accounts.
         const snap = await getDoc(userRef);
         if (snap.exists()) {
-          const existingRole = snap.data()?.role as string | undefined;
-          const PROTECTED_ROLES = ['superadmin', 'admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'admin_capecoast', 'admin_koforidua', 'admin_takoradi'];
-          if (existingRole && PROTECTED_ROLES.includes(existingRole)) {
-            console.warn('[useAuth] Blocked attempt to overwrite protected role:', existingRole, '→', type);
+          const userData = snap.data();
+          if (isAccountAdmin(userData, session.email)) {
+            console.warn('[useAuth] Blocked attempt to overwrite protected role:', userData.role, '→', type);
             setIsLoading(false);
             Alert.alert(
               'Permission Denied',
@@ -376,6 +397,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.log("AuthStateChanged: User is suspended. Signing out.");
                 Alert.alert("Account Suspended", "Your account has been suspended. Please contact support.");
                 await signOutUser();
+                return;
+              }
+              if (isAccountAdmin(userData, user.email)) {
+                console.log("AuthStateChanged: Admin account detected. Signing out.");
+                Alert.alert('Access Denied', 'You cannot open the app on mobile. Administrator accounts must use the web portal.');
+                await signOutUser();
+                setUser(null);
+                setIsLoading(false);
                 return;
               }
               const finalUserData = {
