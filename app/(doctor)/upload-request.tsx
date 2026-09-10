@@ -217,11 +217,11 @@ export default function UploadRequestForm() {
                     </TouchableOpacity>
                     <View>
                         <Text style={styles.headerTitle}>Scan Request</Text>
-                        <Text style={styles.headerSub}>On-Device Extraction</Text>
+                        <Text style={styles.headerSub}>AI-Powered Extraction</Text>
                     </View>
                     <View style={styles.headerBadge}>
                         <Ionicons name="sparkles" size={14} color={COLORS.primaryLight} />
-                        <Text style={styles.badgeText}>On-Device OCR</Text>
+                        <Text style={styles.badgeText}>Gemini AI</Text>
                     </View>
                 </View>
 
@@ -280,13 +280,13 @@ export default function UploadRequestForm() {
                                                 )}
                                                 <View style={styles.hudContent}>
                                                     <Text style={styles.hudTitle}>
-                                                        {analyzingStep === 1 ? 'Reading Image...' :
+                                                        {analyzingStep === 1 ? 'Uploading...' :
                                                             analyzingStep === 2 ? 'Extracting Data...' :
                                                                 'Complete!'}
                                                     </Text>
                                                     <Text style={styles.hudSub}>
-                                                        {analyzingStep === 1 ? 'Preparing on-device OCR' :
-                                                            analyzingStep === 2 ? 'Reading on device...' :
+                                                        {analyzingStep === 1 ? 'Securing connection' :
+                                                            analyzingStep === 2 ? 'Gemini AI processing' :
                                                                 'Redirecting you now'}
                                                     </Text>
                                                 </View>
