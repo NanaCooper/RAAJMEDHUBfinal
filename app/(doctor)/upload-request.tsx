@@ -157,7 +157,8 @@ export default function UploadRequestForm() {
             const scanRequest = functions().httpsCallable('scanRequest');
             
             const response = await scanRequest({ imageBase64: base64Data });
-            const extracted = response.data.data;
+            const responseData = response.data as any;
+            const extracted = responseData?.data || {};
 
             setAnalyzingStep(3); // Success
             if (Platform.OS !== 'web') Vibration.vibrate(50);
