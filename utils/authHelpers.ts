@@ -233,6 +233,15 @@ export async function linkPhoneWithPassword(
         const formatted = formatPhoneNumber(phoneNumber);
         const internalEmail = `${formatted}${INTERNAL_DOMAIN}`;
 
+        // Check if the user is already linked to a password provider
+        const hasPasswordProvider = user.providerData.some((p: FirebaseAuthTypes.UserInfo) => p.providerId === 'password');
+        
+        if (hasPasswordProvider) {
+            // Just update the password instead of linking again
+            await user.updatePassword(password);
+            return { success: true };
+        }
+
         // Use the EmailAuthProvider from the native firebase/auth package
         const credential = firebaseAuth.EmailAuthProvider.credential(internalEmail, password);
         await user.linkWithCredential(credential);

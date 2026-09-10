@@ -133,8 +133,8 @@ service cloud.firestore {
       // accidentally reassigned to 'patient'/'doctor' by the mobile app's onboarding flow.
       allow update: if (isAdmin() || isBranchAdmin() || isAdminByRole() || (isSignedIn() && request.auth.uid == userId && !isChangingProtectedField()))
         && !(
-          resource.data.role in ['admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'superadmin', 'admin_koforidua', 'admin_takoradi', 'admin_capecoast'] 
-          && request.resource.data.role in ['patient', 'doctor', 'Patient', 'Doctor', 'PATIENT', 'DOCTOR']
+          resource.data.get('role', '') in ['admin', 'Admin', 'ADMIN', 'administrator', 'reception', 'frontdesk', 'superadmin', 'admin_koforidua', 'admin_takoradi', 'admin_capecoast'] 
+          && request.resource.data.get('role', '') in ['patient', 'doctor', 'Patient', 'Doctor', 'PATIENT', 'DOCTOR']
         );
 
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
