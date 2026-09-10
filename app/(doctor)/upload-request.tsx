@@ -128,19 +128,24 @@ export default function UploadRequestForm() {
             if (perms.status !== 'granted') return Alert.alert("Permission Required", "Please allow access to proceed.");
 
             const result = mode === 'camera'
-                ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
-                : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+                ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true, base64: true })
+                : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, base64: true });
 
             if (!result.canceled) {
                 setUploadedImage(result.assets[0].uri);
-                processImage(result.assets[0].uri);
+                processImage(result.assets[0].uri, result.assets[0].base64);
             }
         } catch {
             Alert.alert("Error", "Capture failed.");
         }
     };
 
-    const processImage = async (uri: string) => {
+    const processImage = async (uri: string, base64Data?: string | null) => {
+        if (!base64Data) {
+            Alert.alert("Error", "Could not read image data.");
+            return;
+        }
+
         setIsAnalyzing(true);
         setAnalyzingStep(1); // Reading
 
@@ -148,8 +153,12 @@ export default function UploadRequestForm() {
             // Simulate UX step transition
             setTimeout(() => setAnalyzingStep(2), 1500); // Extracting
 
-            // On-device OCR — no API key, no network required
-            const extracted = await extractDetailsFromImageLocal(uri);
+            // Call the Gemini Cloud Function
+            const functions = require('@react-native-firebase/functions').default;
+            const scanRequest = functions().httpsCallable('scanRequest');
+            
+            const response = await scanRequest({ imageBase64: base64Data });
+            const extracted = response.data.data;
 
             setAnalyzingStep(3); // Success
             if (Platform.OS !== 'web') Vibration.vibrate(50);
@@ -162,8 +171,8 @@ export default function UploadRequestForm() {
                 doctorName:     extracted.doctorName,
                 referralSource: extracted.referralSource,
                 scanTypes:      extracted.scanTypes,
-                specificScan:   extracted.specificScan,
-                reasonForVisit: extracted.reasonForVisit,
+                specificScan:   extracted.scanTypes?.join(', '),
+                reasonForVisit: extracted.notes,
                 date:           extracted.date,
             };
 
