@@ -9,8 +9,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur'; // If available, otherwise falls back to View
+import functions from '@react-native-firebase/functions';
 import { useAuth } from '../../hooks/useAuth';
-import { extractDetailsFromImageLocal } from '../../services/localOcr';
 // --- THEME ENGINE ---
 const COLORS = {
     primary: "#4338CA",    // Indigo 700 (Deep/Royal)
@@ -154,7 +154,6 @@ export default function UploadRequestForm() {
             setTimeout(() => setAnalyzingStep(2), 1500); // Extracting
 
             // Call the Gemini Cloud Function
-            const functions = require('@react-native-firebase/functions').default;
             const scanRequest = functions().httpsCallable('scanRequest');
             
             const response = await scanRequest({ imageBase64: base64Data });
