@@ -208,7 +208,7 @@ export default function UploadRequestForm() {
             }, 500);
         } catch (error: any) {
             console.error('[UploadRequest] OCR error:', error);
-            Alert.alert("Scan Failed", "Couldn't read the form. Please try a clearer photo or enter details manually.");
+            Alert.alert("Scan Failed", `Couldn't read the form. Error: ${error.message || error}`);
             setUploadedImage(null);
         } finally {
             setTimeout(() => {
