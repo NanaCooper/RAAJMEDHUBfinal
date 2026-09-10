@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur'; // If available, otherwise falls back to View
-import functions from '@react-native-firebase/functions';
+
 import { useAuth } from '../../hooks/useAuth';
 // --- THEME ENGINE ---
 const COLORS = {
@@ -153,12 +153,25 @@ export default function UploadRequestForm() {
             // Simulate UX step transition
             setTimeout(() => setAnalyzingStep(2), 1500); // Extracting
 
-            // Call the Gemini Cloud Function
-            const scanRequest = functions().httpsCallable('scanRequest');
-            
-            const response = await scanRequest({ imageBase64: base64Data });
-            const responseData = response.data as any;
-            const extracted = responseData?.data || {};
+            // Call the correct Gemini Cloud Function via REST API
+            const response = await fetch('https://us-central1-medicareapp-f0dc0.cloudfunctions.net/extractAppointmentRequestForm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    imageBase64: base64Data,
+                    mimeType: 'image/jpeg'
+                })
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Failed with status ${response.status}: ${text}`);
+            }
+
+            const responseData = await response.json();
+            const extracted = responseData?.extractedData || {};
 
             // Success block
             setAnalyzingStep(3); // Success
