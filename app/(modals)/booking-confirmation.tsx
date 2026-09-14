@@ -165,13 +165,17 @@ export default function BookingConfirmationModal() {
       if (scanTypesArr.length > 0) {
         const promises = scanTypesArr.map(async (scan: any) => {
           const scanName = scan?.name || scan?.id || 'Procedure';
+          // Use the individual scan price if available, fallback to total sum (for single procedure)
+          const individualPrice = scan?.price !== undefined ? scan.price : appointmentData.procedurePriceGhs;
+
           const appointmentToSave = {
             ...appointmentData,
-            startAt: dayjs(appointmentData.startAt).toDate(),
+            startAt: appointmentData.startAt ? dayjs(appointmentData.startAt).toDate() : new Date(),
             activationStatus,
             procedureName: scanName,
             scanType: scanName,
-            specificProcedure: scanName // Override concatenated string
+            specificProcedure: scanName, // Override concatenated string
+            procedurePriceGhs: individualPrice,
           };
           console.log(`[LOG] handleConfirm: Sending appointment for ${scanName}`);
           return createAppointment(appointmentToSave as any);
@@ -183,7 +187,7 @@ export default function BookingConfirmationModal() {
         // Fallback for general appointments without specific scan types
         const appointmentToSave = {
           ...appointmentData,
-          startAt: dayjs(appointmentData.startAt).toDate(),
+          startAt: appointmentData.startAt ? dayjs(appointmentData.startAt).toDate() : new Date(),
           activationStatus,
         };
         console.log("[LOG] handleConfirm: Final object being sent to createAppointment:", JSON.stringify(appointmentToSave, null, 2));
@@ -339,12 +343,13 @@ export default function BookingConfirmationModal() {
   };
 
   const handleFinish = () => {
-    router.back();
-    // Navigate to the appointments list after a short delay to allow the modal to close
-    setTimeout(() => {
-      const createdByRole = (appointmentData as any)?.createdByRole;
-      router.push(createdByRole === 'doctor' ? '/(doctor)/appointments' : '/(patient)/appointments');
-    }, 200);
+    // We do not router.back() because it might pop us back to a broken state.
+    // Replace the stack directly to the appointments screen on the upcoming tab.
+    const createdByRole = (appointmentData as any)?.createdByRole;
+    router.replace({ 
+      pathname: createdByRole === 'doctor' ? '/(doctor)/appointments' : '/(patient)/appointments',
+      params: { tab: 'upcoming' } 
+    });
   };
 
   const handleEdit = () => {
